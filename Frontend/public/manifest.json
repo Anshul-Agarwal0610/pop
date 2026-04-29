@@ -1,0 +1,43 @@
+{
+  "name": "Pollify - Public Opinion Polling",
+  "short_name": "Pollify",
+  "description": "Your voice matters. Create polls, vote, and see what the world thinks.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f7ff",
+  "theme_color": "#e5484d",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["social", "lifestyle"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Create Poll",
+      "short_name": "Create",
+      "description": "Create a new poll",
+      "url": "/create",
+      "icons": [{ "src": "/icons/create.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Leaderboard",
+      "short_name": "Leaders",
+      "description": "View the leaderboard",
+      "url": "/leaderboard",
+      "icons": [{ "src": "/icons/leaderboard.png", "sizes": "96x96" }]
+    }
+  ]
+}
