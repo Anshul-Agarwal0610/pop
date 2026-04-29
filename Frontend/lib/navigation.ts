@@ -1,10 +1,15 @@
-import { Home, PlusCircle, Trophy, Bell, User } from "lucide-react"
+import { Home, BarChart2, PlusCircle, Trophy, Bell, User } from "lucide-react"
 
 export const navigationItems = [
   {
     label: "Home",
     href: "/",
     icon: Home,
+  },
+  {
+    label: "Polls",
+    href: "/polls",
+    icon: BarChart2,
   },
   {
     label: "Create Poll",
