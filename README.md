@@ -22,18 +22,19 @@ A gamified public opinion polling platform built with Next.js, TypeScript, and T
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) v18+
-- [pnpm](https://pnpm.io/) — install with `npm install -g pnpm`
+- [Node.js](https://nodejs.org/) v18+ (includes npm)
 
 ### Steps
 
 ```bash
-# 1. Install dependencies
+# 1. Go into the Frontend folder
 cd Frontend
-pnpm install
 
-# 2. Start the development server
-pnpm dev
+# 2. Install dependencies
+npm install --legacy-peer-deps
+
+# 3. Start the development server
+npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -41,7 +42,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Other commands
 
 ```bash
-pnpm build   # Production build
-pnpm start   # Start production server (run build first)
-pnpm lint    # Run ESLint
+npm run build   # Production build
+npm run start   # Start production server (run build first)
+npm run lint    # Run ESLint
 ```
