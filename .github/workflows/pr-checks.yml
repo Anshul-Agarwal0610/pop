@@ -7,8 +7,8 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
- frontend-build:
-    name: Build & Lint
+  frontend-build:
+    name: Frontend Build & Lint
     runs-on: ubuntu-latest
 
     steps:
@@ -33,10 +33,11 @@ jobs:
       - name: Run build
         working-directory: Frontend
         run: npm run build
-        
- backend-build:
+
+  backend-build:
     name: Backend Build
     runs-on: ubuntu-latest
+    if: hashFiles('Backend/BackendAPI/BackendAPI.csproj') != ''
 
     steps:
       - name: Checkout code
