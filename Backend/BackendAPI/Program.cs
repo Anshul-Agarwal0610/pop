@@ -1,6 +1,7 @@
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Repository;
+using BackendAPI.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -40,11 +41,12 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<DapperContext>();
 
 // ── Repositories ──────────────────────────────────────────────────────────
-builder.Services.AddScoped<IAuthRepository,      AuthRepository>();
-builder.Services.AddScoped<IPollsRepository,     PollsRepository>();
-builder.Services.AddScoped<IVotesRepository,     VotesRepository>();
-builder.Services.AddScoped<IUsersRepository,     UsersRepository>();
-builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
+builder.Services.AddScoped<IAuthRepository,           AuthRepository>();
+builder.Services.AddScoped<IPollsRepository,          PollsRepository>();
+builder.Services.AddScoped<IVotesRepository,          VotesRepository>();
+builder.Services.AddScoped<IUsersRepository,          UsersRepository>();
+builder.Services.AddScoped<IDashboardRepository,      DashboardRepository>();
+builder.Services.AddScoped<ITrendingTopicRepository,  TrendingTopicRepository>();
 
 // ── CORS — allow Next.js frontend ─────────────────────────────────────────
 builder.Services.AddCors(options =>
