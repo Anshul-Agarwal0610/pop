@@ -7,7 +7,25 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  build:
+  detect-backend:
+    name: Detect Backend
+    runs-on: ubuntu-latest
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for backend project
+        id: check
+        run: |
+          if [ -f "Backend/BackendAPI/BackendAPI.csproj" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  frontend-build:
     name: Build & Lint
     runs-on: ubuntu-latest
 
@@ -33,3 +51,26 @@ jobs:
       - name: Run build
         working-directory: Frontend
         run: npm run build
+
+  backend-build:
+    name: Backend Build
+    runs-on: ubuntu-latest
+    needs: detect-backend
+    if: needs.detect-backend.outputs.exists == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        working-directory: Backend/BackendAPI
+        run: dotnet restore
+
+      - name: Build
+        working-directory: Backend/BackendAPI
+        run: dotnet build --no-restore --configuration Release
