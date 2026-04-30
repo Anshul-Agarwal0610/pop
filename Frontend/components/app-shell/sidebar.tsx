@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -12,6 +13,8 @@ import { Button } from "@/components/ui/button"
 export function Sidebar() {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   return (
     <aside className="fixed left-0 top-16 z-30 hidden h-[calc(100vh-4rem)] w-64 border-r border-border/50 bg-sidebar md:block">
@@ -111,7 +114,7 @@ export function Sidebar() {
             </span>
             <div className="flex gap-1">
               <Button
-                variant={theme === "light" ? "default" : "ghost"}
+                variant={mounted && theme === "light" ? "default" : "ghost"}
                 size="icon"
                 className="h-8 w-8 rounded-lg"
                 onClick={() => setTheme("light")}
@@ -120,7 +123,7 @@ export function Sidebar() {
                 <span className="sr-only">Light mode</span>
               </Button>
               <Button
-                variant={theme === "dark" ? "default" : "ghost"}
+                variant={mounted && theme === "dark" ? "default" : "ghost"}
                 size="icon"
                 className="h-8 w-8 rounded-lg"
                 onClick={() => setTheme("dark")}
