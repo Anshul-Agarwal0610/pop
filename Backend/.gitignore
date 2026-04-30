@@ -1,0 +1,15 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.csproj.user
+
+## Environment / secrets
+appsettings.Development.json
+appsettings.Production.json
+*.env
+
+## Build
+publish/
