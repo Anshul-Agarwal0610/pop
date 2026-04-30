@@ -7,6 +7,24 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
+  detect-backend:
+    name: Detect Backend
+    runs-on: ubuntu-latest
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for backend project
+        id: check
+        run: |
+          if [ -f "Backend/BackendAPI/BackendAPI.csproj" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
   frontend-build:
     name: Frontend Build & Lint
     runs-on: ubuntu-latest
@@ -37,7 +55,8 @@ jobs:
   backend-build:
     name: Backend Build
     runs-on: ubuntu-latest
-    if: hashFiles('Backend/BackendAPI/BackendAPI.csproj') != ''
+    needs: detect-backend
+    if: needs.detect-backend.outputs.exists == 'true'
 
     steps:
       - name: Checkout code
