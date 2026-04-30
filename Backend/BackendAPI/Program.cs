@@ -1,43 +1,64 @@
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Repository;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Controllers
+// ── Controllers ───────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 
-// Swagger
+// ── Swagger ───────────────────────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "Pollify API", Version = "v1" });
 });
 
-// Dapper context
+// ── JWT Authentication ────────────────────────────────────────────────────
+var jwtKey = builder.Configuration["Jwt:Key"]!;
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer              = builder.Configuration["Jwt:Issuer"],
+            ValidAudience            = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+// ── Dapper context ────────────────────────────────────────────────────────
 builder.Services.AddSingleton<DapperContext>();
 
-// Repositories
-builder.Services.AddScoped<IPollsRepository, PollsRepository>();
-builder.Services.AddScoped<IVotesRepository, VotesRepository>();
-builder.Services.AddScoped<IUsersRepository, UsersRepository>();
+// ── Repositories ──────────────────────────────────────────────────────────
+builder.Services.AddScoped<IAuthRepository,      AuthRepository>();
+builder.Services.AddScoped<IPollsRepository,     PollsRepository>();
+builder.Services.AddScoped<IVotesRepository,     VotesRepository>();
+builder.Services.AddScoped<IUsersRepository,     UsersRepository>();
 builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
 
-// CORS — allow Next.js frontend on localhost:3000
+// ── CORS — allow Next.js frontend ─────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
     {
         policy
-            .WithOrigins(
-                "http://localhost:3000",
-                "https://localhost:3000"
-            )
+            .WithOrigins("http://localhost:3000", "https://localhost:3000")
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
 });
 
+// ─────────────────────────────────────────────────────────────────────────
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -48,6 +69,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
