@@ -7,8 +7,8 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  build:
-    name: Build & Lint
+  frontend-build:
+    name: Frontend Build & Lint
     runs-on: ubuntu-latest
 
     steps:
@@ -33,3 +33,25 @@ jobs:
       - name: Run build
         working-directory: Frontend
         run: npm run build
+
+  backend-build:
+    name: Backend Build
+    runs-on: ubuntu-latest
+    if: hashFiles('Backend/BackendAPI/BackendAPI.csproj') != ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        working-directory: Backend/BackendAPI
+        run: dotnet restore
+
+      - name: Build
+        working-directory: Backend/BackendAPI
+        run: dotnet build --no-restore --configuration Release
