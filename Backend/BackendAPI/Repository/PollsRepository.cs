@@ -134,15 +134,23 @@ namespace BackendAPI.Repository
             try
             {
                 var pollId = await conn.ExecuteScalarAsync<long>(
-                    @"INSERT INTO Polls (Question, Description, Category, ExpiresAt, IsActive, IsTrending, CreatedAt, TotalVotes)
-                      VALUES (@Question, @Description, @Category, @ExpiresAt, 1, 0, GETUTCDATE(), 0);
+                    @"INSERT INTO Polls
+                        (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
+                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated)
+                      VALUES
+                        (@Question, @Description, @Category, @ExpiresAt, 1, 0,
+                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated);
                       SELECT SCOPE_IDENTITY();",
                     new
                     {
                         request.Question,
                         request.Description,
                         request.Category,
-                        request.ExpiresAt
+                        request.ExpiresAt,
+                        request.SourceType,
+                        request.SourceUrl,
+                        request.ThumbnailUrl,
+                        request.IsAIGenerated
                     },
                     transaction
                 );
