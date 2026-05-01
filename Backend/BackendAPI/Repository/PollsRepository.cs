@@ -71,12 +71,14 @@ namespace BackendAPI.Repository
 
             var pollDict = new Dictionary<long, Poll>();
 
+            // US-09: order by TotalVotes DESC directly — no longer requires IsTrending = 1
+            // IsTrending flag is still refreshed by a Hangfire job but is not a blocker.
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 @"SELECT TOP (@Count) p.*, o.*
                   FROM Polls p
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
-                  WHERE p.IsActive = 1 AND p.IsTrending = 1
-                  ORDER BY p.TotalVotes DESC",
+                  WHERE p.IsActive = 1
+                  ORDER BY p.TotalVotes DESC, p.CreatedAt DESC",
                 (poll, option) =>
                 {
                     if (!pollDict.TryGetValue(poll.Id, out var existing))
