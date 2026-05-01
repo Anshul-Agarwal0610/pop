@@ -1,7 +1,11 @@
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
-using BackendAPI.Repository;
+using BackendAPI.Jobs;
 using BackendAPI.Models;
+using BackendAPI.Repository;
+using BackendAPI.Services;
+using Hangfire;
+using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -41,12 +45,44 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<DapperContext>();
 
 // ── Repositories ──────────────────────────────────────────────────────────
-builder.Services.AddScoped<IAuthRepository,           AuthRepository>();
-builder.Services.AddScoped<IPollsRepository,          PollsRepository>();
-builder.Services.AddScoped<IVotesRepository,          VotesRepository>();
-builder.Services.AddScoped<IUsersRepository,          UsersRepository>();
-builder.Services.AddScoped<IDashboardRepository,      DashboardRepository>();
-builder.Services.AddScoped<ITrendingTopicRepository,  TrendingTopicRepository>();
+builder.Services.AddScoped<IAuthRepository,          AuthRepository>();
+builder.Services.AddScoped<IPollsRepository,         PollsRepository>();
+builder.Services.AddScoped<IVotesRepository,         VotesRepository>();
+builder.Services.AddScoped<IUsersRepository,         UsersRepository>();
+builder.Services.AddScoped<IDashboardRepository,     DashboardRepository>();
+builder.Services.AddScoped<ITrendingTopicRepository, TrendingTopicRepository>();
+
+// ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IRssIngestionService,     RssIngestionService>();
+builder.Services.AddScoped<IYouTubeIngestionService, YouTubeIngestionService>();
+builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();
+
+// ── Poll Generation Service (US-07) ──────────────────────────────────────
+builder.Services.AddScoped<IPollGenerationService,   PollGenerationService>();
+
+// ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
+builder.Services.AddScoped<IngestionJob>();
+builder.Services.AddScoped<PollGenerationJob>();
+
+// ── Hangfire (US-02) ──────────────────────────────────────────────────────
+var hangfireConn = builder.Configuration.GetConnectionString("DefaultConnection")!;
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseSqlServerStorage(hangfireConn, new SqlServerStorageOptions
+    {
+        CommandBatchMaxTimeout     = TimeSpan.FromMinutes(5),
+        SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+        QueuePollInterval          = TimeSpan.Zero,
+        PrepareSchemaIfNecessary   = true   // auto-creates Hangfire schema tables
+    }));
+
+builder.Services.AddHangfireServer(options =>
+{
+    options.WorkerCount = 2;   // light footprint on App Service free/basic tier
+});
 
 // ── CORS — allow Next.js frontend ─────────────────────────────────────────
 builder.Services.AddCors(options =>
@@ -67,6 +103,9 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Pollify API v1"));
+
+    // Hangfire Dashboard — dev only (no auth); US-11 adds Basic Auth for prod
+    app.UseHangfireDashboard("/hangfire");
 }
 
 app.UseHttpsRedirection();
@@ -74,5 +113,25 @@ app.UseCors("FrontendPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// ── Register recurring jobs (US-06, US-08) ───────────────────────────────
+// Jobs are registered after the app is built so IRecurringJobManager is available.
+using (var scope = app.Services.CreateScope())
+{
+    var recurringJobs = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+
+    // US-06: Ingest trending topics every 30 minutes
+    recurringJobs.AddOrUpdate<IngestionJob>(
+        "ingest-trending-topics",
+        job => job.RunAsync(),
+        "*/30 * * * *");
+
+    // US-08: Generate polls from unprocessed topics every 35 minutes
+    // (offset by 5 min so ingestion always runs first)
+    recurringJobs.AddOrUpdate<PollGenerationJob>(
+        "generate-polls-from-topics",
+        job => job.RunAsync(),
+        "5/35 * * * *");
+}
 
 app.Run();
