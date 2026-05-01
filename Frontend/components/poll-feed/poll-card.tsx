@@ -7,14 +7,17 @@ import {
   Youtube,
   Instagram,
   Newspaper,
+  Rss,
   Users,
   Zap,
   Clock,
+  Sparkles,
+  ImageOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Poll, SOURCE_COLORS } from "@/lib/poll-data"
+import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
 
-// X/Twitter icon
+// ── Custom icons ──────────────────────────────────────────────────────────────
 function XIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -23,7 +26,6 @@ function XIcon({ className }: { className?: string }) {
   )
 }
 
-// TikTok icon
 function TikTokIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -32,14 +34,30 @@ function TikTokIcon({ className }: { className?: string }) {
   )
 }
 
-const SourceIcon = {
-  youtube: Youtube,
-  instagram: Instagram,
-  twitter: XIcon,
-  news: Newspaper,
-  tiktok: TikTokIcon,
+function GoogleNewsIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" />
+    </svg>
+  )
 }
 
+// ── Source icon map ───────────────────────────────────────────────────────────
+// Maps both legacy UI sources and ingestion pipeline sources to icons
+const SourceIcon: Record<string, React.ComponentType<{ className?: string }>> = {
+  // Legacy
+  youtube:   Youtube,
+  instagram: Instagram,
+  twitter:   XIcon,
+  news:      Newspaper,
+  tiktok:    TikTokIcon,
+  // Ingestion pipeline (US-10)
+  rss:       Rss,
+  gnews:     GoogleNewsIcon,
+  manual:    Newspaper,
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 interface PollCardProps {
   poll: Poll
   onVote: (vote: "yes" | "no") => void
@@ -47,21 +65,29 @@ interface PollCardProps {
 }
 
 export function PollCard({ poll, onVote, isActive }: PollCardProps) {
-  const x = useMotionValue(0)
-  const rotate = useTransform(x, [-200, 200], [-15, 15])
+  const x         = useMotionValue(0)
+  const rotate    = useTransform(x, [-200, 200], [-15, 15])
   const yesOpacity = useTransform(x, [0, 100], [0, 1])
-  const noOpacity = useTransform(x, [-100, 0], [1, 0])
+  const noOpacity  = useTransform(x, [-100, 0], [1, 0])
 
-  const Icon = SourceIcon[poll.source]
-  const sourceStyle = SOURCE_COLORS[poll.source]
+  // Prefer backend thumbnailUrl → fallback to mediaUrl
+  const imageUrl = poll.thumbnailUrl || poll.mediaUrl
+
+  // Source resolution: prefer ingestion sourceType, fall back to legacy source field
+  const effectiveSource = poll.sourceType ?? poll.source
+  const sourceStyle     = SOURCE_COLORS[effectiveSource] ?? SOURCE_COLORS.manual
+  const Icon            = SourceIcon[effectiveSource] ?? Newspaper
+
+  // Display label: prefer sourceLabel, fall back to SOURCE_LABELS map for ingestion types
+  const sourceDisplayLabel =
+    poll.sourceType
+      ? SOURCE_LABELS[poll.sourceType]
+      : poll.sourceLabel
 
   function handleDragEnd(_: unknown, info: PanInfo) {
     const threshold = 100
-    if (info.offset.x > threshold) {
-      onVote("yes")
-    } else if (info.offset.x < -threshold) {
-      onVote("no")
-    }
+    if (info.offset.x > threshold)      onVote("yes")
+    else if (info.offset.x < -threshold) onVote("no")
   }
 
   return (
@@ -82,6 +108,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
     >
       {/* Card Container */}
       <div className="relative h-full overflow-hidden rounded-3xl bg-card shadow-2xl ring-1 ring-border/50">
+
         {/* YES Overlay */}
         <motion.div
           className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-emerald-500/20"
@@ -108,15 +135,30 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
           </motion.div>
         </motion.div>
 
-        {/* Media Section */}
+        {/* ── Media Section ─────────────────────────────────────────────────── */}
         <div className="relative h-[55%] overflow-hidden bg-muted">
-          <img
-            src={poll.mediaUrl}
-            alt=""
-            className="h-full w-full object-cover"
-            crossOrigin="anonymous"
-          />
-          {/* Gradient Overlay */}
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              crossOrigin="anonymous"
+              onError={(e) => {
+                // Hide broken image; placeholder gradient underneath will show
+                ;(e.currentTarget as HTMLImageElement).style.display = "none"
+              }}
+            />
+          ) : (
+            /* No thumbnail — show branded placeholder */
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 via-accent/10 to-primary/5">
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <ImageOff className="h-10 w-10 opacity-40" />
+                <span className="text-xs opacity-50">No preview available</span>
+              </div>
+            </div>
+          )}
+
+          {/* Gradient Overlay — always on top of image */}
           <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
 
           {/* Play Button for Videos */}
@@ -130,21 +172,35 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </motion.button>
           )}
 
-          {/* Top Badges */}
+          {/* ── Top Badges ───────────────────────────────────────────────── */}
           <div className="absolute left-4 right-4 top-4 flex items-start justify-between">
-            {/* Trending Badge */}
-            {poll.trending && (
-              <motion.div
-                className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-primary-foreground shadow-lg"
-                initial={{ scale: 0, y: -20 }}
-                animate={{ scale: 1, y: 0 }}
-                transition={{ delay: 0.2, type: "spring" }}
-              >
-                <TrendingUp className="h-3.5 w-3.5" />
-                <span className="text-xs font-semibold">Trending</span>
-              </motion.div>
-            )}
-            {!poll.trending && <div />}
+            <div className="flex flex-col gap-1.5">
+              {/* Trending Badge */}
+              {poll.trending && (
+                <motion.div
+                  className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-primary-foreground shadow-lg"
+                  initial={{ scale: 0, y: -20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  transition={{ delay: 0.2, type: "spring" }}
+                >
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  <span className="text-xs font-semibold">Trending</span>
+                </motion.div>
+              )}
+
+              {/* AI Generated Badge (US-10) */}
+              {poll.isAIGenerated && (
+                <motion.div
+                  className="flex items-center gap-1.5 rounded-full bg-violet-500/15 px-3 py-1.5 shadow-lg ring-1 ring-violet-500/30"
+                  initial={{ scale: 0, y: -20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  transition={{ delay: 0.25, type: "spring" }}
+                >
+                  <Sparkles className="h-3 w-3 text-violet-400" />
+                  <span className="text-xs font-medium text-violet-400">AI Poll</span>
+                </motion.div>
+              )}
+            </div>
 
             {/* XP Reward */}
             <motion.div
@@ -158,10 +214,10 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </motion.div>
           </div>
 
-          {/* Source Label */}
+          {/* ── Source Badge ─────────────────────────────────────────────── */}
           <motion.div
             className={cn(
-              "absolute bottom-4 left-4 flex items-center gap-2 rounded-full px-3 py-1.5 shadow-lg",
+              "absolute bottom-4 left-4 flex items-center gap-2 rounded-full px-3 py-1.5 shadow-lg backdrop-blur-sm",
               sourceStyle.bg
             )}
             initial={{ scale: 0, x: -20 }}
@@ -170,12 +226,12 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
           >
             <Icon className={cn("h-4 w-4", sourceStyle.icon)} />
             <span className={cn("text-xs font-medium", sourceStyle.text)}>
-              {poll.sourceLabel}
+              {sourceDisplayLabel}
             </span>
           </motion.div>
         </div>
 
-        {/* Content Section */}
+        {/* ── Content Section ───────────────────────────────────────────────── */}
         <div className="flex h-[45%] flex-col p-5">
           {/* Category & Time */}
           <div className="mb-3 flex items-center gap-3">
