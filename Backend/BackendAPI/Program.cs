@@ -1,4 +1,5 @@
 using BackendAPI.Data;
+using BackendAPI.Infrastructure;
 using BackendAPI.Interfaces;
 using BackendAPI.Jobs;
 using BackendAPI.Models;
@@ -65,6 +66,9 @@ builder.Services.AddScoped<IPollGenerationService,   PollGenerationService>();
 builder.Services.AddScoped<IngestionJob>();
 builder.Services.AddScoped<PollGenerationJob>();
 
+// ── Hangfire Dashboard Auth (US-11) ───────────────────────────────────────
+builder.Services.AddSingleton<HangfireDashboardAuthFilter>();
+
 // ── Hangfire (US-02) ──────────────────────────────────────────────────────
 var hangfireConn = builder.Configuration.GetConnectionString("DefaultConnection")!;
 builder.Services.AddHangfire(config => config
@@ -103,10 +107,15 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Pollify API v1"));
-
-    // Hangfire Dashboard — dev only (no auth); US-11 adds Basic Auth for prod
-    app.UseHangfireDashboard("/hangfire");
 }
+
+// Hangfire Dashboard — available in all environments.
+// US-11: HangfireDashboardAuthFilter allows all in Dev, enforces Basic Auth in Prod.
+var authFilter = app.Services.GetRequiredService<HangfireDashboardAuthFilter>();
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { authFilter }
+});
 
 app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");
