@@ -5,6 +5,7 @@ using BackendAPI.Jobs;
 using BackendAPI.Models;
 using BackendAPI.Repository;
 using BackendAPI.Services;
+using BackendAPI.Services.Llm;
 using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -59,8 +60,13 @@ builder.Services.AddScoped<IRssIngestionService,     RssIngestionService>();
 builder.Services.AddScoped<IYouTubeIngestionService, YouTubeIngestionService>();
 builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();
 
-// ── Poll Generation Service (US-07) ──────────────────────────────────────
-builder.Services.AddScoped<IPollGenerationService,   PollGenerationService>();
+// ── LLM Providers — all registered; active one chosen via PollGen:Provider config ─
+builder.Services.AddScoped<ILlmProvider, OpenAiLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, AnthropicLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, CustomVmLlmProvider>();
+
+// ── Poll Generation Service (US-07 enhanced: multi-provider) ─────────────
+builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
 
 // ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
 builder.Services.AddScoped<IngestionJob>();
