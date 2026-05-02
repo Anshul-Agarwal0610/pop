@@ -7,27 +7,40 @@ namespace BackendAPI.Services
 {
     /// <summary>
     /// US-03 — Fetches trending topics from RSS feeds.
-    /// Sources: Google News (India), The Hindu, Times of India, NDTV, BBC, Reuters, Indian Express.
-    /// Uses only built-in .NET System.ServiceModel.Syndication — no extra NuGet required.
+    ///
+    /// All feeds are fetched via HttpClient with a browser-like User-Agent so sites
+    /// that block default .NET XML requests (e.g. Indian Express) don't return 403.
+    ///
+    /// Reuters was removed — they shut down all public RSS feeds in 2020.
+    /// Replaced with Hindustan Times and Economic Times.
     /// </summary>
     public class RssIngestionService : IRssIngestionService
     {
+        private readonly IHttpClientFactory _http;
         private readonly ILogger<RssIngestionService> _logger;
 
-        // Source → (feed URL, category)
+        // Mimics a real browser so sites don't return 403
+        private const string UserAgent =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/124.0.0.0 Safari/537.36";
+
+        // (Name, Feed URL, Category)
         private static readonly (string Name, string Url, string Category)[] Feeds =
         {
-            ("Google News India",   "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",             "General"),
-            ("The Hindu",           "https://www.thehindu.com/news/national/?service=rss",               "India"),
-            ("Times of India",      "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",        "India"),
-            ("NDTV Top Stories",    "https://feeds.feedburner.com/ndtvnews-top-stories",                 "India"),
-            ("BBC World",           "https://feeds.bbci.co.uk/news/world/rss.xml",                      "World"),
-            ("Reuters Top News",    "https://feeds.reuters.com/reuters/topNews",                         "World"),
-            ("Indian Express",      "https://indianexpress.com/feed/",                                   "India"),
+            ("Google News India",    "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",                  "General"),
+            ("The Hindu",            "https://www.thehindu.com/news/national/?service=rss",                    "India"),
+            ("Times of India",       "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",             "India"),
+            ("NDTV Top Stories",     "https://feeds.feedburner.com/ndtvnews-top-stories",                      "India"),
+            ("BBC World",            "https://feeds.bbci.co.uk/news/world/rss.xml",                           "World"),
+            ("Hindustan Times",      "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",        "India"),
+            ("Economic Times",       "https://economictimes.indiatimes.com/rssfeedstopstories.cms",            "Business"),
+            ("Indian Express",       "https://indianexpress.com/feed/",                                        "India"),
         };
 
-        public RssIngestionService(ILogger<RssIngestionService> logger)
+        public RssIngestionService(IHttpClientFactory http, ILogger<RssIngestionService> logger)
         {
+            _http   = http;
             _logger = logger;
         }
 
@@ -39,7 +52,7 @@ namespace BackendAPI.Services
             {
                 try
                 {
-                    var items = await FetchFeedAsync(url, name, category);
+                    var items = await FetchFeedAsync(name, url, category);
                     results.AddRange(items);
                     _logger.LogInformation("RSS [{Source}]: fetched {Count} items", name, items.Count);
                 }
@@ -52,30 +65,42 @@ namespace BackendAPI.Services
             return results;
         }
 
-        private static Task<List<TrendingTopic>> FetchFeedAsync(
-            string url, string sourceName, string category)
+        private async Task<List<TrendingTopic>> FetchFeedAsync(
+            string sourceName, string url, string category)
         {
-            return Task.Run(() =>
+            // Download XML with a real browser User-Agent to avoid 403 responses
+            var client = _http.CreateClient();
+            client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
+            client.DefaultRequestHeaders.Add("Accept", "application/rss+xml, application/xml, text/xml, */*");
+            client.Timeout = TimeSpan.FromSeconds(15);
+
+            using var response = await client.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            await using var stream = await response.Content.ReadAsStreamAsync();
+
+            return await Task.Run(() =>
             {
                 var topics = new List<TrendingTopic>();
 
-                var settings = new XmlReaderSettings
+                var xmlSettings = new XmlReaderSettings
                 {
-                    DtdProcessing = DtdProcessing.Ignore,
-                    MaxCharactersFromEntities = 1024
+                    DtdProcessing             = DtdProcessing.Ignore,
+                    MaxCharactersFromEntities = 1024,
+                    Async                     = false
                 };
 
-                using var reader = XmlReader.Create(url, settings);
+                using var reader = XmlReader.Create(stream, xmlSettings);
                 var feed = SyndicationFeed.Load(reader);
 
-                foreach (var item in feed.Items.Take(10))   // max 10 per feed
+                foreach (var item in feed.Items.Take(10))
                 {
-                    var link = item.Links.FirstOrDefault()?.Uri?.ToString() ?? "";
+                    var link    = item.Links.FirstOrDefault()?.Uri?.ToString() ?? "";
                     var summary = item.Summary?.Text
                         ?? (item.Content as TextSyndicationContent)?.Text
                         ?? "";
 
-                    // Strip basic HTML tags from summaries
+                    // Strip HTML tags from summaries
                     summary = System.Text.RegularExpressions.Regex
                         .Replace(summary, "<[^>]+>", "")
                         .Trim();
@@ -84,23 +109,20 @@ namespace BackendAPI.Services
                     var title = item.Title?.Text?.Trim() ?? "";
                     if (string.IsNullOrWhiteSpace(title)) continue;
 
-                    // Try to extract a thumbnail from media:thumbnail or enclosure
+                    // Try to extract thumbnail from media:thumbnail or media:content extensions
                     string? thumbnail = null;
-                    if (item.ElementExtensions != null)
+                    foreach (var ext in item.ElementExtensions)
                     {
-                        foreach (var ext in item.ElementExtensions)
+                        if (ext.OuterName.Equals("thumbnail", StringComparison.OrdinalIgnoreCase)
+                            || ext.OuterName.Equals("content",   StringComparison.OrdinalIgnoreCase))
                         {
-                            if (ext.OuterName.Equals("thumbnail", StringComparison.OrdinalIgnoreCase)
-                                || ext.OuterName.Equals("content", StringComparison.OrdinalIgnoreCase))
+                            try
                             {
-                                try
-                                {
-                                    var xElem = ext.GetObject<System.Xml.Linq.XElement>();
-                                    thumbnail = xElem.Attribute("url")?.Value;
-                                    if (thumbnail != null) break;
-                                }
-                                catch { /* ignore malformed extensions */ }
+                                var xElem = ext.GetObject<System.Xml.Linq.XElement>();
+                                thumbnail = xElem.Attribute("url")?.Value;
+                                if (thumbnail != null) break;
                             }
+                            catch { /* ignore malformed extensions */ }
                         }
                     }
 
