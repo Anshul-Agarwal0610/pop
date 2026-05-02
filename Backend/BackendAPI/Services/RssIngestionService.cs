@@ -9,10 +9,11 @@ namespace BackendAPI.Services
     /// US-03 — Fetches trending topics from RSS feeds.
     ///
     /// All feeds are fetched via HttpClient with a browser-like User-Agent so sites
-    /// that block default .NET XML requests (e.g. Indian Express) don't return 403.
+    /// that block default .NET XML requests don't return 403.
     ///
     /// Reuters was removed — they shut down all public RSS feeds in 2020.
-    /// Replaced with Hindustan Times and Economic Times.
+    /// Indian Express was removed — behind Cloudflare bot protection (JS challenge).
+    /// Replaced both with Hindustan Times, Economic Times, and The Wire.
     /// </summary>
     public class RssIngestionService : IRssIngestionService
     {
@@ -26,16 +27,18 @@ namespace BackendAPI.Services
             "Chrome/124.0.0.0 Safari/537.36";
 
         // (Name, Feed URL, Category)
+        // NOTE: Sites behind Cloudflare JS-challenge (Indian Express) or with dead DNS
+        // (Reuters) have been removed — HttpClient cannot bypass JS bot challenges.
         private static readonly (string Name, string Url, string Category)[] Feeds =
         {
-            ("Google News India",    "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",                  "General"),
-            ("The Hindu",            "https://www.thehindu.com/news/national/?service=rss",                    "India"),
-            ("Times of India",       "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",             "India"),
-            ("NDTV Top Stories",     "https://feeds.feedburner.com/ndtvnews-top-stories",                      "India"),
-            ("BBC World",            "https://feeds.bbci.co.uk/news/world/rss.xml",                           "World"),
-            ("Hindustan Times",      "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",        "India"),
-            ("Economic Times",       "https://economictimes.indiatimes.com/rssfeedstopstories.cms",            "Business"),
-            ("Indian Express",       "https://indianexpress.com/feed/",                                        "India"),
+            ("Google News India",    "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",           "General"),
+            ("The Hindu",            "https://www.thehindu.com/news/national/?service=rss",              "India"),
+            ("Times of India",       "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",       "India"),
+            ("NDTV Top Stories",     "https://feeds.feedburner.com/ndtvnews-top-stories",                "India"),
+            ("BBC World",            "https://feeds.bbci.co.uk/news/world/rss.xml",                     "World"),
+            ("Hindustan Times",      "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",  "India"),
+            ("Economic Times",       "https://economictimes.indiatimes.com/rssfeedstopstories.cms",      "Business"),
+            ("The Wire",             "https://thewire.in/feed",                                          "India"),
         };
 
         public RssIngestionService(IHttpClientFactory http, ILogger<RssIngestionService> logger)
