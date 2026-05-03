@@ -233,8 +233,8 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
 
         {/* ── Content Section ───────────────────────────────────────────────── */}
         <div className="flex h-[45%] flex-col p-5">
-          {/* Category & Time */}
-          <div className="mb-3 flex items-center gap-3">
+          {/* Category & Time — never shrink */}
+          <div className="mb-3 flex flex-shrink-0 items-center gap-3">
             <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
               {poll.category}
             </span>
@@ -244,21 +244,23 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </span>
           </div>
 
-          {/* Question */}
-          <h2 className="mb-4 flex-1 text-xl font-bold leading-tight text-foreground md:text-2xl text-balance">
-            {poll.question}
-          </h2>
+          {/* Question — clamp to 3 lines so long titles don't push buttons off */}
+          <div className="mb-3 min-h-0 flex-1 overflow-hidden">
+            <h2 className="line-clamp-3 text-xl font-bold leading-tight text-foreground md:text-2xl">
+              {poll.question}
+            </h2>
+          </div>
 
-          {/* Stats */}
-          <div className="mb-4 flex items-center gap-4 text-sm text-muted-foreground">
+          {/* Stats — never shrink */}
+          <div className="mb-3 flex flex-shrink-0 items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Users className="h-4 w-4" />
               {poll.totalVotes.toLocaleString()} votes
             </span>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3">
+          {/* Action Buttons — never shrink, always visible */}
+          <div className="flex flex-shrink-0 items-center gap-3">
             <motion.button
               onClick={() => onVote("no")}
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-500/10 py-4 font-bold text-red-500 ring-2 ring-red-500/20 transition-colors hover:bg-red-500/20"
