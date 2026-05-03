@@ -2,44 +2,88 @@
 
 import { useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { RefreshCw, Sparkles } from "lucide-react"
+import { RefreshCw, Sparkles, AlertCircle, Loader2 } from "lucide-react"
 import { PollCard } from "./poll-card"
 import { VoteFeedback } from "./vote-feedback"
 import { StreakCounter } from "./streak-counter"
 import { ProgressIndicator } from "./progress-indicator"
-import { MOCK_POLLS } from "@/lib/poll-data"
 import { Button } from "@/components/ui/button"
+import { usePolls } from "@/hooks/use-polls"
+import type { Poll } from "@/lib/poll-data"
 
 export function PollFeed() {
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [streak, setStreak] = useState(0)
-  const [totalXp, setTotalXp] = useState(1250)
-  const [currentVote, setCurrentVote] = useState<"yes" | "no" | null>(null)
-  const [votedPolls, setVotedPolls] = useState<Set<string>>(new Set())
+  const { polls, loading, error, castVote, loadMore, hasMore } = usePolls()
 
-  const currentPoll = MOCK_POLLS[currentIndex]
-  const hasMorePolls = currentIndex < MOCK_POLLS.length
+  const [currentIndex, setCurrentIndex]   = useState(0)
+  const [streak, setStreak]               = useState(0)
+  const [totalXp, setTotalXp]             = useState(1250)
+  const [currentVote, setCurrentVote]     = useState<"yes" | "no" | null>(null)
+  const [sessionXp, setSessionXp]         = useState(0)
+
+  const currentPoll: Poll | undefined = polls[currentIndex]
+  const hasMorePolls = currentIndex < polls.length
 
   const handleVote = useCallback(
-    (vote: "yes" | "no") => {
+    async (vote: "yes" | "no") => {
       if (!currentPoll || currentVote) return
 
       setCurrentVote(vote)
       setStreak((s) => s + 1)
       setTotalXp((xp) => xp + currentPoll.xpReward)
-      setVotedPolls((prev) => new Set(prev).add(currentPoll.id))
+      setSessionXp((xp) => xp + currentPoll.xpReward)
+
+      // Map yes → options[0], no → options[last]
+      if (currentPoll.options && currentPoll.options.length >= 2) {
+        const optionId =
+          vote === "yes"
+            ? currentPoll.options[0].id
+            : currentPoll.options[currentPoll.options.length - 1].id
+        await castVote(currentPoll.id, optionId)
+      }
     },
-    [currentPoll, currentVote]
+    [currentPoll, currentVote, castVote]
   )
 
   const handleFeedbackComplete = useCallback(() => {
     setCurrentVote(null)
-    setCurrentIndex((i) => i + 1)
-  }, [])
+    setCurrentIndex((i) => {
+      const next = i + 1
+      // Pre-fetch more when nearing the end
+      if (next >= polls.length - 3 && hasMore) {
+        loadMore()
+      }
+      return next
+    })
+  }, [polls.length, hasMore, loadMore])
 
   const handleReset = () => {
     setCurrentIndex(0)
-    setVotedPolls(new Set())
+    setSessionXp(0)
+  }
+
+  // ── Loading state ─────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading polls...</p>
+      </div>
+    )
+  }
+
+  // ── Error state ───────────────────────────────────────────────────────────
+  if (error) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+        <AlertCircle className="h-10 w-10 text-destructive" />
+        <p className="font-semibold text-foreground">Could not load polls</p>
+        <p className="text-sm text-muted-foreground">{error}</p>
+        <Button variant="outline" onClick={() => window.location.reload()} className="gap-2">
+          <RefreshCw className="h-4 w-4" />
+          Retry
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -51,21 +95,21 @@ export function PollFeed() {
         animate={{ opacity: 1, y: 0 }}
       >
         <StreakCounter streak={streak} totalXp={totalXp} />
-        <ProgressIndicator current={currentIndex} total={MOCK_POLLS.length} />
+        <ProgressIndicator current={currentIndex} total={polls.length} />
       </motion.div>
 
       {/* Card Stack */}
       <div className="relative mx-auto flex-1 w-full max-w-md px-0 md:px-4">
         <AnimatePresence mode="popLayout">
           {hasMorePolls ? (
-            MOCK_POLLS.slice(currentIndex, currentIndex + 2)
+            polls.slice(currentIndex, currentIndex + 2)
               .reverse()
               .map((poll, idx) => (
                 <PollCard
                   key={poll.id}
                   poll={poll}
                   onVote={handleVote}
-                  isActive={idx === (currentIndex < MOCK_POLLS.length - 1 ? 1 : 0)}
+                  isActive={idx === (currentIndex < polls.length - 1 ? 1 : 0)}
                 />
               ))
           ) : (
@@ -97,7 +141,7 @@ export function PollFeed() {
                     transition={{ delay: 0.3 }}
                   >
                     <div className="text-3xl font-bold text-primary">
-                      +{MOCK_POLLS.reduce((acc, p) => acc + p.xpReward, 0)} XP
+                      +{sessionXp} XP
                     </div>
                     <div className="text-sm text-muted-foreground">
                       earned this session
