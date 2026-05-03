@@ -21,6 +21,11 @@ namespace BackendAPI.Jobs
         // Polls expire 48 hours after creation by default
         private static readonly TimeSpan DefaultExpiry = TimeSpan.FromHours(48);
 
+        // Delay between LLM calls to stay under free-tier rate limits.
+        // gemini-2.5-flash free tier = 5 req/min → must wait at least 12s between calls.
+        // Using 13s to stay safely under the limit.
+        private static readonly TimeSpan LlmDelay = TimeSpan.FromSeconds(13);
+
         public PollGenerationJob(
             ITrendingTopicRepository topicRepo,
             IPollsRepository pollsRepo,
@@ -37,7 +42,10 @@ namespace BackendAPI.Jobs
         {
             _logger.LogInformation("[PollGenerationJob] Starting at {Time}", DateTime.UtcNow);
 
-            var topics = (await _topicRepo.GetUnprocessedAsync(maxCount: 20)).ToList();
+            // Process 5 topics per run to match free-tier rate limit (5 req/min for Gemini).
+            // With 13s delay between calls, one run takes ~65s. Job runs every 35 min,
+            // so all backlog clears over successive runs.
+            var topics = (await _topicRepo.GetUnprocessedAsync(maxCount: 5)).ToList();
 
             if (topics.Count == 0)
             {
@@ -61,6 +69,9 @@ namespace BackendAPI.Jobs
                     await _topicRepo.MarkProcessedAsync(topic.Id);
                     continue;
                 }
+
+                // Throttle to stay under free-tier rate limits (e.g. 15 req/min)
+                await Task.Delay(LlmDelay);
 
                 try
                 {

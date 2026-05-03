@@ -13,7 +13,9 @@ namespace BackendAPI.Services
     ///
     /// Reuters was removed — they shut down all public RSS feeds in 2020.
     /// Indian Express was removed — behind Cloudflare bot protection (JS challenge).
-    /// Replaced both with Hindustan Times, Economic Times, and The Wire.
+    /// The Wire was removed — returns 200 OK but with an HTML bot-challenge page instead of RSS XML.
+    /// Scroll.in was removed — same issue, returns HTML page instead of RSS XML.
+    /// Replaced all three with Hindustan Times, Economic Times, and India Today.
     /// </summary>
     public class RssIngestionService : IRssIngestionService
     {
@@ -38,7 +40,7 @@ namespace BackendAPI.Services
             ("BBC World",            "https://feeds.bbci.co.uk/news/world/rss.xml",                     "World"),
             ("Hindustan Times",      "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",  "India"),
             ("Economic Times",       "https://economictimes.indiatimes.com/rssfeedstopstories.cms",      "Business"),
-            ("The Wire",             "https://thewire.in/feed",                                          "India"),
+            ("India Today",          "https://www.indiatoday.in/rss/home",                               "India"),
         };
 
         public RssIngestionService(IHttpClientFactory http, ILogger<RssIngestionService> logger)
@@ -98,7 +100,12 @@ namespace BackendAPI.Services
 
                 foreach (var item in feed.Items.Take(10))
                 {
-                    var link    = item.Links.FirstOrDefault()?.Uri?.ToString() ?? "";
+                    // Prefer rel="alternate" link, fall back to any link, then item.Id
+                    // (Google News and some feeds store the article URL in Id, not Links)
+                    var link = item.Links.FirstOrDefault(l => l.RelationshipType == "alternate")?.Uri?.ToString()
+                            ?? item.Links.FirstOrDefault()?.Uri?.ToString()
+                            ?? (Uri.IsWellFormedUriString(item.Id, UriKind.Absolute) ? item.Id : "")
+                            ?? "";
                     var summary = item.Summary?.Text
                         ?? (item.Content as TextSyndicationContent)?.Text
                         ?? "";
