@@ -1,104 +1,129 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
-using System.Text;
+using BackendAPI.Services.Llm;
 using System.Text.Json;
 
 namespace BackendAPI.Services
 {
     /// <summary>
-    /// US-07 — Calls the deployed Llama/Mistral VM endpoint to generate a poll
-    /// from a TrendingTopic.
+    /// Multi-provider poll generation service (US-07 enhanced).
     ///
-    /// Config keys (appsettings.json / Azure App Settings):
-    ///   PollGen:BaseUrl  — e.g. http://your-vm-ip:8000   (placeholder until real URL is provided)
-    ///   PollGen:ApiKey   — optional bearer token (leave empty if VM has no auth)
+    /// Picks the active LLM provider from config key PollGen:Provider:
+    ///   "openai"    → OpenAI GPT-4o / GPT-4o mini
+    ///   "anthropic" → Anthropic Claude Haiku / Sonnet
+    ///   "custom"    → Self-hosted Llama / Mistral VM
     ///
-    /// Expected request  POST /generate
-    ///   { "title": "...", "summary": "...", "category": "..." }
-    ///
-    /// Expected response (model must return valid JSON):
-    ///   {
-    ///     "question": "...",
-    ///     "options":  ["...", "...", "...", "..."],
-    ///     "category": "..."
-    ///   }
+    /// All providers share the same structured prompt and JSON parser,
+    /// so switching providers is a one-line config change.
     /// </summary>
     public class PollGenerationService : IPollGenerationService
     {
-        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IEnumerable<ILlmProvider> _providers;
         private readonly IConfiguration _config;
         private readonly ILogger<PollGenerationService> _logger;
 
         public PollGenerationService(
-            IHttpClientFactory httpClientFactory,
+            IEnumerable<ILlmProvider> providers,
             IConfiguration config,
             ILogger<PollGenerationService> logger)
         {
-            _httpClientFactory = httpClientFactory;
-            _config            = config;
-            _logger            = logger;
+            _providers = providers;
+            _config    = config;
+            _logger    = logger;
         }
 
         public async Task<GeneratedPoll?> GenerateAsync(TrendingTopic topic)
         {
-            var baseUrl = _config["PollGen:BaseUrl"];
-            if (string.IsNullOrWhiteSpace(baseUrl))
+            var providerName = _config["PollGen:Provider"]?.ToLowerInvariant() ?? "custom";
+
+            var provider = _providers.FirstOrDefault(p =>
+                p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
+
+            if (provider == null)
             {
-                _logger.LogWarning("PollGen:BaseUrl not configured — skipping poll generation");
+                _logger.LogWarning(
+                    "[PollGen] Unknown provider '{Provider}'. Valid: openai, anthropic, custom",
+                    providerName);
                 return null;
             }
 
-            try
+            _logger.LogInformation(
+                "[PollGen] Using provider '{Provider}' for topic '{Title}'",
+                providerName, topic.Title);
+
+            var prompt   = BuildPrompt(topic);
+            var rawJson  = await provider.CompleteAsync(prompt);
+
+            if (string.IsNullOrWhiteSpace(rawJson))
             {
-                var client = _httpClientFactory.CreateClient();
-
-                // Attach bearer token if configured
-                var apiKey = _config["PollGen:ApiKey"];
-                if (!string.IsNullOrWhiteSpace(apiKey))
-                    client.DefaultRequestHeaders.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-
-                var payload = new
-                {
-                    title    = topic.Title,
-                    summary  = topic.Summary,
-                    category = topic.Category
-                };
-
-                var content = new StringContent(
-                    JsonSerializer.Serialize(payload),
-                    Encoding.UTF8,
-                    "application/json");
-
-                using var response = await client.PostAsync($"{baseUrl.TrimEnd('/')}/generate", content);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogWarning(
-                        "PollGen VM returned {Status} for topic '{Title}'",
-                        (int)response.StatusCode, topic.Title);
-                    return null;
-                }
-
-                var json = await response.Content.ReadAsStringAsync();
-                return ParseResponse(json, topic.Category);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "PollGen failed for topic '{Title}'", topic.Title);
+                _logger.LogWarning(
+                    "[PollGen] Provider '{Provider}' returned empty response for '{Title}'",
+                    providerName, topic.Title);
                 return null;
             }
+
+            var result = ParsePollJson(rawJson, topic.Category);
+
+            if (result == null)
+                _logger.LogWarning(
+                    "[PollGen] Could not parse response for '{Title}': {Raw}",
+                    topic.Title, rawJson[..Math.Min(200, rawJson.Length)]);
+
+            return result;
         }
 
-        private static GeneratedPoll? ParseResponse(string json, string fallbackCategory)
+        // ── Prompt ────────────────────────────────────────────────────────────
+
+        private static string BuildPrompt(TrendingTopic topic)
+        {
+            var summary = string.IsNullOrWhiteSpace(topic.Summary)
+                ? "(no summary available)"
+                : topic.Summary;
+
+            // $$""" = raw string with double-dollar: {{ }} = interpolation, { } = literal braces
+            return $$"""
+                You are a poll generation assistant for a public opinion app.
+                Generate an engaging poll from the news topic below.
+
+                Topic: {{topic.Title}}
+                Summary: {{summary}}
+                Category: {{topic.Category}}
+
+                Respond with ONLY valid JSON — no markdown, no explanation:
+                {
+                  "question": "A thought-provoking question people will want to answer",
+                  "options": ["Option A", "Option B", "Option C"],
+                  "category": "{{topic.Category}}"
+                }
+
+                Rules:
+                - Question must be opinionated, specific and under 120 characters
+                - 2 to 4 options, mutually exclusive, short (under 40 chars each)
+                - Category must match the topic (e.g. Politics, Technology, Sports)
+                - JSON only — no other text
+                """;
+        }
+
+        // ── Parser (shared across all providers) ──────────────────────────────
+
+        private static GeneratedPoll? ParsePollJson(string json, string fallbackCategory)
         {
             try
             {
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
+                // Strip markdown code fences if model ignores the "no markdown" rule
+                var cleaned = json.Trim();
+                if (cleaned.StartsWith("```"))
+                {
+                    var start = cleaned.IndexOf('\n') + 1;
+                    var end   = cleaned.LastIndexOf("```");
+                    if (end > start) cleaned = cleaned[start..end].Trim();
+                }
 
-                var question = root.TryGetProperty("question", out var q) ? q.GetString() : null;
-                var category = root.TryGetProperty("category", out var c) ? c.GetString() : fallbackCategory;
+                using var doc  = JsonDocument.Parse(cleaned);
+                var root       = doc.RootElement;
+
+                var question = root.TryGetProperty("question", out var q) ? q.GetString()?.Trim() : null;
+                var category = root.TryGetProperty("category", out var c) ? c.GetString()?.Trim() : null;
 
                 if (string.IsNullOrWhiteSpace(question)) return null;
 
@@ -113,14 +138,13 @@ namespace BackendAPI.Services
                     }
                 }
 
-                // Need at least 2 options to form a valid poll
                 if (options.Count < 2) return null;
 
                 return new GeneratedPoll
                 {
                     Question = question!,
                     Options  = options,
-                    Category = category ?? fallbackCategory
+                    Category = string.IsNullOrWhiteSpace(category) ? fallbackCategory : category!
                 };
             }
             catch

@@ -1,9 +1,11 @@
 using BackendAPI.Data;
+using BackendAPI.Infrastructure;
 using BackendAPI.Interfaces;
 using BackendAPI.Jobs;
 using BackendAPI.Models;
 using BackendAPI.Repository;
 using BackendAPI.Services;
+using BackendAPI.Services.Llm;
 using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -58,12 +60,20 @@ builder.Services.AddScoped<IRssIngestionService,     RssIngestionService>();
 builder.Services.AddScoped<IYouTubeIngestionService, YouTubeIngestionService>();
 builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();
 
-// ── Poll Generation Service (US-07) ──────────────────────────────────────
-builder.Services.AddScoped<IPollGenerationService,   PollGenerationService>();
+// ── LLM Providers — all registered; active one chosen via PollGen:Provider config ─
+builder.Services.AddScoped<ILlmProvider, OpenAiLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, AnthropicLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, CustomVmLlmProvider>();
+
+// ── Poll Generation Service (US-07 enhanced: multi-provider) ─────────────
+builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
 
 // ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
 builder.Services.AddScoped<IngestionJob>();
 builder.Services.AddScoped<PollGenerationJob>();
+
+// ── Hangfire Dashboard Auth (US-11) ───────────────────────────────────────
+builder.Services.AddSingleton<HangfireDashboardAuthFilter>();
 
 // ── Hangfire (US-02) ──────────────────────────────────────────────────────
 var hangfireConn = builder.Configuration.GetConnectionString("DefaultConnection")!;
@@ -103,10 +113,15 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Pollify API v1"));
-
-    // Hangfire Dashboard — dev only (no auth); US-11 adds Basic Auth for prod
-    app.UseHangfireDashboard("/hangfire");
 }
+
+// Hangfire Dashboard — available in all environments.
+// US-11: HangfireDashboardAuthFilter allows all in Dev, enforces Basic Auth in Prod.
+var authFilter = app.Services.GetRequiredService<HangfireDashboardAuthFilter>();
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { authFilter }
+});
 
 app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");
