@@ -42,6 +42,12 @@ export interface Poll {
 
   // ── US-12: Full options list for voting (absent on mock polls) ─────────────
   options?: PollOption[]
+
+  // ── US-19: Per-user vote state (from backend when authenticated) ────────────
+  /** True when the authenticated user has already voted on this poll. */
+  hasVoted?: boolean
+  /** The id of the option the user voted for, or null. */
+  userVotedOptionId?: number | null
 }
 
 // ── Backend → Frontend mapper (US-12) ────────────────────────────────────────
@@ -90,6 +96,8 @@ export function mapBackendPoll(p: ApiPoll): Poll {
       voteCount:      o.voteCount,
       votePercentage: o.votePercentage,
     })),
+    hasVoted:          p.hasVoted ?? false,
+    userVotedOptionId: p.userVotedOptionId ?? null,
   }
 }
 

@@ -5,6 +5,7 @@ namespace BackendAPI.Models
         public long Id { get; set; }
         public long PollId { get; set; }
         public long OptionId { get; set; }
+        public long? UserId { get; set; }          // null for anonymous votes
         public DateTime CreatedAt { get; set; }
     }
 
@@ -12,5 +13,6 @@ namespace BackendAPI.Models
     {
         public long PollId { get; set; }
         public long OptionId { get; set; }
+        // UserId is NOT accepted from the client — set server-side from JWT (US-15)
     }
 }

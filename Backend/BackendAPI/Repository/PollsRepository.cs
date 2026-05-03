@@ -14,11 +14,46 @@ namespace BackendAPI.Repository
             _context = context;
         }
 
-        public async Task<IEnumerable<Poll>> GetAllAsync()
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Fetches the set of (PollId → OptionId) the user has voted on.
+        /// Returns an empty dictionary when userId is null.
+        /// </summary>
+        private async Task<Dictionary<long, long>> GetUserVotesAsync(long? userId)
+        {
+            if (userId == null) return new Dictionary<long, long>();
+
+            using var conn = _context.CreateConnection();
+            var rows = await conn.QueryAsync<(long PollId, long OptionId)>(
+                "SELECT PollId, OptionId FROM Votes WHERE UserId = @UserId",
+                new { UserId = userId }
+            );
+            return rows.ToDictionary(r => r.PollId, r => r.OptionId);
+        }
+
+        /// <summary>Applies HasVoted / UserVotedOptionId to a list of polls in-memory.</summary>
+        private static IEnumerable<Poll> ApplyVoteState(
+            IEnumerable<Poll> polls,
+            Dictionary<long, long> userVotes)
+        {
+            foreach (var poll in polls)
+            {
+                if (userVotes.TryGetValue(poll.Id, out var optionId))
+                {
+                    poll.HasVoted          = true;
+                    poll.UserVotedOptionId = optionId;
+                }
+            }
+            return polls;
+        }
+
+        // ── GetAll ────────────────────────────────────────────────────────────
+
+        public async Task<IEnumerable<Poll>> GetAllAsync(long? userId = null)
         {
             using var conn = _context.CreateConnection();
-
-            var pollDict = new Dictionary<long, Poll>();
+            var pollDict   = new Dictionary<long, Poll>();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 "SELECT p.*, o.* FROM Polls p LEFT JOIN PollOptions o ON o.PollId = p.Id WHERE p.IsActive = 1 ORDER BY p.CreatedAt DESC",
@@ -36,14 +71,16 @@ namespace BackendAPI.Repository
                 splitOn: "Id"
             );
 
-            return pollDict.Values;
+            var userVotes = await GetUserVotesAsync(userId);
+            return ApplyVoteState(pollDict.Values, userVotes);
         }
+
+        // ── GetById ───────────────────────────────────────────────────────────
 
         public async Task<Poll?> GetByIdAsync(long id)
         {
             using var conn = _context.CreateConnection();
-
-            var pollDict = new Dictionary<long, Poll>();
+            var pollDict   = new Dictionary<long, Poll>();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 "SELECT p.*, o.* FROM Polls p LEFT JOIN PollOptions o ON o.PollId = p.Id WHERE p.Id = @Id",
@@ -65,14 +102,14 @@ namespace BackendAPI.Repository
             return pollDict.Values.FirstOrDefault();
         }
 
-        public async Task<IEnumerable<Poll>> GetTrendingAsync(int count = 10)
+        // ── GetTrending ───────────────────────────────────────────────────────
+
+        public async Task<IEnumerable<Poll>> GetTrendingAsync(int count = 10, long? userId = null)
         {
             using var conn = _context.CreateConnection();
+            var pollDict   = new Dictionary<long, Poll>();
 
-            var pollDict = new Dictionary<long, Poll>();
-
-            // US-09: order by TotalVotes DESC directly — no longer requires IsTrending = 1
-            // IsTrending flag is still refreshed by a Hangfire job but is not a blocker.
+            // US-09: order by TotalVotes DESC directly
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 @"SELECT TOP (@Count) p.*, o.*
                   FROM Polls p
@@ -94,14 +131,16 @@ namespace BackendAPI.Repository
                 splitOn: "Id"
             );
 
-            return pollDict.Values;
+            var userVotes = await GetUserVotesAsync(userId);
+            return ApplyVoteState(pollDict.Values, userVotes);
         }
+
+        // ── GetRecent ─────────────────────────────────────────────────────────
 
         public async Task<IEnumerable<Poll>> GetRecentAsync(int count = 10)
         {
             using var conn = _context.CreateConnection();
-
-            var pollDict = new Dictionary<long, Poll>();
+            var pollDict   = new Dictionary<long, Poll>();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 @"SELECT TOP (@Count) p.*, o.*
@@ -126,6 +165,8 @@ namespace BackendAPI.Repository
 
             return pollDict.Values;
         }
+
+        // ── Create ────────────────────────────────────────────────────────────
 
         public async Task<long> CreateAsync(CreatePollRequest request)
         {
@@ -176,6 +217,8 @@ namespace BackendAPI.Repository
             }
         }
 
+        // ── Delete ────────────────────────────────────────────────────────────
+
         public async Task<bool> DeleteAsync(long id)
         {
             using var conn = _context.CreateConnection();
@@ -186,10 +229,11 @@ namespace BackendAPI.Repository
             return rows > 0;
         }
 
+        // ── UpdateTrending ────────────────────────────────────────────────────
+
         public async Task UpdateTrendingAsync()
         {
             using var conn = _context.CreateConnection();
-            // Mark top 10 most-voted active polls as trending
             await conn.ExecuteAsync(@"
                 UPDATE Polls SET IsTrending = 0 WHERE IsActive = 1;
                 UPDATE TOP (10) Polls SET IsTrending = 1
