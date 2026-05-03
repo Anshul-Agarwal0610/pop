@@ -22,6 +22,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "Pollify API", Version = "v1" });
+
 });
 
 // ── JWT Authentication ────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace BackendAPI.Controllers
 {
@@ -15,11 +16,19 @@ namespace BackendAPI.Controllers
             _pollsRepo = pollsRepo;
         }
 
+        // ── Helper: extract userId from JWT if present (US-16) ────────────────
+        private long? CurrentUserId()
+        {
+            var claim = User.FindFirst(ClaimTypes.NameIdentifier)
+                     ?? User.FindFirst("sub");
+            return claim != null && long.TryParse(claim.Value, out var id) ? id : null;
+        }
+
         // GET /api/polls
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            var polls = await _pollsRepo.GetAllAsync();
+            var polls = await _pollsRepo.GetAllAsync(CurrentUserId());
             return Ok(polls);
         }
 
@@ -27,7 +36,7 @@ namespace BackendAPI.Controllers
         [HttpGet("trending")]
         public async Task<IActionResult> GetTrending([FromQuery] int count = 10)
         {
-            var polls = await _pollsRepo.GetTrendingAsync(count);
+            var polls = await _pollsRepo.GetTrendingAsync(count, CurrentUserId());
             return Ok(polls);
         }
 

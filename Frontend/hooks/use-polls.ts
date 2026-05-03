@@ -28,7 +28,9 @@ export function usePolls(): UsePollsResult {
     pollsApi.getTrending(PAGE_SIZE)
       .then((data) => {
         if (cancelled) return
-        setPolls(data.map(mapBackendPoll))
+        // US-19: filter out polls the user has already voted on
+        const unvoted = data.filter((p) => !p.hasVoted)
+        setPolls(unvoted.map(mapBackendPoll))
         setHasMore(data.length === PAGE_SIZE)
       })
       .catch((err: Error) => {
@@ -46,10 +48,11 @@ export function usePolls(): UsePollsResult {
   const loadMore = useCallback(async () => {
     try {
       const data = await pollsApi.getAll()
-      const mapped = data.map(mapBackendPoll)
-      // Only add polls not already in state
       const existing = new Set(polls.map((p) => p.id))
-      const fresh = mapped.filter((p) => !existing.has(p.id))
+      // US-19: exclude already-voted and already-loaded polls
+      const fresh = data
+        .filter((p) => !p.hasVoted && !existing.has(String(p.id)))
+        .map(mapBackendPoll)
       setPolls((prev) => [...prev, ...fresh])
       setHasMore(fresh.length > 0)
     } catch (err) {

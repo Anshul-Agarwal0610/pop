@@ -13,6 +13,7 @@ import {
   Clock,
   Sparkles,
   ImageOff,
+  CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
@@ -48,18 +49,55 @@ function GoogleNewsIcon({ className }: { className?: string }) {
 }
 
 // ── Source icon map ───────────────────────────────────────────────────────────
-// Maps both legacy UI sources and ingestion pipeline sources to icons
 const SourceIcon: Record<string, React.ComponentType<{ className?: string }>> = {
-  // Legacy
   youtube:   Youtube,
   instagram: Instagram,
   twitter:   XIcon,
   news:      Newspaper,
   tiktok:    TikTokIcon,
-  // Ingestion pipeline (US-10)
   rss:       Rss,
   gnews:     GoogleNewsIcon,
   manual:    Newspaper,
+}
+
+// ── Voted Results Bar ─────────────────────────────────────────────────────────
+function VotedResultsBar({
+  label,
+  percentage,
+  isUserVote,
+  color,
+}: {
+  label: string
+  percentage: number
+  isUserVote: boolean
+  color: "emerald" | "red"
+}) {
+  const barColor   = color === "emerald" ? "bg-emerald-500" : "bg-red-500"
+  const textColor  = color === "emerald" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+  const trackColor = color === "emerald" ? "bg-emerald-500/10" : "bg-red-500/10"
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm font-medium">
+        <span className={cn("flex items-center gap-1.5", isUserVote ? textColor : "text-muted-foreground")}>
+          {isUserVote && <CheckCircle2 className="h-4 w-4" />}
+          {label}
+          {isUserVote && <span className="text-xs font-normal opacity-70">(your vote)</span>}
+        </span>
+        <span className={isUserVote ? textColor : "text-muted-foreground"}>
+          {Math.round(percentage)}%
+        </span>
+      </div>
+      <div className={cn("h-2.5 w-full overflow-hidden rounded-full", trackColor)}>
+        <motion.div
+          className={cn("h-full rounded-full", barColor)}
+          initial={{ width: 0 }}
+          animate={{ width: `${percentage}%` }}
+          transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
+        />
+      </div>
+    </div>
+  )
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -70,39 +108,45 @@ interface PollCardProps {
 }
 
 export function PollCard({ poll, onVote, isActive }: PollCardProps) {
-  const x         = useMotionValue(0)
-  const rotate    = useTransform(x, [-200, 200], [-15, 15])
+  const x          = useMotionValue(0)
+  const rotate     = useTransform(x, [-200, 200], [-15, 15])
   const yesOpacity = useTransform(x, [0, 100], [0, 1])
   const noOpacity  = useTransform(x, [-100, 0], [1, 0])
 
   // Prefer backend thumbnailUrl → fallback to mediaUrl
   const imageUrl = poll.thumbnailUrl || poll.mediaUrl
 
-  // Source resolution: prefer ingestion sourceType, fall back to legacy source field
-  const effectiveSource = poll.sourceType ?? poll.source
-  const sourceStyle     = SOURCE_COLORS[effectiveSource] ?? SOURCE_COLORS.manual
-  const Icon            = SourceIcon[effectiveSource] ?? Newspaper
+  // Source resolution
+  const effectiveSource    = poll.sourceType ?? poll.source
+  const sourceStyle        = SOURCE_COLORS[effectiveSource] ?? SOURCE_COLORS.manual
+  const Icon               = SourceIcon[effectiveSource] ?? Newspaper
+  const sourceDisplayLabel = poll.sourceType
+    ? SOURCE_LABELS[poll.sourceType]
+    : poll.sourceLabel
 
-  // Display label: prefer sourceLabel, fall back to SOURCE_LABELS map for ingestion types
-  const sourceDisplayLabel =
-    poll.sourceType
-      ? SOURCE_LABELS[poll.sourceType]
-      : poll.sourceLabel
+  // US-19: voted state
+  const hasVoted        = poll.hasVoted ?? false
+  const yesOption       = poll.options?.[0]
+  const noOption        = poll.options?.[poll.options.length - 1]
+  const userVotedYes    = hasVoted && poll.userVotedOptionId === yesOption?.id
+  const userVotedNo     = hasVoted && poll.userVotedOptionId === noOption?.id
 
   function handleDragEnd(_: unknown, info: PanInfo) {
+    if (hasVoted) return                          // no drag on voted cards
     const threshold = 100
-    if (info.offset.x > threshold)      onVote("yes")
+    if (info.offset.x > threshold)       onVote("yes")
     else if (info.offset.x < -threshold) onVote("no")
   }
 
   return (
     <motion.div
       className={cn(
-        "absolute inset-x-4 top-0 h-full cursor-grab active:cursor-grabbing md:inset-x-0",
-        !isActive && "pointer-events-none"
+        "absolute inset-x-4 top-0 h-full md:inset-x-0",
+        !isActive && "pointer-events-none",
+        hasVoted ? "cursor-default" : "cursor-grab active:cursor-grabbing"
       )}
       style={{ x, rotate, zIndex: isActive ? 10 : 0 }}
-      drag={isActive ? "x" : false}
+      drag={isActive && !hasVoted ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.7}
       onDragEnd={handleDragEnd}
@@ -114,31 +158,34 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
       {/* Card Container */}
       <div className="relative h-full overflow-hidden rounded-3xl bg-card shadow-2xl ring-1 ring-border/50">
 
-        {/* YES Overlay */}
-        <motion.div
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-emerald-500/20"
-          style={{ opacity: yesOpacity }}
-        >
-          <motion.div
-            className="rounded-2xl border-4 border-emerald-500 bg-emerald-500/30 px-8 py-4"
-            style={{ opacity: yesOpacity, rotate: -15 }}
-          >
-            <span className="text-4xl font-black text-emerald-500">YES</span>
-          </motion.div>
-        </motion.div>
+        {/* YES / NO swipe overlays — hidden on voted cards */}
+        {!hasVoted && (
+          <>
+            <motion.div
+              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-emerald-500/20"
+              style={{ opacity: yesOpacity }}
+            >
+              <motion.div
+                className="rounded-2xl border-4 border-emerald-500 bg-emerald-500/30 px-8 py-4"
+                style={{ opacity: yesOpacity, rotate: -15 }}
+              >
+                <span className="text-4xl font-black text-emerald-500">YES</span>
+              </motion.div>
+            </motion.div>
 
-        {/* NO Overlay */}
-        <motion.div
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-red-500/20"
-          style={{ opacity: noOpacity }}
-        >
-          <motion.div
-            className="rounded-2xl border-4 border-red-500 bg-red-500/30 px-8 py-4"
-            style={{ opacity: noOpacity, rotate: 15 }}
-          >
-            <span className="text-4xl font-black text-red-500">NO</span>
-          </motion.div>
-        </motion.div>
+            <motion.div
+              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-red-500/20"
+              style={{ opacity: noOpacity }}
+            >
+              <motion.div
+                className="rounded-2xl border-4 border-red-500 bg-red-500/30 px-8 py-4"
+                style={{ opacity: noOpacity, rotate: 15 }}
+              >
+                <span className="text-4xl font-black text-red-500">NO</span>
+              </motion.div>
+            </motion.div>
+          </>
+        )}
 
         {/* ── Media Section ─────────────────────────────────────────────────── */}
         <div className="relative h-[55%] overflow-hidden bg-muted">
@@ -149,12 +196,10 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
               className="h-full w-full object-cover"
               crossOrigin="anonymous"
               onError={(e) => {
-                // Hide broken image; placeholder gradient underneath will show
                 ;(e.currentTarget as HTMLImageElement).style.display = "none"
               }}
             />
           ) : (
-            /* No thumbnail — show branded placeholder */
             <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 via-accent/10 to-primary/5">
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <ImageOff className="h-10 w-10 opacity-40" />
@@ -163,11 +208,11 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </div>
           )}
 
-          {/* Gradient Overlay — always on top of image */}
+          {/* Gradient Overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
 
           {/* Play Button for Videos */}
-          {poll.mediaType === "video" && (
+          {poll.mediaType === "video" && !hasVoted && (
             <motion.button
               className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/80 p-5 text-background"
               whileHover={{ scale: 1.1 }}
@@ -180,7 +225,6 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
           {/* ── Top Badges ───────────────────────────────────────────────── */}
           <div className="absolute left-4 right-4 top-4 flex items-start justify-between">
             <div className="flex flex-col gap-1.5">
-              {/* Trending Badge */}
               {poll.trending && (
                 <motion.div
                   className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-primary-foreground shadow-lg"
@@ -192,8 +236,6 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                   <span className="text-xs font-semibold">Trending</span>
                 </motion.div>
               )}
-
-              {/* AI Generated Badge (US-10) */}
               {poll.isAIGenerated && (
                 <motion.div
                   className="flex items-center gap-1.5 rounded-full bg-violet-500/15 px-3 py-1.5 shadow-lg ring-1 ring-violet-500/30"
@@ -207,16 +249,18 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
               )}
             </div>
 
-            {/* XP Reward */}
-            <motion.div
-              className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-amber-950 shadow-lg"
-              initial={{ scale: 0, y: -20 }}
-              animate={{ scale: 1, y: 0 }}
-              transition={{ delay: 0.3, type: "spring" }}
-            >
-              <Zap className="h-3.5 w-3.5 fill-current" />
-              <span className="text-xs font-bold">+{poll.xpReward} XP</span>
-            </motion.div>
+            {/* XP Reward — hidden on voted cards */}
+            {!hasVoted && (
+              <motion.div
+                className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-amber-950 shadow-lg"
+                initial={{ scale: 0, y: -20 }}
+                animate={{ scale: 1, y: 0 }}
+                transition={{ delay: 0.3, type: "spring" }}
+              >
+                <Zap className="h-3.5 w-3.5 fill-current" />
+                <span className="text-xs font-bold">+{poll.xpReward} XP</span>
+              </motion.div>
+            )}
           </div>
 
           {/* ── Source Badge ─────────────────────────────────────────────── */}
@@ -238,7 +282,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
 
         {/* ── Content Section ───────────────────────────────────────────────── */}
         <div className="flex h-[45%] flex-col p-5">
-          {/* Category & Time — never shrink */}
+          {/* Category & Time */}
           <div className="mb-3 flex flex-shrink-0 items-center gap-3">
             <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
               {poll.category}
@@ -249,7 +293,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </span>
           </div>
 
-          {/* Question — clamped to 3 lines; hover tooltip shows full text on desktop */}
+          {/* Question — clamped with hover tooltip */}
           <div className="mb-3 min-h-0 flex-1 overflow-hidden">
             <Tooltip delayDuration={300}>
               <TooltipTrigger asChild>
@@ -266,7 +310,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </Tooltip>
           </div>
 
-          {/* Stats — never shrink */}
+          {/* Stats */}
           <div className="mb-3 flex flex-shrink-0 items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Users className="h-4 w-4" />
@@ -274,24 +318,57 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </span>
           </div>
 
-          {/* Action Buttons — never shrink, always visible */}
-          <div className="flex flex-shrink-0 items-center gap-3">
-            <motion.button
-              onClick={() => onVote("no")}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-500/10 py-4 font-bold text-red-500 ring-2 ring-red-500/20 transition-colors hover:bg-red-500/20"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <span className="text-2xl">NO</span>
-            </motion.button>
-            <motion.button
-              onClick={() => onVote("yes")}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-500/10 py-4 font-bold text-emerald-500 ring-2 ring-emerald-500/20 transition-colors hover:bg-emerald-500/20"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <span className="text-2xl">YES</span>
-            </motion.button>
+          {/* ── Action area — YES/NO buttons OR voted results ──────────────── */}
+          <div className="flex-shrink-0">
+            {hasVoted ? (
+              /* US-19: Voted state — show result bars */
+              <motion.div
+                className="space-y-2.5"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                {yesOption && (
+                  <VotedResultsBar
+                    label={yesOption.text}
+                    percentage={yesOption.votePercentage}
+                    isUserVote={userVotedYes}
+                    color="emerald"
+                  />
+                )}
+                {noOption && noOption.id !== yesOption?.id && (
+                  <VotedResultsBar
+                    label={noOption.text}
+                    percentage={noOption.votePercentage}
+                    isUserVote={userVotedNo}
+                    color="red"
+                  />
+                )}
+                <p className="text-center text-xs text-muted-foreground pt-1">
+                  You already voted
+                </p>
+              </motion.div>
+            ) : (
+              /* Normal swipe buttons */
+              <div className="flex items-center gap-3">
+                <motion.button
+                  onClick={() => onVote("no")}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-500/10 py-4 font-bold text-red-500 ring-2 ring-red-500/20 transition-colors hover:bg-red-500/20"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <span className="text-2xl">NO</span>
+                </motion.button>
+                <motion.button
+                  onClick={() => onVote("yes")}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-500/10 py-4 font-bold text-emerald-500 ring-2 ring-emerald-500/20 transition-colors hover:bg-emerald-500/20"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <span className="text-2xl">YES</span>
+                </motion.button>
+              </div>
+            )}
           </div>
         </div>
       </div>
