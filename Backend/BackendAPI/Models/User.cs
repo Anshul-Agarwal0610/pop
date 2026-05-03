@@ -17,4 +17,15 @@ namespace BackendAPI.Models
         public string Username { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
     }
+
+    /// <summary>US-22: One row in a user's voting history.</summary>
+    public class VoteHistoryItem
+    {
+        public long   PollId           { get; set; }
+        public string Question         { get; set; } = string.Empty;
+        public string Category         { get; set; } = string.Empty;
+        public string VotedOptionText  { get; set; } = string.Empty;
+        public int    TotalVotes       { get; set; }
+        public DateTime VotedAt        { get; set; }
+    }
 }
