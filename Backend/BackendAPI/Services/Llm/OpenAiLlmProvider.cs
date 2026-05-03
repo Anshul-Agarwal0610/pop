@@ -6,16 +6,22 @@ namespace BackendAPI.Services.Llm
 {
     /// <summary>
     /// Calls the OpenAI Chat Completions API (GPT-4o, GPT-4o mini, etc.).
+    /// Also works with any OpenAI-compatible API such as Groq (free).
     ///
     /// Config keys:
-    ///   PollGen:OpenAI:ApiKey  — sk-...
-    ///   PollGen:OpenAI:Model   — "gpt-4o-mini" (default) | "gpt-4o" | "gpt-3.5-turbo"
+    ///   PollGen:OpenAI:ApiKey   — sk-...  (OpenAI) or gsk_... (Groq)
+    ///   PollGen:OpenAI:Model    — "gpt-4o-mini" (OpenAI) | "llama-3.3-70b-versatile" (Groq)
+    ///   PollGen:OpenAI:BaseUrl  — optional, overrides endpoint (e.g. https://api.groq.com/openai/v1)
+    ///
+    /// To use Groq (free): set BaseUrl = https://api.groq.com/openai/v1
+    ///                           ApiKey = your Groq key (gsk_...)
+    ///                           Model  = llama-3.3-70b-versatile
     /// </summary>
     public class OpenAiLlmProvider : ILlmProvider
     {
         public string ProviderName => "openai";
 
-        private const string Endpoint = "https://api.openai.com/v1/chat/completions";
+        private const string DefaultEndpoint = "https://api.openai.com/v1/chat/completions";
 
         private readonly IHttpClientFactory _http;
         private readonly IConfiguration _config;
@@ -40,7 +46,11 @@ namespace BackendAPI.Services.Llm
                 return null;
             }
 
-            var model = _config["PollGen:OpenAI:Model"] ?? "gpt-4o-mini";
+            var model    = _config["PollGen:OpenAI:Model"] ?? "gpt-4o-mini";
+            var baseUrl  = _config["PollGen:OpenAI:BaseUrl"];
+            var endpoint = string.IsNullOrWhiteSpace(baseUrl)
+                ? DefaultEndpoint
+                : $"{baseUrl.TrimEnd('/')}/chat/completions";
 
             var client = _http.CreateClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
@@ -54,8 +64,8 @@ namespace BackendAPI.Services.Llm
                     new { role = "user",   content = prompt }
                 },
                 temperature     = 0.7,
-                max_tokens      = 512,
-                response_format = new { type = "json_object" }  // forces JSON output
+                max_tokens      = 1024,
+                response_format = new { type = "json_object" }  // forces clean JSON — works on Gemini OpenAI-compat endpoint
             };
 
             var content = new StringContent(
@@ -63,7 +73,7 @@ namespace BackendAPI.Services.Llm
 
             try
             {
-                using var response = await client.PostAsync(Endpoint, content, ct);
+                using var response = await client.PostAsync(endpoint, content, ct);
 
                 if (!response.IsSuccessStatusCode)
                 {

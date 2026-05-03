@@ -110,14 +110,29 @@ namespace BackendAPI.Services
         {
             try
             {
-                // Strip markdown code fences if model ignores the "no markdown" rule
                 var cleaned = json.Trim();
+
+                // Strip markdown code fences (```json ... ``` or ``` ... ```)
                 if (cleaned.StartsWith("```"))
                 {
                     var start = cleaned.IndexOf('\n') + 1;
                     var end   = cleaned.LastIndexOf("```");
                     if (end > start) cleaned = cleaned[start..end].Trim();
                 }
+
+                // If model added prose before/after the JSON, extract the first { ... } block
+                if (!cleaned.StartsWith("{"))
+                {
+                    var brace = cleaned.IndexOf('{');
+                    var last  = cleaned.LastIndexOf('}');
+                    if (brace >= 0 && last > brace)
+                        cleaned = cleaned[brace..(last + 1)];
+                }
+
+                // Replace literal newlines/tabs inside JSON string values with a space
+                // (some models embed unescaped newlines which break JsonDocument.Parse)
+                cleaned = System.Text.RegularExpressions.Regex
+                    .Replace(cleaned, @"(?<=:.*""[^""]*)\n(?=[^""]*"")", " ");
 
                 using var doc  = JsonDocument.Parse(cleaned);
                 var root       = doc.RootElement;
