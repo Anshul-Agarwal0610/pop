@@ -1,6 +1,8 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace BackendAPI.Controllers
 {
@@ -22,10 +24,18 @@ namespace BackendAPI.Controllers
             _pollsRepo = pollsRepo;
         }
 
-        // POST /api/votes
+        // POST /api/votes  (US-15: requires authentication)
         [HttpPost]
+        [Authorize]
         public async Task<IActionResult> CastVote([FromBody] CastVoteRequest request)
         {
+            // Extract userId from JWT claims (set by JWT middleware)
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)
+                           ?? User.FindFirst("sub");
+
+            if (userIdClaim == null || !long.TryParse(userIdClaim.Value, out var userId))
+                return Unauthorized(new { message = "Invalid token." });
+
             var poll = await _pollsRepo.GetByIdAsync(request.PollId);
             if (poll == null)
                 return NotFound(new { message = $"Poll {request.PollId} not found." });
@@ -37,10 +47,24 @@ namespace BackendAPI.Controllers
             if (!validOption)
                 return BadRequest(new { message = "Invalid option for this poll." });
 
-            await _votesRepo.CastVoteAsync(request);
+            try
+            {
+                await _votesRepo.CastVoteAsync(request, userId);
+            }
+            catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser") ||
+                                        ex.Message.Contains("duplicate key") ||
+                                        ex.Message.Contains("UNIQUE"))
+            {
+                return Conflict(new { message = "You have already voted on this poll." });
+            }
 
-            // Return updated poll after vote
+            // Return updated poll with hasVoted populated for this user
             var updated = await _pollsRepo.GetByIdAsync(request.PollId);
+            if (updated != null)
+            {
+                updated.HasVoted           = true;
+                updated.UserVotedOptionId  = request.OptionId;
+            }
             return Ok(updated);
         }
 

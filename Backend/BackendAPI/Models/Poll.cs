@@ -23,6 +23,12 @@ namespace BackendAPI.Models
         public bool IsAIGenerated { get; set; }
 
         public List<PollOption> Options { get; set; } = new();
+
+        // ── US-16: Per-user vote state (populated when request is authenticated) ──
+        /// <summary>True when the authenticated user has already voted on this poll.</summary>
+        public bool HasVoted { get; set; }
+        /// <summary>The OptionId the user chose, or null if not voted / unauthenticated.</summary>
+        public long? UserVotedOptionId { get; set; }
     }
 
     public class PollOption
