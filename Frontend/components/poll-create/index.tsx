@@ -13,6 +13,7 @@ import { LinkStep } from "./steps/link-step"
 import { PrivacyStep } from "./steps/privacy-step"
 import { PreviewStep } from "./steps/preview-step"
 import { getInitialDraft, STEPS, type PollDraft } from "@/lib/poll-creation"
+import { pollsApi } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export function PollCreator() {
@@ -60,15 +61,29 @@ export function PollCreator() {
     if (!validateStep(currentStep)) return
 
     setIsPublishing(true)
-    // Simulate publishing
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    setIsPublishing(false)
-    setIsPublished(true)
+    try {
+      // Expires 7 days from now by default
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    // Redirect after success animation
-    setTimeout(() => {
-      router.push("/")
-    }, 2000)
+      await pollsApi.create({
+        question:    draft.question.trim(),
+        description: draft.description.trim(),
+        category:    "General",
+        expiresAt,
+        options:     ["Yes", "No"],          // default binary options
+        sourceType:  "manual",
+        sourceUrl:   draft.externalLink?.url ?? undefined,
+        isAIGenerated: false,
+      })
+
+      setIsPublished(true)
+      setTimeout(() => router.push("/"), 2000)
+    } catch (err) {
+      console.error("Publish failed:", err)
+      setErrors({ question: "Failed to publish poll. Please try again." })
+    } finally {
+      setIsPublishing(false)
+    }
   }
 
   const isLastStep = currentStep === STEPS.length
