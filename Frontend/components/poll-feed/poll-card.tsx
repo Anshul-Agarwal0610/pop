@@ -16,6 +16,11 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 // ── Custom icons ──────────────────────────────────────────────────────────────
 function XIcon({ className }: { className?: string }) {
@@ -244,11 +249,21 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </span>
           </div>
 
-          {/* Question — clamp to 3 lines so long titles don't push buttons off */}
+          {/* Question — clamped to 3 lines; hover tooltip shows full text on desktop */}
           <div className="mb-3 min-h-0 flex-1 overflow-hidden">
-            <h2 className="line-clamp-3 text-xl font-bold leading-tight text-foreground md:text-2xl">
-              {poll.question}
-            </h2>
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <h2 className="line-clamp-3 cursor-default text-xl font-bold leading-tight text-foreground md:text-2xl">
+                  {poll.question}
+                </h2>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                className="max-w-xs text-sm font-medium leading-snug"
+              >
+                {poll.question}
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           {/* Stats — never shrink */}
