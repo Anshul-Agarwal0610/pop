@@ -1,46 +1,112 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import {
-  User,
   Trophy,
   Target,
   Flame,
   BarChart3,
   Calendar,
-  MapPin,
-  Link as LinkIcon,
-  Settings,
+  Zap,
+  Loader2,
+  Clock,
+  LogOut,
+  CheckCircle2,
 } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/auth-context"
+import { authApi, usersApi, type ApiUser, type ApiVoteHistoryItem } from "@/lib/api"
 
-const stats = [
-  { icon: BarChart3, label: "Polls Created", value: "34", color: "text-primary" },
-  { icon: Trophy, label: "Polls Won", value: "47", color: "text-amber-500" },
-  { icon: Target, label: "Accuracy", value: "89%", color: "text-emerald-500" },
-  { icon: Flame, label: "Day Streak", value: "7", color: "text-orange-500" },
-]
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const recentPolls = [
-  { id: 1, question: "Best coffee shop in town?", votes: 234, status: "active" },
-  { id: 2, question: "Favorite weekend activity?", votes: 512, status: "ended" },
-  { id: 3, question: "Morning or night person?", votes: 1024, status: "ended" },
-]
+function xpLevel(xp: number) {
+  const level    = Math.floor(xp / 1000) + 1
+  const progress = ((xp % 1000) / 1000) * 100
+  const nextXp   = level * 1000
+  return { level, progress, nextXp }
+}
 
-const badges = [
-  { name: "Poll Pioneer", icon: "🚀", earned: true },
-  { name: "Trend Setter", icon: "🔥", earned: true },
-  { name: "Community Star", icon: "⭐", earned: true },
-  { name: "Fact Checker", icon: "✓", earned: false },
-]
+function relativeTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 60)  return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24)   return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+function joinedDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+}
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+
+function ProfileSkeleton() {
+  return (
+    <div className="mx-auto max-w-3xl animate-pulse px-4 py-6 space-y-6">
+      <div className="rounded-2xl bg-muted h-48" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="rounded-2xl bg-muted h-24" />
+        ))}
+      </div>
+      <div className="rounded-2xl bg-muted h-40" />
+    </div>
+  )
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
+  const router              = useRouter()
+  const { user: authUser, isLoading: authLoading, logout } = useAuth()
+  const [profile, setProfile]   = useState<ApiUser | null>(null)
+  const [history, setHistory]   = useState<ApiVoteHistoryItem[]>([])
+  const [loading, setLoading]   = useState(true)
+
+  // Redirect if not logged in
+  useEffect(() => {
+    if (!authLoading && !authUser) router.replace("/login")
+  }, [authLoading, authUser, router])
+
+  // Fetch fresh profile (for up-to-date XP) + vote history
+  useEffect(() => {
+    if (!authUser) return
+    Promise.all([
+      authApi.getMe(),
+      usersApi.getMyVotes(5),
+    ])
+      .then(([freshUser, votes]) => {
+        setProfile(freshUser)
+        setHistory(votes)
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [authUser])
+
+  if (authLoading || loading) return <AppShell><ProfileSkeleton /></AppShell>
+  if (!authUser) return null
+
+  // Use fresh API data when available, fall back to cached auth user
+  const displayUser = profile ?? authUser
+  const { level, progress, nextXp } = xpLevel(displayUser.xp ?? 0)
+
+  const stats = [
+    { icon: BarChart3, label: "Polls Created", value: String(displayUser.pollsCreated ?? 0), color: "text-primary"     },
+    { icon: Trophy,    label: "Total Votes",   value: String(displayUser.totalVotes ?? 0),    color: "text-amber-500"   },
+    { icon: Target,    label: "Total XP",      value: `${displayUser.xp ?? 0}`,               color: "text-emerald-500" },
+    { icon: Flame,     label: "Day Streak",    value: String(displayUser.streak ?? 0),        color: "text-orange-500"  },
+  ]
+
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-4 py-6">
+
         {/* Profile Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -48,63 +114,65 @@ export default function ProfilePage() {
           className="mb-6"
         >
           <div className="relative rounded-2xl bg-gradient-to-br from-primary/20 via-accent/10 to-primary/5 p-6">
-            {/* Settings button */}
+            {/* Logout */}
             <Button
               variant="ghost"
               size="icon"
-              className="absolute right-4 top-4 rounded-xl"
+              className="absolute right-4 top-4 rounded-xl text-muted-foreground hover:text-foreground"
+              onClick={() => { logout(); router.push("/login") }}
             >
-              <Settings className="h-5 w-5" />
-              <span className="sr-only">Settings</span>
+              <LogOut className="h-5 w-5" />
+              <span className="sr-only">Sign out</span>
             </Button>
 
             <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left">
+              {/* Avatar */}
               <motion.div whileHover={{ scale: 1.05 }} className="relative">
                 <Avatar className="h-24 w-24 ring-4 ring-background shadow-xl">
-                  <AvatarImage src="https://api.dicebear.com/9.x/notionists/svg?seed=pollify" alt="Jane Doe" />
+                  <AvatarImage
+                    src={displayUser.avatarUrl ?? `https://api.dicebear.com/9.x/notionists/svg?seed=${displayUser.username}`}
+                    alt={displayUser.displayName}
+                  />
                   <AvatarFallback className="bg-primary text-2xl text-primary-foreground">
-                    JD
+                    {displayUser.displayName?.[0]?.toUpperCase() ?? "?"}
                   </AvatarFallback>
                 </Avatar>
+                {/* Level badge */}
                 <motion.div
                   className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-lg"
                   animate={{ scale: [1, 1.1, 1] }}
                   transition={{ duration: 2, repeat: Infinity }}
                 >
-                  12
+                  {level}
                 </motion.div>
               </motion.div>
 
+              {/* Info */}
               <div className="mt-4 sm:ml-6 sm:mt-0">
-                <h1 className="text-2xl font-bold text-foreground">Jane Doe</h1>
-                <p className="text-muted-foreground">@janedoe</p>
-                
+                <h1 className="text-2xl font-bold text-foreground">{displayUser.displayName}</h1>
+                <p className="text-muted-foreground">@{displayUser.username}</p>
+
                 <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-sm text-muted-foreground sm:justify-start">
                   <span className="flex items-center gap-1">
                     <Calendar className="h-4 w-4" />
-                    Joined Jan 2024
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    San Francisco
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <LinkIcon className="h-4 w-4" />
-                    pollify.app/janedoe
+                    Joined {joinedDate(displayUser.createdAt ?? new Date().toISOString())}
                   </span>
                 </div>
 
-                {/* Level progress */}
+                {/* XP Progress bar */}
                 <div className="mt-4 w-full max-w-xs">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Level 12</span>
-                    <span className="font-medium text-primary">2,450 / 3,000 XP</span>
+                    <span className="text-muted-foreground">Level {level}</span>
+                    <span className="flex items-center gap-1 font-medium text-primary">
+                      <Zap className="h-3.5 w-3.5" />
+                      {authUser.xp ?? 0} / {nextXp} XP
+                    </span>
                   </div>
                   <div className="mt-1 h-2 overflow-hidden rounded-full bg-background">
                     <motion.div
                       className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
                       initial={{ width: 0 }}
-                      animate={{ width: "82%" }}
+                      animate={{ width: `${progress}%` }}
                       transition={{ delay: 0.3, duration: 0.8 }}
                     />
                   </div>
@@ -131,79 +199,56 @@ export default function ProfilePage() {
               transition={{ delay: 0.15 + index * 0.05 }}
             >
               <stat.icon className={cn("h-5 w-5", stat.color)} />
-              <span className="mt-2 text-2xl font-bold text-foreground">
-                {stat.value}
-              </span>
+              <span className="mt-2 text-2xl font-bold text-foreground">{stat.value}</span>
               <span className="text-xs text-muted-foreground">{stat.label}</span>
             </motion.div>
           ))}
         </motion.div>
 
-        {/* Badges */}
+        {/* Vote History */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="mb-6"
         >
-          <h2 className="mb-3 text-lg font-semibold text-foreground">Badges</h2>
-          <div className="flex flex-wrap gap-2">
-            {badges.map((badge) => (
-              <motion.div
-                key={badge.name}
-                whileHover={{ scale: 1.05 }}
-                className={cn(
-                  "flex items-center gap-2 rounded-full px-4 py-2",
-                  badge.earned
-                    ? "bg-primary/10 text-foreground"
-                    : "bg-muted text-muted-foreground opacity-50"
-                )}
-              >
-                <span>{badge.icon}</span>
-                <span className="text-sm font-medium">{badge.name}</span>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
+          <h2 className="mb-3 text-lg font-semibold text-foreground">Recent Votes</h2>
 
-        {/* Recent Polls */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <h2 className="mb-3 text-lg font-semibold text-foreground">
-            Recent Polls
-          </h2>
-          <div className="space-y-2">
-            {recentPolls.map((poll, index) => (
-              <motion.div
-                key={poll.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.35 + index * 0.05 }}
-                whileHover={{ scale: 1.01, x: 4 }}
-                className="flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-border/50"
-              >
-                <div>
-                  <h3 className="font-medium text-foreground">{poll.question}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {poll.votes.toLocaleString()} votes
-                  </p>
-                </div>
-                <span
-                  className={cn(
-                    "rounded-full px-3 py-1 text-xs font-medium",
-                    poll.status === "active"
-                      ? "bg-emerald-500/10 text-emerald-500"
-                      : "bg-muted text-muted-foreground"
-                  )}
+          {history.length === 0 ? (
+            <div className="rounded-2xl bg-card p-8 text-center ring-1 ring-border/50">
+              <p className="text-muted-foreground text-sm">You haven&apos;t voted on anything yet.</p>
+              <Button className="mt-4" onClick={() => router.push("/")}>Browse Polls</Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {history.map((item, index) => (
+                <motion.div
+                  key={item.pollId}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.25 + index * 0.05 }}
+                  whileHover={{ scale: 1.01, x: 4 }}
+                  className="flex items-start justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-border/50"
                 >
-                  {poll.status === "active" ? "Active" : "Ended"}
-                </span>
-              </motion.div>
-            ))}
-          </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="line-clamp-2 font-medium text-foreground">{item.question}</h3>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
+                        {item.category}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {item.votedOptionText}
+                      </span>
+                    </div>
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      {relativeTime(item.votedAt)} · {item.totalVotes.toLocaleString()} votes
+                    </p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </motion.div>
       </div>
     </AppShell>

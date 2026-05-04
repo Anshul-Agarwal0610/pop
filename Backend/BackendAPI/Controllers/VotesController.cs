@@ -58,12 +58,16 @@ namespace BackendAPI.Controllers
                 return Conflict(new { message = "You have already voted on this poll." });
             }
 
+            // US-20: Award XP and increment streak/totalVotes for the authenticated user
+            int xpReward = poll.IsTrending ? 35 : 25;
+            await _usersRepo.UpdateXpAsync(userId, xpReward);
+
             // Return updated poll with hasVoted populated for this user
             var updated = await _pollsRepo.GetByIdAsync(request.PollId);
             if (updated != null)
             {
-                updated.HasVoted           = true;
-                updated.UserVotedOptionId  = request.OptionId;
+                updated.HasVoted          = true;
+                updated.UserVotedOptionId = request.OptionId;
             }
             return Ok(updated);
         }

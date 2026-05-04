@@ -10,5 +10,7 @@ namespace BackendAPI.Interfaces
         Task<long> CreateAsync(CreateUserRequest request);
         Task UpdateXpAsync(long userId, int xpToAdd);
         Task UpdateStreakAsync(long userId);
+        /// <summary>US-22: Returns the user's vote history with poll details.</summary>
+        Task<IEnumerable<VoteHistoryItem>> GetVoteHistoryAsync(long userId, int count = 20);
     }
 }

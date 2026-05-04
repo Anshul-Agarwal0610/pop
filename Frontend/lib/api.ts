@@ -108,3 +108,45 @@ export const votesApi = {
       body: JSON.stringify(req),
     }),
 }
+
+// ── User endpoints ────────────────────────────────────────────────────────────
+
+export interface ApiUser {
+  id: number
+  username: string
+  displayName: string
+  email?: string
+  avatarUrl?: string
+  authProvider: string
+  xp: number
+  streak: number
+  totalVotes: number
+  pollsCreated: number
+  createdAt: string
+}
+
+export interface ApiVoteHistoryItem {
+  pollId: number
+  question: string
+  category: string
+  votedOptionText: string
+  totalVotes: number
+  votedAt: string
+}
+
+export const usersApi = {
+  /** Leaderboard — top users by XP. */
+  getLeaderboard: (count = 20) =>
+    request<ApiUser[]>(`/api/users/leaderboard?count=${count}`),
+
+  /** Vote history for the current authenticated user. */
+  getMyVotes: (count = 10) =>
+    request<ApiVoteHistoryItem[]>(`/api/users/me/votes?count=${count}`),
+}
+
+// ── Auth endpoints ────────────────────────────────────────────────────────────
+
+export const authApi = {
+  /** Fetch fresh profile data for the logged-in user. Requires auth token. */
+  getMe: () => request<ApiUser>("/api/auth/me"),
+}

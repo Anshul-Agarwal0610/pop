@@ -69,5 +69,26 @@ namespace BackendAPI.Repository
                 new { Id = userId }
             );
         }
+
+        // US-22: Vote history ─────────────────────────────────────────────────
+        public async Task<IEnumerable<VoteHistoryItem>> GetVoteHistoryAsync(long userId, int count = 20)
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.QueryAsync<VoteHistoryItem>(
+                @"SELECT TOP (@Count)
+                      p.Id           AS PollId,
+                      p.Question,
+                      p.Category,
+                      o.Text         AS VotedOptionText,
+                      p.TotalVotes,
+                      v.CreatedAt    AS VotedAt
+                  FROM Votes v
+                  JOIN Polls       p ON p.Id = v.PollId
+                  JOIN PollOptions o ON o.Id = v.OptionId
+                  WHERE v.UserId = @UserId
+                  ORDER BY v.CreatedAt DESC",
+                new { UserId = userId, Count = count }
+            );
+        }
     }
 }

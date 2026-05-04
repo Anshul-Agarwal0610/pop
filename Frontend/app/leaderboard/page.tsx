@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Trophy,
@@ -23,6 +23,8 @@ import {
 import { AppShell } from "@/components/app-shell"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/auth-context"
+import { usersApi, type ApiUser } from "@/lib/api"
 
 type LeaderboardType = "answered" | "created" | "streak" | "viral" | "reputation"
 type TimeFilter = "weekly" | "monthly" | "alltime"
@@ -380,11 +382,40 @@ function AchievementHighlight({ achievements }: { achievements: string[] }) {
   )
 }
 
-export default function LeaderboardPage() {
-  const [activeTab, setActiveTab] = useState<LeaderboardType>("reputation")
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("weekly")
+// ── Map real ApiUser → LeaderboardUser shape ──────────────────────────────────
+function mapApiUsers(users: ApiUser[], currentUserId?: number): LeaderboardUser[] {
+  return users.map((u, i) => ({
+    rank:       i + 1,
+    name:       u.displayName || u.username,
+    username:   `@${u.username}`,
+    avatar:     u.username,
+    score:      u.xp,
+    scoreLabel: "XP",
+    change:     0,
+    badges:     [],
+    level:      Math.floor(u.xp / 1000) + 1,
+    isYou:      u.id === currentUserId,
+  }))
+}
 
-  const leaderboardData = generateLeaderboardData(activeTab, timeFilter)
+export default function LeaderboardPage() {
+  const { user: authUser }          = useAuth()
+  const [activeTab, setActiveTab]   = useState<LeaderboardType>("reputation")
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("weekly")
+  const [realUsers, setRealUsers]   = useState<LeaderboardUser[] | null>(null)
+
+  // Fetch real leaderboard for the "reputation" tab
+  useEffect(() => {
+    usersApi.getLeaderboard(20)
+      .then((data) => setRealUsers(mapApiUsers(data, authUser?.id)))
+      .catch(() => setRealUsers(null))   // fallback to mock on error
+  }, [authUser?.id])
+
+  // Use real data for reputation tab; mock for others
+  const leaderboardData = (activeTab === "reputation" && realUsers)
+    ? realUsers
+    : generateLeaderboardData(activeTab, timeFilter)
+
   const topThree = leaderboardData.slice(0, 3)
   const restOfUsers = leaderboardData.slice(3)
   const currentUser = leaderboardData.find((u) => u.isYou)
