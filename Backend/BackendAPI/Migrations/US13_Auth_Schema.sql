@@ -24,36 +24,59 @@ BEGIN
         CreatedAt    DATETIME2     NOT NULL DEFAULT GETUTCDATE()
     );
 
-    -- Unique username (all users)
-    CREATE UNIQUE INDEX UQ_Users_Username
-        ON Users(Username);
-
-    -- Unique email — filtered so multiple NULLs are allowed (local users without email)
-    CREATE UNIQUE INDEX UQ_Users_Email
-        ON Users(Email)
-        WHERE Email IS NOT NULL;
-
     PRINT 'Users table created.';
 END
 ELSE
     PRINT 'Users table already exists — skipped.';
 
--- ── Add UserId to Votes ───────────────────────────────────────
+-- Unique username index (outside IF so it's idempotent separately)
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes WHERE name = 'UQ_Users_Username' AND object_id = OBJECT_ID('Users')
+)
+    CREATE UNIQUE INDEX UQ_Users_Username ON Users(Username);
+
+-- Unique email — filtered so multiple NULLs are allowed
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes WHERE name = 'UQ_Users_Email' AND object_id = OBJECT_ID('Users')
+)
+    CREATE UNIQUE INDEX UQ_Users_Email ON Users(Email) WHERE Email IS NOT NULL;
+
+-- ── Add UserId column to Votes ────────────────────────────────
+-- Step 1: add the column first (no FK yet)
 IF NOT EXISTS (
     SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
     WHERE TABLE_NAME = 'Votes' AND COLUMN_NAME = 'UserId'
 )
 BEGIN
-    ALTER TABLE Votes
-        ADD UserId BIGINT NULL
-            CONSTRAINT FK_Votes_Users FOREIGN KEY REFERENCES Users(Id);
-
-    -- One vote per poll per user; NULLs (anonymous) are excluded from uniqueness
-    CREATE UNIQUE INDEX UQ_Votes_PollUser
-        ON Votes(PollId, UserId)
-        WHERE UserId IS NOT NULL;
-
-    PRINT 'Votes.UserId column and unique index added.';
+    ALTER TABLE Votes ADD UserId BIGINT NULL;
+    PRINT 'Votes.UserId column added.';
 END
 ELSE
     PRINT 'Votes.UserId already exists — skipped.';
+
+-- Step 2: add FK constraint separately (only if column now exists and constraint doesn't)
+IF NOT EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_NAME = 'FK_Votes_Users' AND TABLE_NAME = 'Votes'
+)
+BEGIN
+    ALTER TABLE Votes
+        ADD CONSTRAINT FK_Votes_Users
+        FOREIGN KEY (UserId) REFERENCES Users(Id);
+    PRINT 'FK_Votes_Users constraint added.';
+END
+ELSE
+    PRINT 'FK_Votes_Users already exists — skipped.';
+
+-- Step 3: unique index — one vote per (poll, user), NULLs excluded
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes WHERE name = 'UQ_Votes_PollUser' AND object_id = OBJECT_ID('Votes')
+)
+BEGIN
+    CREATE UNIQUE INDEX UQ_Votes_PollUser
+        ON Votes(PollId, UserId)
+        WHERE UserId IS NOT NULL;
+    PRINT 'UQ_Votes_PollUser index added.';
+END
+ELSE
+    PRINT 'UQ_Votes_PollUser already exists — skipped.';
