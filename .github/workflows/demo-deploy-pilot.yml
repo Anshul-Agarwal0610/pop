@@ -1,0 +1,31 @@
+name: Demo – Deploy to Pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      ENV:
+        description: "Target environment"
+        required: true
+        default: "staging"
+      ACA:
+        description: "Container App name"
+        required: true
+        default: "demo-api"
+      ACA_RESOURCE_GROUP:
+        description: "Resource group"
+        required: true
+        default: "demo-rg"
+
+jobs:
+  deploy-pilot:
+    name: Deploy demo app → pilot
+    uses: ./.github/workflows/aca-deploy.yml
+    with:
+      IMAGE_NAME: demo-api
+      ENV:        ${{ inputs.ENV }}
+      ACA:        ${{ inputs.ACA }}
+      ACA_RESOURCE_GROUP: ${{ inputs.ACA_RESOURCE_GROUP }}
+      DOCKERFILE: demo/Dockerfile
+      DEPLOY_TO_PILOT: true
+      PROMOTE_TO_MAIN: false
+    secrets: inherit
