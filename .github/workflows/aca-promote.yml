@@ -1,0 +1,58 @@
+name: ACA – Promote Pilot to Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'yes' to promote pilot → main"
+        required: true
+        default: "yes"
+
+env:
+  RESOURCE_GROUP: ${{ vars.ACA_RESOURCE_GROUP }}
+  APP_NAME:       ${{ vars.ACA_APP_NAME }}
+
+jobs:
+  promote:
+    name: Promote pilot to main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "yes" ]; then
+            echo "Confirmation not given. Aborting."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Resolve pilot revision name
+        id: pilot
+        run: |
+          # Look up the revision currently labelled 'pilot'
+          REVISION=$(az containerapp revision list \
+            --name $APP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --query "[?properties.template.revisionSuffix != null].name" \
+            -o tsv | head -1)
+
+          # Use the label-based FQDN to find the exact revision
+          PILOT_REVISION=$(az containerapp show \
+            --name $APP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --query "properties.latestRevisionName" \
+            -o tsv)
+
+          echo "revision=$PILOT_REVISION" >> $GITHUB_OUTPUT
+
+      - name: Move 'main' label to pilot revision
+        run: |
+          az containerapp revision label add \
+            --name $APP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --revision ${{ steps.pilot.outputs.revision }} \
+            --label main
+          echo "Promoted revision ${{ steps.pilot.outputs.revision }} to main"
