@@ -9,11 +9,11 @@ on:
       ACA:
         description: "Container App name"
         required: true
-        default: "demo-api"
+        default: "revision-demo"
       ACA_RESOURCE_GROUP:
         description: "Resource group"
         required: true
-        default: "demo-rg"
+        default: "revision-demo-rg"
       confirm:
         description: "Type 'yes' to confirm rollback"
         required: true

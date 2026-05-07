@@ -4,28 +4,38 @@ on:
   workflow_dispatch:
     inputs:
       ENV:
-        description: "Target environment"
+        description: "Environment tag baked into the image name"
         required: true
-        default: "staging"
+        default: "demo"
       ACA:
         description: "Container App name"
         required: true
-        default: "demo-api"
+        default: "revision-demo"
       ACA_RESOURCE_GROUP:
         description: "Resource group"
         required: true
-        default: "demo-rg"
+        default: "revision-demo-rg"
+      ACR:
+        description: "ACR name (without .azurecr.io)"
+        required: true
+        default: "revisiondemo"
+      PROJECT_NAME:
+        description: "Image path prefix  (ACR repo folder)"
+        required: true
+        default: "demo"
 
 jobs:
   deploy-pilot:
     name: Deploy demo app → pilot
     uses: ./.github/workflows/aca-deploy.yml
     with:
-      IMAGE_NAME: demo-api
-      ENV:        ${{ inputs.ENV }}
-      ACA:        ${{ inputs.ACA }}
+      ACR:          ${{ inputs.ACR }}
+      PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
+      IMAGE_NAME:   revision-demo
+      ENV:          ${{ inputs.ENV }}
+      ACA:          ${{ inputs.ACA }}
       ACA_RESOURCE_GROUP: ${{ inputs.ACA_RESOURCE_GROUP }}
-      DOCKERFILE: demo/Dockerfile
+      DOCKERFILE:   demo/Dockerfile
       DEPLOY_TO_PILOT: true
       PROMOTE_TO_MAIN: false
     secrets: inherit
