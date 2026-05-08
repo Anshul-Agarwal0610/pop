@@ -1,0 +1,87 @@
+name: Demo – Rollback Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision_name:
+        description: "Revision to roll back to (leave blank to list available revisions)"
+        required: false
+      ACA:
+        description: "Container App name"
+        required: true
+        default: "revision-demo"
+      ACA_RESOURCE_GROUP:
+        description: "Resource group"
+        required: true
+        default: "revision-demo-rg"
+      confirm:
+        description: "Type 'yes' to confirm rollback"
+        required: true
+        default: "yes"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  list-revisions:
+    name: List available revisions
+    runs-on: ubuntu-latest
+    if: ${{ inputs.revision_name == '' }}
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.TEAM_SP_CLIENT_ID }}
+          tenant-id: ${{ secrets.TEAM_SP_TENANT_ID }}
+          subscription-id: ${{ secrets.TEAM_SP_SUBSCRIPTION_ID }}
+
+      - name: Show revisions
+        run: |
+          echo "Available revisions (most recent first):"
+          az containerapp revision list \
+            --name ${{ inputs.ACA }} \
+            --resource-group ${{ inputs.ACA_RESOURCE_GROUP }} \
+            --query "[].{name:name, active:properties.active, created:properties.createdTime}" \
+            --output table
+
+  rollback:
+    name: Roll back main to specified revision
+    runs-on: ubuntu-latest
+    if: ${{ inputs.revision_name != '' }}
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "yes" ]; then
+            echo "Confirmation not provided. Aborting."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.TEAM_SP_CLIENT_ID }}
+          tenant-id: ${{ secrets.TEAM_SP_TENANT_ID }}
+          subscription-id: ${{ secrets.TEAM_SP_SUBSCRIPTION_ID }}
+
+      - name: Activate revision if inactive
+        run: |
+          az containerapp revision activate \
+            --name ${{ inputs.ACA }} \
+            --resource-group ${{ inputs.ACA_RESOURCE_GROUP }} \
+            --revision ${{ inputs.revision_name }} || true
+
+      - name: Move main label + restore full traffic
+        run: |
+          az containerapp revision label add \
+            --name ${{ inputs.ACA }} \
+            --resource-group ${{ inputs.ACA_RESOURCE_GROUP }} \
+            --revision ${{ inputs.revision_name }} \
+            --label main \
+            --yes
+
+          az containerapp ingress traffic set \
+            --name ${{ inputs.ACA }} \
+            --resource-group ${{ inputs.ACA_RESOURCE_GROUP }} \
+            --label-weight main=100
+          echo "Rolled back: 'main' now points to ${{ inputs.revision_name }}"

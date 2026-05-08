@@ -1,0 +1,41 @@
+name: Demo – Promote Pilot to Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      ENV:
+        description: "Environment tag baked into the image name"
+        required: true
+        default: "demo"
+      ACA:
+        description: "Container App name"
+        required: true
+        default: "revision-demo"
+      ACA_RESOURCE_GROUP:
+        description: "Resource group"
+        required: true
+        default: "revision-demo-rg"
+      ACR:
+        description: "ACR name (without .azurecr.io)"
+        required: true
+        default: "revisiondemo"
+      PROJECT_NAME:
+        description: "Image path prefix (ACR repo folder)"
+        required: true
+        default: "demo"
+
+jobs:
+  promote:
+    name: Promote demo app pilot → main
+    uses: ./.github/workflows/aca-deploy.yml
+    with:
+      ACR:          ${{ inputs.ACR }}
+      PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
+      IMAGE_NAME:   revision-demo
+      ENV:          ${{ inputs.ENV }}
+      ACA:          ${{ inputs.ACA }}
+      ACA_RESOURCE_GROUP: ${{ inputs.ACA_RESOURCE_GROUP }}
+      DOCKERFILE:   demo/Dockerfile
+      DEPLOY_TO_PILOT: true
+      PROMOTE_TO_MAIN: true
+    secrets: inherit
