@@ -24,6 +24,11 @@ on:
         required: true
         default: "demo"
 
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
 jobs:
   promote:
     name: Promote demo app pilot → main
