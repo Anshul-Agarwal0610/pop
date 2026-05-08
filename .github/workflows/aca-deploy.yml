@@ -116,10 +116,25 @@ jobs:
       - name: Keep production traffic on main
         if: ${{ inputs.DEPLOY_TO_PILOT && !inputs.PROMOTE_TO_MAIN }}
         run: |
-          az containerapp ingress traffic set \
+          MAIN_REVISION=$(az containerapp show \
             --name ${{ inputs.ACA }} \
             --resource-group ${{ inputs.ACA_RESOURCE_GROUP }} \
-            --label-weight main=100 pilot=0
+            --query "properties.configuration.ingress.traffic[?label=='main'].revisionName | [0]" \
+            -o tsv)
+
+          PILOT_REVISION="${{ steps.latestrev.outputs.revision_name }}"
+
+          if [ -n "$MAIN_REVISION" ]; then
+            az containerapp ingress traffic set \
+              --name ${{ inputs.ACA }} \
+              --resource-group ${{ inputs.ACA_RESOURCE_GROUP }} \
+              --revision-weight ${MAIN_REVISION}=100 ${PILOT_REVISION}=0
+          else
+            az containerapp ingress traffic set \
+              --name ${{ inputs.ACA }} \
+              --resource-group ${{ inputs.ACA_RESOURCE_GROUP }} \
+              --revision-weight ${PILOT_REVISION}=0
+          fi
 
       - name: Promote pilot to main
         if: ${{ inputs.PROMOTE_TO_MAIN }}
