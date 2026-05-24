@@ -1,6 +1,7 @@
 import { API_BASE_URL } from '../config/api';
 import { getToken } from './session';
 import type { AuthResponse, AuthUser, LoginPayload, RegisterPayload } from '../types/auth';
+import type { ApiPoll, CastVoteResponse } from '../types/poll';
 
 interface ApiErrorShape {
   message?: string;
@@ -48,4 +49,16 @@ export const authApi = {
       body: JSON.stringify(payload),
     }),
   me: () => apiRequest<AuthUser>('/api/auth/me'),
+};
+
+export const pollsApi = {
+  getTrending: (count = 20) => apiRequest<ApiPoll[]>(`/api/polls/trending?count=${count}`),
+};
+
+export const votesApi = {
+  cast: (pollId: number, optionId: number) =>
+    apiRequest<CastVoteResponse>('/api/votes', {
+      method: 'POST',
+      body: JSON.stringify({ pollId, optionId }),
+    }),
 };
