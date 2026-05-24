@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.pollify.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -25,8 +26,16 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F5EF"
+    },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "releaseChannel": "production"
+    }
   }
 }

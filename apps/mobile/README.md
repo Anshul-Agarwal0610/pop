@@ -45,3 +45,16 @@ The web app remains in `Frontend` and can continue to use `NEXT_PUBLIC_API_URL`.
 ## Auth Notes
 
 Email/password login and registration are wired for the mobile MVP. Google sign-in still needs native Android/iOS OAuth client IDs before it should be exposed in the app store build.
+
+## Android Release
+
+Android release builds use EAS profiles in `eas.json`.
+
+```powershell
+cd apps/mobile
+npm run typecheck
+npm run build:android:preview
+npm run build:android:production
+```
+
+See `docs/android-release.md` for Play Store checklist, privacy policy requirements, credential handling, and submit instructions.
