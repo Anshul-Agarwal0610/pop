@@ -5,8 +5,7 @@
  */
 
 import { getToken } from "@/lib/auth"
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5177"
+import { API_BASE_URL } from "@/lib/config"
 
 // ── Raw backend shapes ────────────────────────────────────────────────────────
 
@@ -63,7 +62,7 @@ function authHeaders(): Record<string, string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),          // attach JWT when logged in (US-18)

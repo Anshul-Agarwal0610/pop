@@ -30,14 +30,20 @@ A gamified public opinion polling platform built with Next.js, TypeScript, and T
 # 1. Go into the Frontend folder
 cd Frontend
 
-# 2. Install dependencies
+# 2. Copy the example environment file and confirm the backend URL
+copy .env.local.example .env.local
+
+# 3. Install dependencies
 npm install --legacy-peer-deps
 
-# 3. Start the development server
+# 4. Start the development server
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+By default, the frontend expects the ASP.NET Core backend at `http://localhost:5177`.
+Override it with `NEXT_PUBLIC_API_URL` when needed.
 
 ### Other commands
 
