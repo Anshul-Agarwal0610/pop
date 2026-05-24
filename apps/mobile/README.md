@@ -2,6 +2,14 @@
 
 Expo React Native app for Pollify's Android-first mobile experience, with iOS support kept in the same codebase.
 
+The app uses the existing Pollify backend auth endpoints:
+
+- `POST /api/auth/login`
+- `POST /api/auth/register`
+- `GET /api/auth/me`
+
+JWT sessions are stored with Expo SecureStore on device.
+
 ## Requirements
 
 - Node.js 20.19.4 or newer is recommended for the current Expo package set.
@@ -33,3 +41,7 @@ npm run android
 ```
 
 The web app remains in `Frontend` and can continue to use `NEXT_PUBLIC_API_URL`.
+
+## Auth Notes
+
+Email/password login and registration are wired for the mobile MVP. Google sign-in still needs native Android/iOS OAuth client IDs before it should be exposed in the app store build.
