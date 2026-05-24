@@ -27,6 +27,9 @@ export interface ApiPoll {
   expiresAt: string          // ISO date string
   createdAt: string          // ISO date string
   totalVotes: number
+  createdByUserId: number | null
+  createdByUsername: string | null
+  createdByDisplayName: string | null
   sourceType: string | null
   sourceUrl: string | null
   thumbnailUrl: string | null

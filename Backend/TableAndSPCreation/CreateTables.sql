@@ -21,7 +21,8 @@ CREATE TABLE Polls (
     IsActive    BIT             NOT NULL DEFAULT 1,
     ExpiresAt   DATETIME2       NOT NULL,
     CreatedAt   DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
-    TotalVotes  INT             NOT NULL DEFAULT 0
+    TotalVotes  INT             NOT NULL DEFAULT 0,
+    CreatedByUserId BIGINT      NULL
 );
 GO
 
@@ -72,9 +73,15 @@ GO
 -- ============================================================
 CREATE INDEX IX_Polls_IsTrending  ON Polls(IsTrending) WHERE IsActive = 1;
 CREATE INDEX IX_Polls_CreatedAt   ON Polls(CreatedAt DESC);
+CREATE INDEX IX_Polls_CreatedByUserId ON Polls(CreatedByUserId) WHERE CreatedByUserId IS NOT NULL;
 CREATE INDEX IX_PollOptions_PollId ON PollOptions(PollId);
 CREATE INDEX IX_Votes_PollId       ON Votes(PollId);
 CREATE INDEX IX_Users_Xp           ON Users(Xp DESC);
+GO
+
+ALTER TABLE Polls
+    ADD CONSTRAINT FK_Polls_CreatedByUser
+    FOREIGN KEY (CreatedByUserId) REFERENCES Users(Id);
 GO
 
 -- ============================================================

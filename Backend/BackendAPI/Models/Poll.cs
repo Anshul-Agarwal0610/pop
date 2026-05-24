@@ -11,6 +11,9 @@ namespace BackendAPI.Models
         public DateTime ExpiresAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public int TotalVotes { get; set; }
+        public long? CreatedByUserId { get; set; }
+        public string? CreatedByUsername { get; set; }
+        public string? CreatedByDisplayName { get; set; }
 
         // ── Ingestion / AI fields (US-01) ────────────────────────────────────
         /// <summary>Origin of the poll: "rss" | "youtube" | "gnews" | "manual"</summary>
