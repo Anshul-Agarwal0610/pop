@@ -10,7 +10,13 @@ The app uses the existing Pollify backend auth endpoints:
 
 JWT sessions are stored with Expo SecureStore on device.
 
-Authenticated users land on a native trending poll feed backed by:
+Signed-in users can switch between mobile gamification surfaces:
+
+- Home: current XP, streak, level progress, and native trending poll feed.
+- Profile: votes, polls created, XP, streak, level, and joined date.
+- Ranks: real backend leaderboard data from `GET /api/users/leaderboard`.
+
+The feed is backed by:
 
 - `GET /api/polls/trending`
 - `POST /api/votes`

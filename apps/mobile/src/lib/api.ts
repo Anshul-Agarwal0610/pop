@@ -51,6 +51,10 @@ export const authApi = {
   me: () => apiRequest<AuthUser>('/api/auth/me'),
 };
 
+export const usersApi = {
+  getLeaderboard: (count = 20) => apiRequest<AuthUser[]>(`/api/users/leaderboard?count=${count}`),
+};
+
 export const pollsApi = {
   getTrending: (count = 20) => apiRequest<ApiPoll[]>(`/api/polls/trending?count=${count}`),
 };
