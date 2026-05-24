@@ -10,6 +10,12 @@ The app uses the existing Pollify backend auth endpoints:
 
 JWT sessions are stored with Expo SecureStore on device.
 
+Signed-in users can switch between mobile gamification surfaces:
+
+- Home: current XP, streak, and level progress.
+- Profile: votes, polls created, XP, streak, level, and joined date.
+- Ranks: real backend leaderboard data from `GET /api/users/leaderboard`.
+
 ## Requirements
 
 - Node.js 20.19.4 or newer is recommended for the current Expo package set.

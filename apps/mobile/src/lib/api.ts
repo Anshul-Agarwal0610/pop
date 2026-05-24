@@ -49,3 +49,7 @@ export const authApi = {
     }),
   me: () => apiRequest<AuthUser>('/api/auth/me'),
 };
+
+export const usersApi = {
+  getLeaderboard: (count = 20) => apiRequest<AuthUser[]>(`/api/users/leaderboard?count=${count}`),
+};
