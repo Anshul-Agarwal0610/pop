@@ -10,6 +10,13 @@ The app uses the existing Pollify backend auth endpoints:
 
 JWT sessions are stored with Expo SecureStore on device.
 
+Authenticated users land on a native trending poll feed backed by:
+
+- `GET /api/polls/trending`
+- `POST /api/votes`
+
+Vote responses update the selected poll, XP, streak, and total vote count in the mobile UI.
+
 ## Requirements
 
 - Node.js 20.19.4 or newer is recommended for the current Expo package set.
