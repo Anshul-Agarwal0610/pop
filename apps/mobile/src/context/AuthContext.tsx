@@ -11,6 +11,7 @@ import {
 import { authApi } from '../lib/api';
 import { clearSession, getStoredUser, getToken, saveSession } from '../lib/session';
 import type { AuthUser, LoginPayload, RegisterPayload } from '../types/auth';
+import type { VoteReward } from '../types/poll';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -19,6 +20,7 @@ interface AuthContextValue {
   signIn: (payload: LoginPayload) => Promise<void>;
   signUp: (payload: RegisterPayload) => Promise<void>;
   signOut: () => Promise<void>;
+  applyVoteReward: (reward: VoteReward) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -78,6 +80,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setUser(null);
   }, []);
 
+  const applyVoteReward = useCallback((reward: VoteReward) => {
+    setUser((current) =>
+      current
+        ? {
+            ...current,
+            xp: reward.xp,
+            streak: reward.streak,
+            totalVotes: reward.totalVotes,
+            lastVoteDate: reward.lastVoteDate,
+          }
+        : current,
+    );
+  }, []);
+
   const value = useMemo(
     () => ({
       user,
@@ -86,8 +102,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signIn,
       signUp,
       signOut,
+      applyVoteReward,
     }),
-    [isLoading, signIn, signOut, signUp, user],
+    [applyVoteReward, isLoading, signIn, signOut, signUp, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

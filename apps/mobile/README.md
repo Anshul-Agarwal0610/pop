@@ -12,9 +12,16 @@ JWT sessions are stored with Expo SecureStore on device.
 
 Signed-in users can switch between mobile gamification surfaces:
 
-- Home: current XP, streak, and level progress.
+- Home: current XP, streak, level progress, and native trending poll feed.
 - Profile: votes, polls created, XP, streak, level, and joined date.
 - Ranks: real backend leaderboard data from `GET /api/users/leaderboard`.
+
+The feed is backed by:
+
+- `GET /api/polls/trending`
+- `POST /api/votes`
+
+Vote responses update the selected poll, XP, streak, and total vote count in the mobile UI.
 
 ## Requirements
 
