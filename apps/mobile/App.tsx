@@ -1,10 +1,12 @@
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -15,8 +17,12 @@ import {
 
 import { API_BASE_URL } from './src/config/api';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { pollsApi, usersApi, votesApi } from './src/lib/api';
+import type { AuthUser } from './src/types/auth';
+import type { ApiPoll, ApiPollOption, VoteReward } from './src/types/poll';
 
 type AuthMode = 'login' | 'register';
+type SignedInTab = 'home' | 'profile' | 'leaderboard';
 
 export default function App() {
   return (
@@ -223,45 +229,335 @@ function LabeledInput({
 }
 
 function SignedInHome() {
-  const { signOut, user } = useAuth();
+  const { applyVoteReward, signOut, user } = useAuth();
+  const [activeTab, setActiveTab] = useState<SignedInTab>('home');
+  const [leaderboard, setLeaderboard] = useState<AuthUser[]>([]);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [polls, setPolls] = useState<ApiPoll[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [votingPollId, setVotingPollId] = useState<number | null>(null);
+  const [latestReward, setLatestReward] = useState<VoteReward | null>(null);
+
+  const loadLeaderboard = useCallback(async () => {
+    setIsLeaderboardLoading(true);
+    setLeaderboardError(null);
+
+    try {
+      setLeaderboard(await usersApi.getLeaderboard(25));
+    } catch (err) {
+      setLeaderboardError(err instanceof Error ? err.message : 'Could not load leaderboard');
+    } finally {
+      setIsLeaderboardLoading(false);
+    }
+  }, []);
+
+  const loadPolls = useCallback(async (refreshing = false) => {
+    if (refreshing) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    setError(null);
+
+    try {
+      setPolls(await pollsApi.getTrending(20));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load polls');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPolls();
+  }, [loadPolls]);
+
+  useEffect(() => {
+    if (activeTab === 'leaderboard' && leaderboard.length === 0) {
+      loadLeaderboard();
+    }
+  }, [activeTab, leaderboard.length, loadLeaderboard]);
+
+  async function vote(pollId: number, optionId: number) {
+    setVotingPollId(pollId);
+    setError(null);
+
+    try {
+      const response = await votesApi.cast(pollId, optionId);
+      setPolls((current) =>
+        current.map((poll) => (poll.id === response.poll.id ? response.poll : poll)),
+      );
+      setLatestReward(response.reward);
+      applyVoteReward(response.reward);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not record your vote');
+    } finally {
+      setVotingPollId(null);
+    }
+  }
 
   if (!user) return null;
 
+  const level = getLevel(user.xp ?? 0);
+  const progress = getLevelProgress(user.xp ?? 0);
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.heroCompact}>
-        <Text style={styles.eyebrow}>Pollify</Text>
-        <Text style={styles.titleSmall}>Hi, {user.displayName}</Text>
-        <Text style={styles.subtitle}>
-          Your mobile session is active and ready for poll feed integration.
-        </Text>
-      </View>
-
-      <View style={styles.profilePanel}>
+    <View style={styles.feedShell}>
+      <View style={styles.feedHeader}>
         <View>
-          <Text style={styles.profileName}>{user.displayName}</Text>
-          <Text style={styles.profileUsername}>@{user.username}</Text>
+          <Text style={styles.eyebrow}>Pollify</Text>
+          <Text style={styles.feedTitle}>Hi, {user.displayName}</Text>
         </View>
-        <View style={styles.metricGrid}>
-          <Metric label="XP" value={String(user.xp ?? 0)} />
-          <Metric label="Streak" value={String(user.streak ?? 0)} />
-          <Metric label="Votes" value={String(user.totalVotes ?? 0)} />
-          <Metric label="Polls" value={String(user.pollsCreated ?? 0)} />
-        </View>
-      </View>
-
-      <View style={styles.actionPanel}>
-        <Text style={styles.actionTitle}>Session stored securely</Text>
-        <Text style={styles.actionCopy}>
-          The JWT is saved with Expo SecureStore and refreshed from `/api/auth/me`
-          when the app starts.
-        </Text>
-        <Pressable onPress={signOut} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>Logout</Text>
+        <Pressable onPress={signOut} style={styles.logoutButton}>
+          <Text style={styles.logoutButtonText}>Logout</Text>
         </Pressable>
       </View>
-    </ScrollView>
+
+      <View style={styles.compactStats}>
+        <Metric label="XP" value={String(user.xp ?? 0)} />
+        <Metric label="Streak" value={String(user.streak ?? 0)} />
+        <Metric label="Votes" value={String(user.totalVotes ?? 0)} />
+      </View>
+
+      <View style={styles.segment}>
+        <TabButton active={activeTab === 'home'} label="Home" onPress={() => setActiveTab('home')} />
+        <TabButton
+          active={activeTab === 'profile'}
+          label="Profile"
+          onPress={() => setActiveTab('profile')}
+        />
+        <TabButton
+          active={activeTab === 'leaderboard'}
+          label="Ranks"
+          onPress={() => setActiveTab('leaderboard')}
+        />
+      </View>
+
+      {latestReward && (
+        <View style={styles.rewardBanner}>
+          <Text style={styles.rewardTitle}>+{latestReward.xpAwarded} XP earned</Text>
+          <Text style={styles.rewardCopy}>
+            {latestReward.streakAdvanced
+              ? `Daily streak is now ${latestReward.streak}.`
+              : `Streak stays at ${latestReward.streak}.`}
+          </Text>
+        </View>
+      )}
+
+      {activeTab === 'home' && (
+        <>
+          <View style={styles.progressPanel}>
+            <View style={styles.progressHeader}>
+              <Text style={styles.panelTitle}>Today's progress</Text>
+              <Text style={styles.levelPill}>Level {level}</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${progress.percent}%` }]} />
+            </View>
+            <Text style={styles.progressCopy}>
+              {progress.current} / 500 XP toward the next level.
+            </Text>
+          </View>
+
+          {error && (
+            <View style={styles.feedError}>
+              <Text style={styles.feedErrorText}>{error}</Text>
+              <Pressable onPress={() => loadPolls()} style={styles.retryButton}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {isLoading ? (
+            <View style={styles.feedState}>
+              <ActivityIndicator color="#B0413E" size="large" />
+              <Text style={styles.loadingText}>Loading trending polls</Text>
+            </View>
+          ) : (
+            <FlatList
+              contentContainerStyle={styles.feedList}
+              data={polls}
+              keyExtractor={(poll) => String(poll.id)}
+              ListEmptyComponent={<EmptyPollState onRetry={() => loadPolls()} />}
+              refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={() => loadPolls(true)} />
+              }
+              renderItem={({ item }) => (
+                <PollCard
+                  isVoting={votingPollId === item.id}
+                  onVote={(optionId) => vote(item.id, optionId)}
+                  poll={item}
+                />
+              )}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </>
+      )}
+
+      {activeTab === 'profile' && (
+        <ScrollView contentContainerStyle={styles.feedList} showsVerticalScrollIndicator={false}>
+          <ProfilePanel level={level} user={user} />
+          <View style={styles.actionPanel}>
+            <Text style={styles.actionTitle}>Gamified mobile profile</Text>
+            <Text style={styles.actionCopy}>
+              XP, streak, level, profile stats, and rankings are driven by backend user data.
+            </Text>
+          </View>
+        </ScrollView>
+      )}
+
+      {activeTab === 'leaderboard' && (
+        <ScrollView contentContainerStyle={styles.feedList} showsVerticalScrollIndicator={false}>
+          <LeaderboardPanel
+            currentUserId={user.id}
+            error={leaderboardError}
+            isLoading={isLeaderboardLoading}
+            onRefresh={loadLeaderboard}
+            users={leaderboard}
+          />
+        </ScrollView>
+      )}
+    </View>
   );
+}
+
+function TabButton({
+  active,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.segmentButton, active && styles.segmentButtonActive]}
+    >
+      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function ProfilePanel({ level, user }: { level: number; user: AuthUser }) {
+  return (
+    <View style={styles.profilePanel}>
+      <View>
+        <Text style={styles.profileName}>{user.displayName}</Text>
+        <Text style={styles.profileUsername}>@{user.username}</Text>
+      </View>
+      <View style={styles.metricGrid}>
+        <Metric label="Level" value={String(level)} />
+        <Metric label="XP" value={String(user.xp ?? 0)} />
+        <Metric label="Streak" value={String(user.streak ?? 0)} />
+        <Metric label="Votes" value={String(user.totalVotes ?? 0)} />
+        <Metric label="Polls" value={String(user.pollsCreated ?? 0)} />
+        <Metric label="Joined" value={formatMonth(user.createdAt)} />
+      </View>
+    </View>
+  );
+}
+
+function LeaderboardPanel({
+  currentUserId,
+  error,
+  isLoading,
+  onRefresh,
+  users,
+}: {
+  currentUserId: number;
+  error: string | null;
+  isLoading: boolean;
+  onRefresh: () => void;
+  users: AuthUser[];
+}) {
+  return (
+    <View style={styles.profilePanel}>
+      <View style={styles.progressHeader}>
+        <Text style={styles.panelTitle}>Leaderboard</Text>
+        <Pressable onPress={onRefresh} style={styles.smallButton}>
+          <Text style={styles.smallButtonText}>Refresh</Text>
+        </Pressable>
+      </View>
+
+      {isLoading ? (
+        <View style={styles.inlineState}>
+          <ActivityIndicator color="#B0413E" />
+          <Text style={styles.inlineStateText}>Loading real rankings</Text>
+        </View>
+      ) : error ? (
+        <Text style={styles.errorText}>{error}</Text>
+      ) : users.length === 0 ? (
+        <View style={styles.inlineState}>
+          <Text style={styles.inlineStateText}>No ranked users yet.</Text>
+        </View>
+      ) : (
+        users.map((rankedUser, index) => (
+          <LeaderboardRow
+            currentUserId={currentUserId}
+            key={rankedUser.id}
+            rank={index + 1}
+            user={rankedUser}
+          />
+        ))
+      )}
+    </View>
+  );
+}
+
+function LeaderboardRow({
+  currentUserId,
+  rank,
+  user,
+}: {
+  currentUserId: number;
+  rank: number;
+  user: AuthUser;
+}) {
+  const isCurrentUser = user.id === currentUserId;
+
+  return (
+    <View style={[styles.leaderboardRow, isCurrentUser && styles.leaderboardRowActive]}>
+      <Text style={styles.rankText}>#{rank}</Text>
+      <View style={styles.leaderboardIdentity}>
+        <Text style={styles.leaderboardName}>{user.displayName}</Text>
+        <Text style={styles.leaderboardUsername}>@{user.username}</Text>
+      </View>
+      <View style={styles.leaderboardScore}>
+        <Text style={styles.leaderboardXp}>{user.xp ?? 0}</Text>
+        <Text style={styles.leaderboardLabel}>XP</Text>
+      </View>
+    </View>
+  );
+}
+
+function getLevel(xp: number) {
+  return Math.floor(xp / 500) + 1;
+}
+
+function getLevelProgress(xp: number) {
+  const current = xp % 500;
+  return {
+    current,
+    percent: Math.min(100, Math.round((current / 500) * 100)),
+  };
+}
+
+function formatMonth(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'New';
+
+  return date.toLocaleDateString('en-IN', {
+    month: 'short',
+    year: '2-digit',
+  });
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -271,6 +567,119 @@ function Metric({ label, value }: { label: string; value: string }) {
       <Text style={styles.metricLabel}>{label}</Text>
     </View>
   );
+}
+
+function EmptyPollState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyTitle}>No trending polls yet</Text>
+      <Text style={styles.emptyCopy}>
+        Pull to refresh or retry once the backend has generated fresh polls.
+      </Text>
+      <Pressable onPress={onRetry} style={styles.secondaryButton}>
+        <Text style={styles.secondaryButtonText}>Refresh</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function PollCard({
+  isVoting,
+  onVote,
+  poll,
+}: {
+  isVoting: boolean;
+  onVote: (optionId: number) => void;
+  poll: ApiPoll;
+}) {
+  const expiresAt = new Date(poll.expiresAt);
+  const isExpired = !poll.isActive || expiresAt.getTime() < Date.now();
+  const canVote = !poll.hasVoted && !isExpired && !isVoting;
+
+  return (
+    <View style={styles.pollCard}>
+      <View style={styles.pollMetaRow}>
+        <Text style={styles.categoryPill}>{poll.category || 'General'}</Text>
+        <Text style={styles.pollMeta}>{poll.totalVotes} votes</Text>
+      </View>
+
+      <Text style={styles.pollQuestion}>{poll.question}</Text>
+      {Boolean(poll.description) && <Text style={styles.pollDescription}>{poll.description}</Text>}
+
+      <View style={styles.optionList}>
+        {poll.options.map((option) => (
+          <PollOptionButton
+            canVote={canVote}
+            isSelected={poll.userVotedOptionId === option.id}
+            isVoting={isVoting}
+            key={option.id}
+            onPress={() => onVote(option.id)}
+            option={option}
+            showResults={poll.hasVoted || isExpired}
+          />
+        ))}
+      </View>
+
+      <Text style={styles.pollFooter}>
+        {poll.hasVoted
+          ? 'Your vote is counted.'
+          : isExpired
+            ? 'This poll has ended.'
+            : `Ends ${formatRelativeDate(expiresAt)}`}
+      </Text>
+    </View>
+  );
+}
+
+function PollOptionButton({
+  canVote,
+  isSelected,
+  isVoting,
+  onPress,
+  option,
+  showResults,
+}: {
+  canVote: boolean;
+  isSelected: boolean;
+  isVoting: boolean;
+  onPress: () => void;
+  option: ApiPollOption;
+  showResults: boolean;
+}) {
+  const percentage = Math.round(option.votePercentage || 0);
+
+  return (
+    <Pressable
+      disabled={!canVote}
+      onPress={onPress}
+      style={[styles.optionButton, isSelected && styles.optionButtonSelected]}
+    >
+      {showResults && <View style={[styles.optionFill, { width: `${percentage}%` }]} />}
+      <View style={styles.optionContent}>
+        <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+          {option.text}
+        </Text>
+        {isVoting ? (
+          <ActivityIndicator color="#B0413E" />
+        ) : showResults ? (
+          <Text style={styles.optionPercent}>{percentage}%</Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function formatRelativeDate(date: Date) {
+  if (Number.isNaN(date.getTime())) return 'soon';
+
+  const diffMs = date.getTime() - Date.now();
+  const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+
+  if (diffHours <= 0) return 'soon';
+  if (diffHours < 24) return `in ${diffHours}h`;
+
+  const diffDays = Math.ceil(diffHours / 24);
+  return `in ${diffDays}d`;
 }
 
 const styles = StyleSheet.create({
@@ -298,6 +707,103 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0,
+  },
+  feedShell: {
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+  },
+  feedHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+  },
+  feedTitle: {
+    color: '#222222',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 34,
+  },
+  logoutButton: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E0D4',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  logoutButtonText: {
+    color: '#B0413E',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  compactStats: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 12,
+  },
+  rewardBanner: {
+    backgroundColor: '#233D4D',
+    borderRadius: 8,
+    gap: 4,
+    marginBottom: 12,
+    padding: 14,
+  },
+  rewardTitle: {
+    color: '#F4D35E',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  rewardCopy: {
+    color: '#E7EFF2',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 20,
+  },
+  feedError: {
+    alignItems: 'center',
+    backgroundColor: '#FBE9E7',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+    padding: 12,
+  },
+  feedErrorText: {
+    color: '#9F2E2B',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 20,
+  },
+  retryButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  retryButtonText: {
+    color: '#9F2E2B',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  feedState: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 14,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  feedList: {
+    gap: 14,
+    paddingBottom: 28,
   },
   hero: {
     paddingTop: 36,
@@ -455,6 +961,7 @@ const styles = StyleSheet.create({
     borderColor: '#E6E0D4',
     borderRadius: 8,
     borderWidth: 1,
+    flex: 1,
     minWidth: '47%',
     padding: 14,
   },
@@ -470,6 +977,130 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
     marginTop: 2,
+    textTransform: 'uppercase',
+  },
+  progressPanel: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E0D4',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 14,
+    marginBottom: 14,
+    padding: 18,
+  },
+  progressHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  levelPill: {
+    backgroundColor: '#F4D35E',
+    borderRadius: 8,
+    color: '#1F2B32',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    textTransform: 'uppercase',
+  },
+  progressTrack: {
+    backgroundColor: '#EEE8DC',
+    borderRadius: 8,
+    height: 12,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    backgroundColor: '#B0413E',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    top: 0,
+  },
+  progressCopy: {
+    color: '#54514A',
+    fontSize: 15,
+    letterSpacing: 0,
+    lineHeight: 22,
+  },
+  smallButton: {
+    backgroundColor: '#F7F5EF',
+    borderColor: '#E6E0D4',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  smallButtonText: {
+    color: '#233D4D',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  inlineState: {
+    alignItems: 'center',
+    gap: 10,
+    padding: 18,
+  },
+  inlineStateText: {
+    color: '#54514A',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  leaderboardRow: {
+    alignItems: 'center',
+    backgroundColor: '#F9F7F2',
+    borderColor: '#E6E0D4',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 12,
+  },
+  leaderboardRowActive: {
+    backgroundColor: '#FFF6D8',
+    borderColor: '#F4D35E',
+  },
+  rankText: {
+    color: '#B0413E',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+    minWidth: 38,
+  },
+  leaderboardIdentity: {
+    flex: 1,
+  },
+  leaderboardName: {
+    color: '#222222',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  leaderboardUsername: {
+    color: '#756F63',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+    marginTop: 2,
+  },
+  leaderboardScore: {
+    alignItems: 'flex-end',
+  },
+  leaderboardXp: {
+    color: '#233D4D',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  leaderboardLabel: {
+    color: '#756F63',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
     textTransform: 'uppercase',
   },
   actionPanel: {
@@ -517,6 +1148,126 @@ const styles = StyleSheet.create({
     color: '#1F2B32',
     fontSize: 16,
     fontWeight: '800',
+    letterSpacing: 0,
+  },
+  emptyState: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E0D4',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 22,
+  },
+  emptyTitle: {
+    color: '#222222',
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+  emptyCopy: {
+    color: '#54514A',
+    fontSize: 15,
+    letterSpacing: 0,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  pollCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E0D4',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 14,
+    padding: 16,
+  },
+  pollMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  categoryPill: {
+    backgroundColor: '#F4D35E',
+    borderRadius: 8,
+    color: '#1F2B32',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    textTransform: 'uppercase',
+  },
+  pollMeta: {
+    color: '#756F63',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  pollQuestion: {
+    color: '#222222',
+    fontSize: 21,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 27,
+  },
+  pollDescription: {
+    color: '#54514A',
+    fontSize: 15,
+    letterSpacing: 0,
+    lineHeight: 22,
+  },
+  optionList: {
+    gap: 10,
+  },
+  optionButton: {
+    backgroundColor: '#F9F7F2',
+    borderColor: '#DED6C8',
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 52,
+    overflow: 'hidden',
+  },
+  optionButtonSelected: {
+    borderColor: '#B0413E',
+  },
+  optionFill: {
+    backgroundColor: '#F8E7B1',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    top: 0,
+  },
+  optionContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  optionText: {
+    color: '#26231F',
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 22,
+  },
+  optionTextSelected: {
+    color: '#9F2E2B',
+  },
+  optionPercent: {
+    color: '#233D4D',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  pollFooter: {
+    color: '#756F63',
+    fontSize: 13,
+    fontWeight: '700',
     letterSpacing: 0,
   },
 });
