@@ -14,6 +14,7 @@ export interface AuthUser {
   streak: number
   totalVotes: number
   pollsCreated: number
+  lastVoteDate?: string | null
   createdAt: string
 }
 

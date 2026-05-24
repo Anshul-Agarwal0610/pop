@@ -9,6 +9,7 @@ namespace BackendAPI.Models
         public int Streak { get; set; }
         public int TotalVotes { get; set; }
         public int PollsCreated { get; set; }
+        public DateTime? LastVoteDate { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 
@@ -27,5 +28,15 @@ namespace BackendAPI.Models
         public string VotedOptionText  { get; set; } = string.Empty;
         public int    TotalVotes       { get; set; }
         public DateTime VotedAt        { get; set; }
+    }
+
+    public class VoteRewardResult
+    {
+        public int Xp { get; set; }
+        public int Streak { get; set; }
+        public int TotalVotes { get; set; }
+        public int XpAwarded { get; set; }
+        public bool StreakAdvanced { get; set; }
+        public DateTime? LastVoteDate { get; set; }
     }
 }

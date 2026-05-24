@@ -64,6 +64,7 @@ CREATE TABLE Users (
     Streak       INT            NOT NULL DEFAULT 0,
     TotalVotes   INT            NOT NULL DEFAULT 0,
     PollsCreated INT            NOT NULL DEFAULT 0,
+    LastVoteDate DATE           NULL,
     CreatedAt    DATETIME2      NOT NULL DEFAULT GETUTCDATE()
 );
 GO

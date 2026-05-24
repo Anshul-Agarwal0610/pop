@@ -63,11 +63,11 @@ export function usePolls(): UsePollsResult {
   // Cast a vote — optimistically update percentages
   const castVote = useCallback(async (pollId: string, optionId: number) => {
     try {
-      const updated = await votesApi.cast({
+      const result = await votesApi.cast({
         pollId:   Number(pollId),
         optionId,
       })
-      const mapped = mapBackendPoll(updated)
+      const mapped = mapBackendPoll(result.poll)
       setPolls((prev) =>
         prev.map((p) => (p.id === pollId ? mapped : p))
       )

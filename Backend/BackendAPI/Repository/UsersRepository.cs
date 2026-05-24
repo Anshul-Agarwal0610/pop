@@ -1,6 +1,7 @@
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
+using BackendAPI.Services;
 using Dapper;
 
 namespace BackendAPI.Repository
@@ -52,22 +53,51 @@ namespace BackendAPI.Repository
             );
         }
 
-        public async Task UpdateXpAsync(long userId, int xpToAdd)
+        public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, int xpToAdd, DateTime utcNow)
         {
             using var conn = _context.CreateConnection();
-            await conn.ExecuteAsync(
-                "UPDATE Users SET Xp = Xp + @Xp, TotalVotes = TotalVotes + 1 WHERE Id = @Id",
-                new { Xp = xpToAdd, Id = userId }
-            );
-        }
+            conn.Open();
+            using var transaction = conn.BeginTransaction();
 
-        public async Task UpdateStreakAsync(long userId)
-        {
-            using var conn = _context.CreateConnection();
-            await conn.ExecuteAsync(
-                "UPDATE Users SET Streak = Streak + 1 WHERE Id = @Id",
-                new { Id = userId }
+            var user = await conn.QuerySingleAsync<User>(
+                @"SELECT Id, Xp, Streak, TotalVotes, LastVoteDate
+                  FROM Users WITH (UPDLOCK, ROWLOCK)
+                  WHERE Id = @Id",
+                new { Id = userId },
+                transaction
             );
+
+            var streak = GamificationRules.ApplyDailyStreak(
+                user.Streak,
+                user.LastVoteDate,
+                utcNow);
+
+            var updated = await conn.QuerySingleAsync<VoteRewardResult>(
+                @"UPDATE Users
+                  SET Xp = Xp + @XpAwarded,
+                      TotalVotes = TotalVotes + 1,
+                      Streak = @Streak,
+                      LastVoteDate = @LastVoteDate
+                  OUTPUT inserted.Xp,
+                         inserted.Streak,
+                         inserted.TotalVotes,
+                         @XpAwarded AS XpAwarded,
+                         @StreakAdvanced AS StreakAdvanced,
+                         inserted.LastVoteDate
+                  WHERE Id = @Id",
+                new
+                {
+                    Id = userId,
+                    XpAwarded = xpToAdd,
+                    streak.Streak,
+                    streak.StreakAdvanced,
+                    streak.LastVoteDate
+                },
+                transaction
+            );
+
+            transaction.Commit();
+            return updated;
         }
 
         // US-22: Vote history ─────────────────────────────────────────────────

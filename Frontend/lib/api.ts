@@ -45,6 +45,20 @@ export interface CastVoteRequest {
   optionId: number
 }
 
+export interface ApiVoteReward {
+  xp: number
+  streak: number
+  totalVotes: number
+  xpAwarded: number
+  streakAdvanced: boolean
+  lastVoteDate: string | null
+}
+
+export interface ApiCastVoteResponse {
+  poll: ApiPoll
+  reward: ApiVoteReward
+}
+
 export interface CreatePollPayload {
   question: string
   description: string
@@ -105,7 +119,7 @@ export const pollsApi = {
 export const votesApi = {
   /** Cast a vote — requires authentication. Returns the updated poll. */
   cast: (req: CastVoteRequest) =>
-    request<ApiPoll>("/api/votes", {
+    request<ApiCastVoteResponse>("/api/votes", {
       method: "POST",
       body: JSON.stringify(req),
     }),
@@ -124,6 +138,7 @@ export interface ApiUser {
   streak: number
   totalVotes: number
   pollsCreated: number
+  lastVoteDate?: string | null
   createdAt: string
 }
 
