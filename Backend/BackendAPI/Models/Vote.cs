@@ -15,4 +15,10 @@ namespace BackendAPI.Models
         public long OptionId { get; set; }
         // UserId is NOT accepted from the client — set server-side from JWT (US-15)
     }
+
+    public class CastVoteResponse
+    {
+        public Poll Poll { get; set; } = new();
+        public VoteRewardResult Reward { get; set; } = new();
+    }
 }

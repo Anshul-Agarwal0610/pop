@@ -43,6 +43,7 @@ namespace BackendAPI.Models
         public int Streak { get; set; }
         public int TotalVotes { get; set; }
         public int PollsCreated { get; set; }
+        public DateTime? LastVoteDate { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }
