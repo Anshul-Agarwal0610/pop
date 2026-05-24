@@ -56,7 +56,12 @@ namespace BackendAPI.Repository
             var pollDict   = new Dictionary<long, Poll>();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                "SELECT p.*, o.* FROM Polls p LEFT JOIN PollOptions o ON o.PollId = p.Id WHERE p.IsActive = 1 ORDER BY p.CreatedAt DESC",
+                @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                  FROM Polls p
+                  LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN PollOptions o ON o.PollId = p.Id
+                  WHERE p.IsActive = 1
+                  ORDER BY p.CreatedAt DESC",
                 (poll, option) =>
                 {
                     if (!pollDict.TryGetValue(poll.Id, out var existing))
@@ -77,13 +82,17 @@ namespace BackendAPI.Repository
 
         // ── GetById ───────────────────────────────────────────────────────────
 
-        public async Task<Poll?> GetByIdAsync(long id)
+        public async Task<Poll?> GetByIdAsync(long id, long? userId = null)
         {
             using var conn = _context.CreateConnection();
             var pollDict   = new Dictionary<long, Poll>();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                "SELECT p.*, o.* FROM Polls p LEFT JOIN PollOptions o ON o.PollId = p.Id WHERE p.Id = @Id",
+                @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                  FROM Polls p
+                  LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN PollOptions o ON o.PollId = p.Id
+                  WHERE p.Id = @Id",
                 (poll, option) =>
                 {
                     if (!pollDict.TryGetValue(poll.Id, out var existing))
@@ -99,7 +108,8 @@ namespace BackendAPI.Repository
                 splitOn: "Id"
             );
 
-            return pollDict.Values.FirstOrDefault();
+            var userVotes = await GetUserVotesAsync(userId);
+            return ApplyVoteState(pollDict.Values, userVotes).FirstOrDefault();
         }
 
         // ── GetTrending ───────────────────────────────────────────────────────
@@ -111,8 +121,9 @@ namespace BackendAPI.Repository
 
             // US-09: order by TotalVotes DESC directly
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                @"SELECT TOP (@Count) p.*, o.*
+                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
                   FROM Polls p
+                  LEFT JOIN Users u ON u.Id = p.CreatedByUserId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                   ORDER BY p.TotalVotes DESC, p.CreatedAt DESC",
@@ -143,8 +154,9 @@ namespace BackendAPI.Repository
             var pollDict   = new Dictionary<long, Poll>();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                @"SELECT TOP (@Count) p.*, o.*
+                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
                   FROM Polls p
+                  LEFT JOIN Users u ON u.Id = p.CreatedByUserId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                   ORDER BY p.CreatedAt DESC",
@@ -168,7 +180,7 @@ namespace BackendAPI.Repository
 
         // ── Create ────────────────────────────────────────────────────────────
 
-        public async Task<long> CreateAsync(CreatePollRequest request)
+        public async Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null)
         {
             using var conn = _context.CreateConnection();
             conn.Open();
@@ -179,11 +191,13 @@ namespace BackendAPI.Repository
                 var pollId = await conn.ExecuteScalarAsync<long>(
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
+                         CreatedByUserId,
                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
+                         @CreatedByUserId,
                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated);
-                      SELECT SCOPE_IDENTITY();",
+                      SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     new
                     {
                         request.Question,
@@ -193,7 +207,8 @@ namespace BackendAPI.Repository
                         request.SourceType,
                         request.SourceUrl,
                         request.ThumbnailUrl,
-                        request.IsAIGenerated
+                        request.IsAIGenerated,
+                        CreatedByUserId = createdByUserId
                     },
                     transaction
                 );
@@ -203,6 +218,15 @@ namespace BackendAPI.Repository
                     await conn.ExecuteAsync(
                         "INSERT INTO PollOptions (PollId, Text, VoteCount) VALUES (@PollId, @Text, 0)",
                         new { PollId = pollId, Text = optionText },
+                        transaction
+                    );
+                }
+
+                if (createdByUserId != null)
+                {
+                    await conn.ExecuteAsync(
+                        "UPDATE Users SET PollsCreated = PollsCreated + 1 WHERE Id = @UserId",
+                        new { UserId = createdByUserId },
                         transaction
                     );
                 }
