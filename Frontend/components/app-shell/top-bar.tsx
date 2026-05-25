@@ -18,7 +18,7 @@ interface TopBarProps {
 export function TopBar({
   onProfileClick,
   onSearchClick,
-  notificationCount = 3,
+  notificationCount = 0,
 }: TopBarProps) {
   const { user, isAuthenticated, logout } = useAuth()
   const router = useRouter()

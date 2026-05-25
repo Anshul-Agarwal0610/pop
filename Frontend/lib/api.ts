@@ -59,6 +59,22 @@ export interface ApiCastVoteResponse {
   reward: ApiVoteReward
 }
 
+export interface ApiNotification {
+  id: number
+  userId: number
+  type: "VoteMilestone" | "LevelUp" | "PollTrending" | "DailyReminder"
+  title: string
+  body: string
+  pollId: number | null
+  isRead: boolean
+  createdAt: string
+}
+
+export interface ApiNotificationsResponse {
+  notifications: ApiNotification[]
+  unreadCount: number
+}
+
 export interface CreatePollPayload {
   question: string
   description: string
@@ -143,6 +159,33 @@ export const votesApi = {
       method: "POST",
       body: JSON.stringify(req),
     }),
+}
+
+export const notificationsApi = {
+  getAll: async (): Promise<ApiNotificationsResponse> => {
+    const res = await fetch(`${API_BASE_URL}/api/notifications`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      throw new Error(`API ${res.status}: ${text}`)
+    }
+
+    return {
+      notifications: (await res.json()) as ApiNotification[],
+      unreadCount: Number(res.headers.get("X-Unread-Count") ?? 0),
+    }
+  },
+
+  markAllRead: () =>
+    request<void>("/api/notifications/read-all", { method: "POST" }),
+
+  markRead: (id: number) =>
+    request<void>(`/api/notifications/${id}/read`, { method: "PATCH" }),
 }
 
 // ── User endpoints ────────────────────────────────────────────────────────────
