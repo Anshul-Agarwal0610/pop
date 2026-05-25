@@ -50,10 +50,13 @@ namespace BackendAPI.Repository
 
         // ── GetAll ────────────────────────────────────────────────────────────
 
-        public async Task<IEnumerable<Poll>> GetAllAsync(long? userId = null)
+        public async Task<IEnumerable<Poll>> GetAllAsync(long? userId = null, string? category = null)
         {
             using var conn = _context.CreateConnection();
             var pollDict   = new Dictionary<long, Poll>();
+            var normalizedCategory = string.IsNullOrWhiteSpace(category)
+                ? null
+                : category.Trim();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
@@ -61,6 +64,7 @@ namespace BackendAPI.Repository
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
+                    AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                   ORDER BY p.CreatedAt DESC",
                 (poll, option) =>
                 {
@@ -73,6 +77,7 @@ namespace BackendAPI.Repository
                     if (option != null) existing.Options.Add(option);
                     return existing;
                 },
+                new { Category = normalizedCategory },
                 splitOn: "Id"
             );
 
@@ -114,10 +119,13 @@ namespace BackendAPI.Repository
 
         // ── GetTrending ───────────────────────────────────────────────────────
 
-        public async Task<IEnumerable<Poll>> GetTrendingAsync(int count = 10, long? userId = null)
+        public async Task<IEnumerable<Poll>> GetTrendingAsync(int count = 10, long? userId = null, string? category = null)
         {
             using var conn = _context.CreateConnection();
             var pollDict   = new Dictionary<long, Poll>();
+            var normalizedCategory = string.IsNullOrWhiteSpace(category)
+                ? null
+                : category.Trim();
 
             // US-09: order by TotalVotes DESC directly
             await conn.QueryAsync<Poll, PollOption, Poll>(
@@ -126,6 +134,7 @@ namespace BackendAPI.Repository
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
+                    AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                   ORDER BY p.TotalVotes DESC, p.CreatedAt DESC",
                 (poll, option) =>
                 {
@@ -138,7 +147,7 @@ namespace BackendAPI.Repository
                     if (option != null) existing.Options.Add(option);
                     return existing;
                 },
-                new { Count = count },
+                new { Count = count, Category = normalizedCategory },
                 splitOn: "Id"
             );
 
