@@ -14,6 +14,7 @@ import { PrivacyStep } from "./steps/privacy-step"
 import { PreviewStep } from "./steps/preview-step"
 import { getInitialDraft, STEPS, type PollDraft } from "@/lib/poll-creation"
 import { pollsApi } from "@/lib/api"
+import { DEFAULT_CATEGORY } from "@/lib/categories"
 import { cn } from "@/lib/utils"
 
 export function PollCreator() {
@@ -68,7 +69,7 @@ export function PollCreator() {
       await pollsApi.create({
         question:    draft.question.trim(),
         description: draft.description.trim(),
-        category:    "General",
+        category:    DEFAULT_CATEGORY,
         expiresAt,
         options:     ["Yes", "No"],          // default binary options
         sourceType:  "manual",

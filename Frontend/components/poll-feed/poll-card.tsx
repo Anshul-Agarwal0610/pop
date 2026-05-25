@@ -16,6 +16,7 @@ import {
   CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { CategoryBadge } from "@/components/category-badge"
 import { ShareButton } from "@/components/share-button"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
 import {
@@ -316,9 +317,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
         <div className="flex h-[45%] flex-col p-5">
           {/* Category & Time */}
           <div className="mb-3 flex flex-shrink-0 items-center gap-3">
-            <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-              {poll.category}
-            </span>
+            <CategoryBadge category={poll.category} />
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Clock className="h-3 w-3" />
               {poll.timePosted}

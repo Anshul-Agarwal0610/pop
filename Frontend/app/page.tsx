@@ -5,6 +5,7 @@ import Link from "next/link"
 import { BarChart3, ChevronRight, Clock, Loader2, Plus, TrendingUp, Trophy, Users, Zap } from "lucide-react"
 import { motion } from "framer-motion"
 import { AppShell } from "@/components/app-shell"
+import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { pollsApi, type ApiPoll } from "@/lib/api"
@@ -140,9 +141,7 @@ export default function HomePage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="mb-2 flex items-center gap-2">
-                        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
-                          {poll.category}
-                        </span>
+                        <CategoryBadge category={poll.category} className="px-2.5 py-0.5" />
                         {poll.isTrending && (
                           <span className="flex items-center gap-1 text-xs font-medium text-primary">
                             <TrendingUp className="h-3 w-3" />

@@ -15,6 +15,7 @@ import {
   Zap,
 } from "lucide-react"
 import { motion } from "framer-motion"
+import { CategoryBadge } from "@/components/category-badge"
 import { ShareButton } from "@/components/share-button"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
@@ -259,9 +260,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
 
         <div className="space-y-5 p-5 md:p-7">
           <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-              {poll.category}
-            </span>
+            <CategoryBadge category={poll.category} />
             <span className="flex items-center gap-1.5">
               <Clock className="h-4 w-4" />
               {relativeTime(poll.createdAt)}

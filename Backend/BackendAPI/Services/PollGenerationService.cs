@@ -79,6 +79,7 @@ namespace BackendAPI.Services
             var summary = string.IsNullOrWhiteSpace(topic.Summary)
                 ? "(no summary available)"
                 : topic.Summary;
+            var validCategories = string.Join(", ", CategoryCatalog.All.Select(category => category.Name));
 
             // $$""" = raw string with double-dollar: {{ }} = interpolation, { } = literal braces
             return $$"""
@@ -88,6 +89,7 @@ namespace BackendAPI.Services
                 Topic: {{topic.Title}}
                 Summary: {{summary}}
                 Category: {{topic.Category}}
+                Valid categories: {{validCategories}}
 
                 Respond with ONLY valid JSON — no markdown, no explanation:
                 {
@@ -99,7 +101,7 @@ namespace BackendAPI.Services
                 Rules:
                 - Question must be opinionated, specific and under 120 characters
                 - 2 to 4 options, mutually exclusive, short (under 40 chars each)
-                - Category must match the topic (e.g. Politics, Technology, Sports)
+                - Category must be one of the valid categories
                 - JSON only — no other text
                 """;
         }
@@ -155,11 +157,13 @@ namespace BackendAPI.Services
 
                 if (options.Count < 2) return null;
 
+                var resolvedCategory = string.IsNullOrWhiteSpace(category) ? fallbackCategory : category;
+
                 return new GeneratedPoll
                 {
                     Question = question!,
                     Options  = options,
-                    Category = string.IsNullOrWhiteSpace(category) ? fallbackCategory : category!
+                    Category = CategoryCatalog.NormalizeName(resolvedCategory)
                 };
             }
             catch

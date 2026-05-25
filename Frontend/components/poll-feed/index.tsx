@@ -3,7 +3,8 @@
 import { useState, useCallback, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { RefreshCw, Sparkles, AlertCircle, Loader2 } from "lucide-react"
-import { CategoryChips, FEED_CATEGORIES } from "./category-chips"
+import { FEED_CATEGORIES, normalizeCategoryName } from "@/lib/categories"
+import { CategoryChips } from "./category-chips"
 import { PollCard } from "./poll-card"
 import { VoteFeedback } from "./vote-feedback"
 import { StreakCounter } from "./streak-counter"
@@ -27,8 +28,15 @@ export function PollFeed() {
 
   useEffect(() => {
     const saved = window.localStorage.getItem("poll-feed-category")
-    if (saved && FEED_CATEGORIES.includes(saved as (typeof FEED_CATEGORIES)[number])) {
+    if (!saved) return
+    if (saved === "All") {
       setSelectedCategory(saved)
+      return
+    }
+
+    const normalized = normalizeCategoryName(saved)
+    if (FEED_CATEGORIES.includes(normalized as (typeof FEED_CATEGORIES)[number])) {
+      setSelectedCategory(normalized)
     }
   }, [])
 

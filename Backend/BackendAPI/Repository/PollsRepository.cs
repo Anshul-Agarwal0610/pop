@@ -32,6 +32,13 @@ namespace BackendAPI.Repository
             return rows.ToDictionary(r => r.PollId, r => r.OptionId);
         }
 
+        private static string? NormalizeFilterCategory(string? category)
+        {
+            return string.IsNullOrWhiteSpace(category)
+                ? null
+                : CategoryCatalog.NormalizeName(category);
+        }
+
         /// <summary>Applies HasVoted / UserVotedOptionId to a list of polls in-memory.</summary>
         private static IEnumerable<Poll> ApplyVoteState(
             IEnumerable<Poll> polls,
@@ -54,9 +61,7 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
             var pollDict   = new Dictionary<long, Poll>();
-            var normalizedCategory = string.IsNullOrWhiteSpace(category)
-                ? null
-                : category.Trim();
+            var normalizedCategory = NormalizeFilterCategory(category);
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
@@ -123,9 +128,7 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
             var pollDict   = new Dictionary<long, Poll>();
-            var normalizedCategory = string.IsNullOrWhiteSpace(category)
-                ? null
-                : category.Trim();
+            var normalizedCategory = NormalizeFilterCategory(category);
 
             // US-09: order by TotalVotes DESC directly
             await conn.QueryAsync<Poll, PollOption, Poll>(
@@ -161,9 +164,7 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
             var pollDict   = new Dictionary<long, Poll>();
-            var normalizedCategory = string.IsNullOrWhiteSpace(category)
-                ? null
-                : category.Trim();
+            var normalizedCategory = NormalizeFilterCategory(category);
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 @"WITH SearchPolls AS (
@@ -235,6 +236,7 @@ namespace BackendAPI.Repository
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
+            var normalizedCategory = CategoryCatalog.NormalizeName(request.Category);
 
             try
             {
@@ -252,7 +254,7 @@ namespace BackendAPI.Repository
                     {
                         request.Question,
                         request.Description,
-                        request.Category,
+                        Category = normalizedCategory,
                         request.ExpiresAt,
                         request.SourceType,
                         request.SourceUrl,

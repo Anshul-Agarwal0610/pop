@@ -2,6 +2,7 @@
 
 import { ImageOff, Newspaper, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { CategoryBadge } from "@/components/category-badge"
 import type { ApiPoll } from "@/lib/api"
 import { SOURCE_COLORS, SOURCE_LABELS, type IngestionSource } from "@/lib/poll-data"
 import { cn } from "@/lib/utils"
@@ -55,9 +56,7 @@ export function SearchResultCard({ poll, onSelect }: SearchResultCardProps) {
           {poll.question}
         </h3>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span className="rounded-full bg-secondary px-2 py-0.5 font-medium text-secondary-foreground">
-            {poll.category}
-          </span>
+          <CategoryBadge category={poll.category} className="px-2 py-0.5" />
           <span className="flex items-center gap-1">
             <Users className="h-3.5 w-3.5" />
             {poll.totalVotes.toLocaleString()}
