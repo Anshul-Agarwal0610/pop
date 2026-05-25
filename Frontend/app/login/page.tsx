@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { AppLogo } from "@/components/app-shell/app-logo"
 import { LoginForm } from "@/components/auth/login-form"
@@ -12,11 +12,22 @@ import { cn } from "@/lib/utils"
 type Tab = "login" | "register"
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
+  )
+}
+
+function LoginContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>("login")
+  const message = searchParams.get("message")
+  const redirect = searchParams.get("redirect") ?? "/"
 
   function handleSuccess() {
-    router.push("/")
+    router.push(redirect)
   }
 
   return (
@@ -34,6 +45,12 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="rounded-2xl bg-card p-8 shadow-sm ring-1 ring-border/50">
+          {message && (
+            <div className="mb-5 rounded-xl bg-primary/10 px-4 py-3 text-sm font-medium text-primary">
+              {message}
+            </div>
+          )}
+
           {/* Tab switcher */}
           <div className="mb-6 flex rounded-xl bg-secondary p-1">
             {(["login", "register"] as Tab[]).map((t) => (

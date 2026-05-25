@@ -106,6 +106,9 @@ export const pollsApi = {
   /** Fetch all polls. Includes hasVoted when authenticated. */
   getAll: () => request<ApiPoll[]>("/api/polls"),
 
+  /** Fetch one poll. Includes hasVoted when authenticated. */
+  getById: (id: number | string) => request<ApiPoll>(`/api/polls/${id}`),
+
   /** Create a new poll. Returns the created poll. */
   create: (payload: CreatePollPayload) =>
     request<ApiPoll>("/api/polls", {
