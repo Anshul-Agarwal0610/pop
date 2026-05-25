@@ -15,6 +15,7 @@ import {
   Zap,
 } from "lucide-react"
 import { motion } from "framer-motion"
+import { ShareButton } from "@/components/share-button"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { pollsApi, votesApi, type ApiPoll, type ApiPollOption } from "@/lib/api"
@@ -221,18 +222,26 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
 
           <div className="absolute inset-0 bg-gradient-to-t from-card via-card/20 to-transparent" />
 
-          <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-            {poll.isTrending && (
-              <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">
-                Trending
-              </span>
-            )}
-            {poll.isAIGenerated && (
-              <span className="flex items-center gap-1.5 rounded-full bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-400 ring-1 ring-violet-500/30">
-                <Sparkles className="h-3 w-3" />
-                AI Poll
-              </span>
-            )}
+          <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {poll.isTrending && (
+                <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">
+                  Trending
+                </span>
+              )}
+              {poll.isAIGenerated && (
+                <span className="flex items-center gap-1.5 rounded-full bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-400 ring-1 ring-violet-500/30">
+                  <Sparkles className="h-3 w-3" />
+                  AI Poll
+                </span>
+              )}
+            </div>
+
+            <ShareButton
+              className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background"
+              pollId={poll.id}
+              title={poll.question}
+            />
           </div>
 
           <div

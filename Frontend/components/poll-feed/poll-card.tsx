@@ -16,6 +16,7 @@ import {
   CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ShareButton } from "@/components/share-button"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
 import {
   Tooltip,
@@ -223,7 +224,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
           )}
 
           {/* ── Top Badges ───────────────────────────────────────────────── */}
-          <div className="absolute left-4 right-4 top-4 flex items-start justify-between">
+          <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1.5">
               {poll.trending && (
                 <motion.div
@@ -249,18 +250,26 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
               )}
             </div>
 
-            {/* XP Reward — hidden on voted cards */}
-            {!hasVoted && (
-              <motion.div
-                className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-amber-950 shadow-lg"
-                initial={{ scale: 0, y: -20 }}
-                animate={{ scale: 1, y: 0 }}
-                transition={{ delay: 0.3, type: "spring" }}
-              >
-                <Zap className="h-3.5 w-3.5 fill-current" />
-                <span className="text-xs font-bold">+{poll.xpReward} XP</span>
-              </motion.div>
-            )}
+            <div className="flex flex-col items-end gap-2">
+              <ShareButton
+                className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background"
+                pollId={poll.id}
+                title={poll.question}
+              />
+
+              {/* XP Reward — hidden on voted cards */}
+              {!hasVoted && (
+                <motion.div
+                  className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-amber-950 shadow-lg"
+                  initial={{ scale: 0, y: -20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  transition={{ delay: 0.3, type: "spring" }}
+                >
+                  <Zap className="h-3.5 w-3.5 fill-current" />
+                  <span className="text-xs font-bold">+{poll.xpReward} XP</span>
+                </motion.div>
+              )}
+            </div>
           </div>
 
           {/* ── Source Badge ─────────────────────────────────────────────── */}
