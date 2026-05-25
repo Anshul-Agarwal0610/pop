@@ -19,7 +19,7 @@ export function PollFeed() {
   const [currentIndex, setCurrentIndex]   = useState(0)
   const [streak, setStreak]               = useState(0)
   const [totalXp, setTotalXp]             = useState(1250)
-  const [currentVote, setCurrentVote]     = useState<"yes" | "no" | null>(null)
+  const [currentVote, setCurrentVote]     = useState<"yes" | "no" | "option" | null>(null)
   const [sessionXp, setSessionXp]         = useState(0)
 
   const currentPoll: Poll | undefined = polls[currentIndex]
@@ -40,22 +40,15 @@ export function PollFeed() {
   }, [])
 
   const handleVote = useCallback(
-    async (vote: "yes" | "no") => {
+    async (optionId: number, feedback: "yes" | "no" | "option") => {
       if (!currentPoll || currentVote) return
 
-      setCurrentVote(vote)
+      setCurrentVote(feedback)
       setStreak((s) => s + 1)
       setTotalXp((xp) => xp + currentPoll.xpReward)
       setSessionXp((xp) => xp + currentPoll.xpReward)
 
-      // Map yes → options[0], no → options[last]
-      if (currentPoll.options && currentPoll.options.length >= 2) {
-        const optionId =
-          vote === "yes"
-            ? currentPoll.options[0].id
-            : currentPoll.options[currentPoll.options.length - 1].id
-        await castVote(currentPoll.id, optionId)
-      }
+      await castVote(currentPoll.id, optionId)
     },
     [currentPoll, currentVote, castVote]
   )
