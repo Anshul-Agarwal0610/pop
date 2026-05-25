@@ -11,11 +11,16 @@ using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Controllers ───────────────────────────────────────────────────────────
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 
 // ── Swagger ───────────────────────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();
@@ -52,6 +57,7 @@ builder.Services.AddScoped<IAuthRepository,          AuthRepository>();
 builder.Services.AddScoped<IPollsRepository,         PollsRepository>();
 builder.Services.AddScoped<IVotesRepository,         VotesRepository>();
 builder.Services.AddScoped<IUsersRepository,         UsersRepository>();
+builder.Services.AddScoped<INotificationsRepository, NotificationsRepository>();
 builder.Services.AddScoped<IDashboardRepository,     DashboardRepository>();
 builder.Services.AddScoped<ITrendingTopicRepository, TrendingTopicRepository>();
 
@@ -103,7 +109,8 @@ builder.Services.AddCors(options =>
         policy
             .WithOrigins("http://localhost:3000", "https://localhost:3000")
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .WithExposedHeaders("X-Unread-Count");
     });
 });
 

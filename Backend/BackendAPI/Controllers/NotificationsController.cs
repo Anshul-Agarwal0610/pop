@@ -1,0 +1,64 @@
+using BackendAPI.Interfaces;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+
+namespace BackendAPI.Controllers
+{
+    [ApiController]
+    [Authorize]
+    [Route("api/[controller]")]
+    public class NotificationsController : ControllerBase
+    {
+        private readonly INotificationsRepository _notificationsRepo;
+
+        public NotificationsController(INotificationsRepository notificationsRepo)
+        {
+            _notificationsRepo = notificationsRepo;
+        }
+
+        private long? CurrentUserId()
+        {
+            var claim = User.FindFirst(ClaimTypes.NameIdentifier)
+                     ?? User.FindFirst("sub");
+            return claim != null && long.TryParse(claim.Value, out var id) ? id : null;
+        }
+
+        // GET /api/notifications
+        [HttpGet]
+        public async Task<IActionResult> Get()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
+            var notifications = await _notificationsRepo.GetForUserAsync(userId.Value, 30);
+            var unreadCount = await _notificationsRepo.GetUnreadCountAsync(userId.Value);
+            Response.Headers["X-Unread-Count"] = unreadCount.ToString();
+            return Ok(notifications);
+        }
+
+        // POST /api/notifications/read-all
+        [HttpPost("read-all")]
+        public async Task<IActionResult> MarkAllRead()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
+            await _notificationsRepo.MarkAllReadAsync(userId.Value);
+            return Ok(new { success = true });
+        }
+
+        // PATCH /api/notifications/{id}/read
+        [HttpPatch("{id}/read")]
+        public async Task<IActionResult> MarkRead(long id)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
+            var updated = await _notificationsRepo.MarkReadAsync(userId.Value, id);
+            return updated
+                ? Ok(new { success = true })
+                : NotFound(new { message = $"Notification {id} not found." });
+        }
+    }
+}
