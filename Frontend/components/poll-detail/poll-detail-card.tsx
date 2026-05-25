@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Flag,
   ImageOff,
   Loader2,
   Newspaper,
@@ -95,8 +96,10 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [voteError, setVoteError] = useState<string | null>(null)
+  const [reportMessage, setReportMessage] = useState<string | null>(null)
   const [authNotice, setAuthNotice] = useState<string | null>(null)
   const [votingOptionId, setVotingOptionId] = useState<number | null>(null)
+  const [isReporting, setIsReporting] = useState(false)
   const [xpAwarded, setXpAwarded] = useState<number | null>(null)
 
   const loadPoll = useCallback(async () => {
@@ -144,6 +147,32 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
       setVoteError(err instanceof Error ? err.message : "Could not record your vote")
     } finally {
       setVotingOptionId(null)
+    }
+  }
+
+  async function handleReport() {
+    if (authLoading || !poll || isReporting) return
+
+    if (!isAuthenticated) {
+      setAuthNotice("Sign in to report polls")
+      router.push(
+        `/login?message=${encodeURIComponent("Sign in to report polls")}&redirect=${encodeURIComponent(`/polls/${pollId}`)}`
+      )
+      return
+    }
+
+    setIsReporting(true)
+    setReportMessage(null)
+    try {
+      const response = await pollsApi.report(
+        pollId,
+        "User reported this poll from the poll detail page."
+      )
+      setReportMessage(response.message)
+    } catch (err) {
+      setReportMessage(err instanceof Error ? err.message : "Could not report this poll")
+    } finally {
+      setIsReporting(false)
     }
   }
 
@@ -301,6 +330,12 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
             </div>
           )}
 
+          {reportMessage && (
+            <div className="rounded-xl bg-secondary/70 px-4 py-3 text-sm font-medium text-muted-foreground">
+              {reportMessage}
+            </div>
+          )}
+
           {showResults ? (
             <div className="space-y-3">
               {poll.options.map((option) => (
@@ -337,6 +372,24 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
               ))}
             </div>
           )}
+
+          <div className="flex justify-end">
+            <Button
+              className="gap-2 text-muted-foreground"
+              disabled={isReporting}
+              onClick={handleReport}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {isReporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Flag className="h-4 w-4" />
+              )}
+              Report
+            </Button>
+          </div>
         </div>
       </article>
     </div>

@@ -14,6 +14,12 @@ namespace BackendAPI.Models
         public long? CreatedByUserId { get; set; }
         public string? CreatedByUsername { get; set; }
         public string? CreatedByDisplayName { get; set; }
+        public string ModerationStatus { get; set; } = PollModerationStatus.Published;
+        public string? ModerationReason { get; set; }
+        public long? ModeratedByUserId { get; set; }
+        public DateTime? ModeratedAt { get; set; }
+        public int ReportCount { get; set; }
+        public DateTime? LastReportedAt { get; set; }
 
         // ── Ingestion / AI fields (US-01) ────────────────────────────────────
         /// <summary>Origin of the poll: "rss" | "youtube" | "gnews" | "manual"</summary>
@@ -59,6 +65,44 @@ namespace BackendAPI.Models
     }
 
     // ── TrendingTopics staging table model (US-01) ───────────────────────────
+    public static class PollModerationStatus
+    {
+        public const string Draft = "Draft";
+        public const string PendingReview = "PendingReview";
+        public const string Published = "Published";
+        public const string Rejected = "Rejected";
+        public const string Flagged = "Flagged";
+
+        public static readonly HashSet<string> All = new(StringComparer.OrdinalIgnoreCase)
+        {
+            Draft,
+            PendingReview,
+            Published,
+            Rejected,
+            Flagged
+        };
+
+        public static string Normalize(string? status, string fallback = Published)
+        {
+            if (string.IsNullOrWhiteSpace(status)) return fallback;
+
+            return All.TryGetValue(status.Trim(), out var normalized)
+                ? normalized
+                : fallback;
+        }
+    }
+
+    public class ReportPollRequest
+    {
+        public string Reason { get; set; } = string.Empty;
+    }
+
+    public class ModeratePollRequest
+    {
+        public string Status { get; set; } = PollModerationStatus.Published;
+        public string? Reason { get; set; }
+    }
+
     public class TrendingTopic
     {
         public long Id { get; set; }
