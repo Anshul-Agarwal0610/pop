@@ -43,6 +43,19 @@ namespace BackendAPI.Controllers
             return Ok(polls);
         }
 
+        // GET /api/polls/search?q=keyword
+        [HttpGet("search")]
+        public async Task<IActionResult> Search(
+            [FromQuery] string? q,
+            [FromQuery] string? category = null)
+        {
+            if (string.IsNullOrWhiteSpace(q))
+                return BadRequest(new { message = "Search query is required." });
+
+            var polls = await _pollsRepo.SearchAsync(q, category, CurrentUserId());
+            return Ok(polls);
+        }
+
         // GET /api/polls/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)

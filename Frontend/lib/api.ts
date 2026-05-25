@@ -119,6 +119,13 @@ export const pollsApi = {
   /** Fetch one poll. Includes hasVoted when authenticated. */
   getById: (id: number | string) => request<ApiPoll>(`/api/polls/${id}`),
 
+  /** Search active polls by question. Includes hasVoted when authenticated. */
+  search: (q: string, category?: string) => {
+    const query = new URLSearchParams({ q })
+    if (category) query.set("category", category)
+    return request<ApiPoll[]>(`/api/polls/search?${query.toString()}`)
+  },
+
   /** Create a new poll. Returns the created poll. */
   create: (payload: CreatePollPayload) =>
     request<ApiPoll>("/api/polls", {

@@ -1,7 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Bell, LogIn, LogOut } from "lucide-react"
+import { Bell, LogIn, LogOut, Search } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AppLogo } from "./app-logo"
@@ -11,10 +11,15 @@ import { useAuth } from "@/contexts/auth-context"
 
 interface TopBarProps {
   onProfileClick: () => void
+  onSearchClick: () => void
   notificationCount?: number
 }
 
-export function TopBar({ onProfileClick, notificationCount = 3 }: TopBarProps) {
+export function TopBar({
+  onProfileClick,
+  onSearchClick,
+  notificationCount = 3,
+}: TopBarProps) {
   const { user, isAuthenticated, logout } = useAuth()
   const router = useRouter()
 
@@ -33,6 +38,19 @@ export function TopBar({ onProfileClick, notificationCount = 3 }: TopBarProps) {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button
+              aria-label="Search polls"
+              className="h-10 w-10 rounded-xl"
+              onClick={onSearchClick}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <Search className="h-5 w-5" />
+            </Button>
+          </motion.div>
+
           {isAuthenticated ? (
             <>
               {/* Notifications */}
