@@ -27,17 +27,19 @@ namespace BackendAPI.Controllers
 
         // GET /api/polls
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] string? category = null)
         {
-            var polls = await _pollsRepo.GetAllAsync(CurrentUserId());
+            var polls = await _pollsRepo.GetAllAsync(CurrentUserId(), category);
             return Ok(polls);
         }
 
         // GET /api/polls/trending
         [HttpGet("trending")]
-        public async Task<IActionResult> GetTrending([FromQuery] int count = 10)
+        public async Task<IActionResult> GetTrending(
+            [FromQuery] int count = 10,
+            [FromQuery] string? category = null)
         {
-            var polls = await _pollsRepo.GetTrendingAsync(count, CurrentUserId());
+            var polls = await _pollsRepo.GetTrendingAsync(count, CurrentUserId(), category);
             return Ok(polls);
         }
 

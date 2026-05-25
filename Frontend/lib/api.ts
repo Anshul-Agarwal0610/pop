@@ -98,13 +98,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ── Poll endpoints ────────────────────────────────────────────────────────────
 
+function categoryQuery(category?: string) {
+  return category ? `category=${encodeURIComponent(category)}` : ""
+}
+
 export const pollsApi = {
   /** Fetch trending polls for the feed. Includes hasVoted when authenticated. */
-  getTrending: (count = 20) =>
-    request<ApiPoll[]>(`/api/polls/trending?count=${count}`),
+  getTrending: (count = 20, category?: string) => {
+    const query = new URLSearchParams({ count: String(count) })
+    if (category) query.set("category", category)
+    return request<ApiPoll[]>(`/api/polls/trending?${query.toString()}`)
+  },
 
   /** Fetch all polls. Includes hasVoted when authenticated. */
-  getAll: () => request<ApiPoll[]>("/api/polls"),
+  getAll: (category?: string) => {
+    const query = categoryQuery(category)
+    return request<ApiPoll[]>(`/api/polls${query ? `?${query}` : ""}`)
+  },
 
   /** Fetch one poll. Includes hasVoted when authenticated. */
   getById: (id: number | string) => request<ApiPoll>(`/api/polls/${id}`),
