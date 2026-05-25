@@ -2,19 +2,8 @@
 
 import { useEffect, useRef } from "react"
 import { motion } from "framer-motion"
+import { categoryMeta, FEED_CATEGORIES } from "@/lib/categories"
 import { cn } from "@/lib/utils"
-
-export const FEED_CATEGORIES = [
-  "All",
-  "Technology",
-  "Society",
-  "Work",
-  "Environment",
-  "Culture",
-  "Sports",
-  "Health",
-  "Politics",
-] as const
 
 interface CategoryChipsProps {
   selected: string
@@ -35,6 +24,7 @@ export function CategoryChips({ selected, onSelect }: CategoryChipsProps) {
       <div className="flex gap-2 overflow-x-auto scroll-smooth px-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {FEED_CATEGORIES.map((category) => {
           const active = selected === category
+          const meta = category === "All" ? null : categoryMeta(category)
 
           return (
             <motion.button
@@ -43,7 +33,7 @@ export function CategoryChips({ selected, onSelect }: CategoryChipsProps) {
                 "relative h-9 flex-shrink-0 rounded-full px-4 text-sm font-semibold transition-colors",
                 active
                   ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  : meta?.chipClassName ?? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
               )}
               key={category}
               ref={(node) => {

@@ -1,4 +1,5 @@
 import type { ApiPoll } from "./api"
+import { normalizeCategoryName } from "./categories"
 
 // ── Source types ─────────────────────────────────────────────────────────────
 // Legacy UI sources (used by existing mock cards)
@@ -76,7 +77,7 @@ export function mapBackendPoll(p: ApiPoll): Poll {
   return {
     id:           String(p.id),
     question:     p.question,
-    category:     p.category,
+    category:     normalizeCategoryName(p.category),
     trending:     p.isTrending,
     mediaType:    "image",
     mediaUrl:     p.thumbnailUrl ?? PLACEHOLDER_IMAGE,
