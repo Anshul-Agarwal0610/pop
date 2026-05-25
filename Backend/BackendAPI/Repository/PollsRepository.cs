@@ -157,6 +157,47 @@ namespace BackendAPI.Repository
 
         // ── GetRecent ─────────────────────────────────────────────────────────
 
+        public async Task<IEnumerable<Poll>> SearchAsync(string query, string? category = null, long? userId = null)
+        {
+            using var conn = _context.CreateConnection();
+            var pollDict   = new Dictionary<long, Poll>();
+            var normalizedCategory = string.IsNullOrWhiteSpace(category)
+                ? null
+                : category.Trim();
+
+            await conn.QueryAsync<Poll, PollOption, Poll>(
+                @"WITH SearchPolls AS (
+                    SELECT TOP (50) p.*
+                    FROM Polls p
+                    WHERE p.IsActive = 1
+                      AND p.Question LIKE @Search
+                      AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
+                    ORDER BY p.TotalVotes DESC, p.CreatedAt DESC
+                  )
+                  SELECT sp.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                  FROM SearchPolls sp
+                  LEFT JOIN Users u ON u.Id = sp.CreatedByUserId
+                  LEFT JOIN PollOptions o ON o.PollId = sp.Id
+                  ORDER BY sp.TotalVotes DESC, sp.CreatedAt DESC",
+                (poll, option) =>
+                {
+                    if (!pollDict.TryGetValue(poll.Id, out var existing))
+                    {
+                        existing = poll;
+                        existing.Options = new List<PollOption>();
+                        pollDict[poll.Id] = existing;
+                    }
+                    if (option != null) existing.Options.Add(option);
+                    return existing;
+                },
+                new { Search = $"%{query.Trim()}%", Category = normalizedCategory },
+                splitOn: "Id"
+            );
+
+            var userVotes = await GetUserVotesAsync(userId);
+            return ApplyVoteState(pollDict.Values, userVotes);
+        }
+
         public async Task<IEnumerable<Poll>> GetRecentAsync(int count = 10)
         {
             using var conn = _context.CreateConnection();

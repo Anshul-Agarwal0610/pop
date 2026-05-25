@@ -5,6 +5,7 @@ import { TopBar } from "./top-bar"
 import { Sidebar } from "./sidebar"
 import { BottomNav } from "./bottom-nav"
 import { ProfileDrawer } from "./profile-drawer"
+import { SearchOverlay } from "@/components/search/search-overlay"
 import { cn } from "@/lib/utils"
 
 interface AppShellProps {
@@ -14,12 +15,14 @@ interface AppShellProps {
 
 export function AppShell({ children, hideBottomPadding }: AppShellProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-background">
       {/* Top Bar */}
       <TopBar
         onProfileClick={() => setIsProfileOpen(true)}
+        onSearchClick={() => setIsSearchOpen(true)}
         notificationCount={3}
       />
 
@@ -43,6 +46,11 @@ export function AppShell({ children, hideBottomPadding }: AppShellProps) {
       <ProfileDrawer
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
+      />
+
+      <SearchOverlay
+        open={isSearchOpen}
+        onOpenChange={setIsSearchOpen}
       />
     </div>
   )
