@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell"
 import { PollDetailCard } from "@/components/poll-detail/poll-detail-card"
 import { API_BASE_URL } from "@/lib/config"
 import type { ApiPoll } from "@/lib/api"
+import { appBaseUrl, isPollPubliclyShareable, pollShareUrl } from "@/lib/share"
 
 interface PollDetailPageProps {
   params: Promise<{ id: string }>
@@ -34,21 +35,27 @@ export async function generateMetadata({
   }
 
   const description = `${poll.totalVotes} votes - ${poll.category}`
+  const shareable = isPollPubliclyShareable(poll.category)
+  const url = pollShareUrl(poll.id)
 
   return {
     title: `${poll.question} | Pollify`,
-    description,
+    description: shareable ? description : "This Pollify poll is private.",
+    metadataBase: appBaseUrl() ? new URL(appBaseUrl()) : undefined,
+    alternates: shareable ? { canonical: url } : undefined,
+    robots: shareable ? undefined : { index: false, follow: false },
     openGraph: {
-      title: poll.question,
-      description,
-      images: poll.thumbnailUrl ? [{ url: poll.thumbnailUrl }] : undefined,
+      title: shareable ? poll.question : "Pollify",
+      description: shareable ? description : "This poll is not publicly shareable.",
+      images: shareable && poll.thumbnailUrl ? [{ url: poll.thumbnailUrl }] : undefined,
       type: "article",
+      url: shareable ? url : undefined,
     },
     twitter: {
-      card: poll.thumbnailUrl ? "summary_large_image" : "summary",
-      title: poll.question,
-      description,
-      images: poll.thumbnailUrl ? [poll.thumbnailUrl] : undefined,
+      card: shareable && poll.thumbnailUrl ? "summary_large_image" : "summary",
+      title: shareable ? poll.question : "Pollify",
+      description: shareable ? description : "This poll is not publicly shareable.",
+      images: shareable && poll.thumbnailUrl ? [poll.thumbnailUrl] : undefined,
     },
   }
 }

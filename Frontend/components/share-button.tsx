@@ -5,23 +5,17 @@ import type { MouseEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { appBaseUrl, isPollPubliclyShareable } from "@/lib/share"
 
 interface ShareButtonProps {
   pollId: number | string
   title: string
   className?: string
+  category?: string | null
+  disabledReason?: string
+  path?: string
+  text?: string
   variant?: "default" | "secondary" | "ghost" | "outline"
-}
-
-function appBaseUrl() {
-  const configured = process.env.NEXT_PUBLIC_BASE_URL
-  if (configured) return configured.replace(/\/+$/, "")
-
-  if (typeof window !== "undefined") {
-    return window.location.origin
-  }
-
-  return ""
 }
 
 function showShareToast(title: "Link copied!" | "Shared!") {
@@ -31,17 +25,21 @@ function showShareToast(title: "Link copied!" | "Shared!") {
 
 export function ShareButton({
   className,
+  category,
+  disabledReason,
+  path,
   pollId,
+  text,
   title,
   variant = "secondary",
 }: ShareButtonProps) {
   async function sharePoll(event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
 
-    const url = `${appBaseUrl()}/polls/${pollId}`
+    const url = `${appBaseUrl()}${path ?? `/polls/${pollId}`}`
     const shareData = {
       title,
-      text: title,
+      text: text ?? title,
       url,
     }
 
@@ -62,9 +60,13 @@ export function ShareButton({
     }
   }
 
+  if (!isPollPubliclyShareable(category)) {
+    return null
+  }
+
   return (
     <Button
-      aria-label="Share poll"
+      aria-label={disabledReason ?? "Share poll"}
       className={cn("gap-2", className)}
       onClick={sharePoll}
       onPointerDown={(event) => event.stopPropagation()}

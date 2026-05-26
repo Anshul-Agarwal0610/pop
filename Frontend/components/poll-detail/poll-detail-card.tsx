@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   AlertCircle,
   ArrowLeft,
@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { pollsApi, votesApi, type ApiPoll, type ApiPollOption } from "@/lib/api"
 import { SOURCE_COLORS, SOURCE_LABELS, type IngestionSource } from "@/lib/poll-data"
+import { pollShareText, resultShareText } from "@/lib/share"
 import { cn } from "@/lib/utils"
 
 interface PollDetailCardProps {
@@ -91,6 +92,7 @@ function ResultBar({
 
 export function PollDetailCard({ pollId }: PollDetailCardProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [poll, setPoll] = useState<ApiPoll | null>(null)
   const [loading, setLoading] = useState(true)
@@ -220,7 +222,11 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   }
 
   const style = sourceStyle(poll.sourceType)
-  const showResults = poll.hasVoted || expired
+  const resultView = searchParams.get("view") === "results"
+  const showResults = poll.hasVoted || expired || resultView
+  const selectedOption = poll.options.find((option) => option.id === poll.userVotedOptionId)
+  const leadingOption = [...poll.options].sort((a, b) => (b.votePercentage ?? 0) - (a.votePercentage ?? 0))[0]
+  const resultOption = selectedOption ?? leadingOption
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6">
@@ -268,8 +274,10 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
             </div>
 
             <ShareButton
+              category={poll.category}
               className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background"
               pollId={poll.id}
+              text={pollShareText(poll)}
               title={poll.question}
             />
           </div>
@@ -346,8 +354,18 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
                 />
               ))}
               <p className="text-center text-sm text-muted-foreground">
-                {poll.hasVoted ? "You already voted" : "This poll has ended"}
+                {poll.hasVoted ? "You already voted" : expired ? "This poll has ended" : "Results preview"}
               </p>
+              <div className="flex justify-center">
+                <ShareButton
+                  category={poll.category}
+                  path={`/polls/${poll.id}?view=results`}
+                  pollId={poll.id}
+                  text={resultShareText(poll, resultOption)}
+                  title={`Poll result: ${poll.question}`}
+                  variant="outline"
+                />
+              </div>
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">

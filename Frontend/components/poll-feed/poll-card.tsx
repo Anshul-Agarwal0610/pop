@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
 import { CategoryBadge } from "@/components/category-badge"
 import { ShareButton } from "@/components/share-button"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
+import { pollShareText, resultShareText } from "@/lib/share"
 import {
   Tooltip,
   TooltipContent,
@@ -152,6 +153,9 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
   const yesOption       = poll.options?.[0]
   const noOption        = poll.options?.[poll.options.length - 1]
   const resultColors    = ["emerald", "red", "blue", "amber"] as const
+  const userResultOption = pollOptions.find((option) => option.id === poll.userVotedOptionId)
+  const leadingOption = [...pollOptions].sort((a, b) => (b.votePercentage ?? 0) - (a.votePercentage ?? 0))[0]
+  const resultOption = userResultOption ?? leadingOption
 
   function handleDragEnd(_: unknown, info: PanInfo) {
     if (hasVoted || !isBinaryPoll) return
@@ -276,8 +280,10 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
 
             <div className="flex flex-col items-end gap-2">
               <ShareButton
+                category={poll.category}
                 className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background"
                 pollId={poll.id}
+                text={pollShareText(poll)}
                 title={poll.question}
               />
 
@@ -371,6 +377,16 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                 <p className="text-center text-xs text-muted-foreground pt-1">
                   You already voted
                 </p>
+                <div className="flex justify-center">
+                  <ShareButton
+                    category={poll.category}
+                    path={`/polls/${poll.id}?view=results`}
+                    pollId={poll.id}
+                    text={resultShareText(poll, resultOption)}
+                    title={`Poll result: ${poll.question}`}
+                    variant="outline"
+                  />
+                </div>
               </motion.div>
             ) : !isBinaryPoll ? (
               <div className="grid gap-2">
