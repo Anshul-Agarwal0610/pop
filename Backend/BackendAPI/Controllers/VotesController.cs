@@ -47,6 +47,9 @@ namespace BackendAPI.Controllers
             if (!poll.IsActive || poll.ExpiresAt < DateTime.UtcNow)
                 return BadRequest(new { message = "This poll has expired or is no longer active." });
 
+            if (!poll.ModerationStatus.Equals(PollModerationStatus.Published, StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "This poll is not open for voting." });
+
             var validOption = poll.Options.Any(o => o.Id == request.OptionId);
             if (!validOption)
                 return BadRequest(new { message = "Invalid option for this poll." });

@@ -69,6 +69,7 @@ namespace BackendAPI.Repository
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
+                    AND p.ModerationStatus = 'Published'
                     AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                   ORDER BY p.CreatedAt DESC",
                 (poll, option) =>
@@ -137,6 +138,7 @@ namespace BackendAPI.Repository
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
+                    AND p.ModerationStatus = 'Published'
                     AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                   ORDER BY p.TotalVotes DESC, p.CreatedAt DESC",
                 (poll, option) =>
@@ -171,6 +173,7 @@ namespace BackendAPI.Repository
                     SELECT TOP (50) p.*
                     FROM Polls p
                     WHERE p.IsActive = 1
+                      AND p.ModerationStatus = 'Published'
                       AND p.Question LIKE @Search
                       AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                     ORDER BY p.TotalVotes DESC, p.CreatedAt DESC
@@ -210,6 +213,7 @@ namespace BackendAPI.Repository
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
+                    AND p.ModerationStatus = 'Published'
                   ORDER BY p.CreatedAt DESC",
                 (poll, option) =>
                 {
@@ -231,12 +235,48 @@ namespace BackendAPI.Repository
 
         // ── Create ────────────────────────────────────────────────────────────
 
+        public async Task<IEnumerable<Poll>> GetModerationQueueAsync(string? status = null, int count = 50)
+        {
+            using var conn = _context.CreateConnection();
+            var pollDict = new Dictionary<long, Poll>();
+            var normalizedStatus = string.IsNullOrWhiteSpace(status)
+                ? null
+                : PollModerationStatus.Normalize(status, PollModerationStatus.PendingReview);
+
+            await conn.QueryAsync<Poll, PollOption, Poll>(
+                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                  FROM Polls p
+                  LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN PollOptions o ON o.PollId = p.Id
+                  WHERE p.IsActive = 1
+                    AND (@Status IS NULL OR p.ModerationStatus = @Status)
+                    AND (@Status IS NOT NULL OR p.ModerationStatus IN ('PendingReview', 'Flagged'))
+                  ORDER BY p.CreatedAt DESC",
+                (poll, option) =>
+                {
+                    if (!pollDict.TryGetValue(poll.Id, out var existing))
+                    {
+                        existing = poll;
+                        existing.Options = new List<PollOption>();
+                        pollDict[poll.Id] = existing;
+                    }
+                    if (option != null) existing.Options.Add(option);
+                    return existing;
+                },
+                new { Count = count, Status = normalizedStatus },
+                splitOn: "Id"
+            );
+
+            return pollDict.Values;
+        }
+
         public async Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null)
         {
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
             var normalizedCategory = CategoryCatalog.NormalizeName(request.Category);
+            var moderationStatus = PollModerationStatus.PendingReview;
 
             try
             {
@@ -244,11 +284,13 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated)
+                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated,
+                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated);
+                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated,
+                         @ModerationStatus, NULL, NULL, NULL, 0, NULL);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     new
                     {
@@ -260,6 +302,7 @@ namespace BackendAPI.Repository
                         request.SourceUrl,
                         request.ThumbnailUrl,
                         request.IsAIGenerated,
+                        ModerationStatus = moderationStatus,
                         CreatedByUserId = createdByUserId
                     },
                     transaction
@@ -295,6 +338,79 @@ namespace BackendAPI.Repository
 
         // ── Delete ────────────────────────────────────────────────────────────
 
+        public async Task<bool> ReportAsync(long pollId, long reportedByUserId, string reason)
+        {
+            using var conn = _context.CreateConnection();
+            conn.Open();
+            using var transaction = conn.BeginTransaction();
+
+            try
+            {
+                var rows = await conn.ExecuteAsync(
+                    @"UPDATE Polls
+                      SET ModerationStatus = 'Flagged',
+                          ModerationReason = @Reason,
+                          ReportCount = ReportCount + 1,
+                          LastReportedAt = GETUTCDATE()
+                      WHERE Id = @PollId AND IsActive = 1",
+                    new
+                    {
+                        PollId = pollId,
+                        Reason = string.IsNullOrWhiteSpace(reason) ? "Reported by user" : reason.Trim()
+                    },
+                    transaction);
+
+                if (rows == 0)
+                {
+                    transaction.Rollback();
+                    return false;
+                }
+
+                await conn.ExecuteAsync(
+                    @"INSERT INTO PollReports (PollId, ReportedByUserId, Reason, CreatedAt)
+                      VALUES (@PollId, @ReportedByUserId, @Reason, GETUTCDATE())",
+                    new
+                    {
+                        PollId = pollId,
+                        ReportedByUserId = reportedByUserId,
+                        Reason = string.IsNullOrWhiteSpace(reason) ? "Reported by user" : reason.Trim()
+                    },
+                    transaction);
+
+                transaction.Commit();
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+
+        public async Task<bool> ModerateAsync(long pollId, string status, string? reason, long moderatedByUserId)
+        {
+            using var conn = _context.CreateConnection();
+            var normalizedStatus = PollModerationStatus.Normalize(status);
+
+            var rows = await conn.ExecuteAsync(
+                @"UPDATE Polls
+                  SET ModerationStatus = @Status,
+                      ModerationReason = @Reason,
+                      ModeratedByUserId = @ModeratedByUserId,
+                      ModeratedAt = GETUTCDATE(),
+                      IsActive = CASE WHEN @Status = 'Rejected' THEN 0 ELSE IsActive END
+                  WHERE Id = @PollId",
+                new
+                {
+                    PollId = pollId,
+                    Status = normalizedStatus,
+                    Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
+                    ModeratedByUserId = moderatedByUserId
+                });
+
+            return rows > 0;
+        }
+
         public async Task<bool> DeleteAsync(long id)
         {
             using var conn = _context.CreateConnection();
@@ -314,7 +430,7 @@ namespace BackendAPI.Repository
                 UPDATE Polls SET IsTrending = 0 WHERE IsActive = 1;
                 UPDATE TOP (10) Polls SET IsTrending = 1
                 FROM Polls
-                WHERE IsActive = 1
+                WHERE IsActive = 1 AND ModerationStatus = 'Published'
                 ORDER BY TotalVotes DESC;
             ");
         }

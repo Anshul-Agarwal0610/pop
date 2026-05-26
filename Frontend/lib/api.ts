@@ -30,6 +30,12 @@ export interface ApiPoll {
   createdByUserId: number | null
   createdByUsername: string | null
   createdByDisplayName: string | null
+  moderationStatus: "Draft" | "PendingReview" | "Published" | "Rejected" | "Flagged"
+  moderationReason: string | null
+  moderatedByUserId: number | null
+  moderatedAt: string | null
+  reportCount: number
+  lastReportedAt: string | null
   sourceType: string | null
   sourceUrl: string | null
   thumbnailUrl: string | null
@@ -118,6 +124,11 @@ function categoryQuery(category?: string) {
   return category ? `category=${encodeURIComponent(category)}` : ""
 }
 
+export interface ModeratePollPayload {
+  status: ApiPoll["moderationStatus"]
+  reason?: string
+}
+
 export const pollsApi = {
   /** Fetch trending polls for the feed. Includes hasVoted when authenticated. */
   getTrending: (count = 20, category?: string) => {
@@ -146,6 +157,24 @@ export const pollsApi = {
   create: (payload: CreatePollPayload) =>
     request<ApiPoll>("/api/polls", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  report: (id: number | string, reason: string) =>
+    request<{ message: string }>(`/api/polls/${id}/report`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  getModerationQueue: (status?: ApiPoll["moderationStatus"], count = 50) => {
+    const query = new URLSearchParams({ count: String(count) })
+    if (status) query.set("status", status)
+    return request<ApiPoll[]>(`/api/polls/moderation?${query.toString()}`)
+  },
+
+  moderate: (id: number | string, payload: ModeratePollPayload) =>
+    request<ApiPoll>(`/api/polls/${id}/moderation`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
 }
