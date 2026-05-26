@@ -84,10 +84,11 @@ export interface ApiChallenge {
 export interface ApiNotification {
   id: number
   userId: number
-  type: "VoteMilestone" | "LevelUp" | "PollTrending" | "DailyReminder"
+  type: "VoteMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring"
   title: string
   body: string
   pollId: number | null
+  dedupKey: string | null
   isRead: boolean
   createdAt: string
 }
@@ -95,6 +96,11 @@ export interface ApiNotification {
 export interface ApiNotificationsResponse {
   notifications: ApiNotification[]
   unreadCount: number
+}
+
+export interface ApiNotificationPreference {
+  type: ApiNotification["type"]
+  isEnabled: boolean
 }
 
 export interface CreatePollPayload {
@@ -238,6 +244,15 @@ export const notificationsApi = {
 
   markRead: (id: number) =>
     request<void>(`/api/notifications/${id}/read`, { method: "PATCH" }),
+
+  getPreferences: () =>
+    request<ApiNotificationPreference[]>("/api/notifications/preferences"),
+
+  updatePreferences: (disabledTypes: ApiNotification["type"][]) =>
+    request<ApiNotificationPreference[]>("/api/notifications/preferences", {
+      method: "PUT",
+      body: JSON.stringify({ disabledTypes }),
+    }),
 }
 
 // ── User endpoints ────────────────────────────────────────────────────────────

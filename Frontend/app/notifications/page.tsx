@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation"
 import { Bell, CheckCheck, Loader2, RefreshCw, Sparkles, TrendingUp, Trophy } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { useAuth } from "@/contexts/auth-context"
-import { notificationsApi, type ApiNotification } from "@/lib/api"
+import { notificationsApi, type ApiNotification, type ApiNotificationPreference } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 function relativeTime(iso: string) {
@@ -24,9 +25,25 @@ function notificationIcon(type: ApiNotification["type"]) {
       return TrendingUp
     case "LevelUp":
       return Trophy
+    case "PollTrending":
+      return TrendingUp
+    case "ChallengeAvailable":
+    case "StreakReminder":
+    case "PollExpiring":
+      return Bell
     default:
       return Sparkles
   }
+}
+
+const preferenceLabels: Record<ApiNotification["type"], string> = {
+  VoteMilestone: "Vote milestones",
+  LevelUp: "Level ups",
+  PollTrending: "Trending polls",
+  DailyReminder: "Daily reminders",
+  ChallengeAvailable: "Daily challenges",
+  StreakReminder: "Streak risk",
+  PollExpiring: "Expiring polls",
 }
 
 export default function NotificationsPage() {
@@ -34,6 +51,8 @@ export default function NotificationsPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [notifications, setNotifications] = useState<ApiNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const [preferences, setPreferences] = useState<ApiNotificationPreference[]>([])
+  const [savingPreference, setSavingPreference] = useState<ApiNotification["type"] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,9 +62,13 @@ export default function NotificationsPage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await notificationsApi.getAll()
+      const [response, loadedPreferences] = await Promise.all([
+        notificationsApi.getAll(),
+        notificationsApi.getPreferences(),
+      ])
       setNotifications(response.notifications)
       setUnreadCount(response.unreadCount)
+      setPreferences(loadedPreferences)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load notifications")
     } finally {
@@ -78,6 +101,26 @@ export default function NotificationsPage() {
     setNotifications((current) => current.map((item) => ({ ...item, isRead: true })))
     setUnreadCount(0)
     await notificationsApi.markAllRead().catch(() => loadNotifications())
+  }
+
+  async function togglePreference(type: ApiNotification["type"], isEnabled: boolean) {
+    setSavingPreference(type)
+    const next = preferences.map((preference) =>
+      preference.type === type ? { ...preference, isEnabled } : preference
+    )
+    setPreferences(next)
+
+    try {
+      const disabledTypes = next
+        .filter((preference) => !preference.isEnabled)
+        .map((preference) => preference.type)
+      const updated = await notificationsApi.updatePreferences(disabledTypes)
+      setPreferences(updated)
+    } catch {
+      loadNotifications()
+    } finally {
+      setSavingPreference(null)
+    }
   }
 
   return (
@@ -148,6 +191,34 @@ export default function NotificationsPage() {
               Start voting to earn XP!
             </p>
           </div>
+        )}
+
+        {!loading && !error && preferences.length > 0 && (
+          <section className="mb-6 rounded-2xl border border-border/60 bg-card p-4">
+            <div className="mb-3">
+              <h2 className="font-semibold text-foreground">Notification preferences</h2>
+              <p className="text-sm text-muted-foreground">
+                Control which retention reminders appear in your inbox.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {preferences.map((preference) => (
+                <label
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border/50 px-3 py-2"
+                  key={preference.type}
+                >
+                  <span className="text-sm font-medium text-foreground">
+                    {preferenceLabels[preference.type]}
+                  </span>
+                  <Switch
+                    checked={preference.isEnabled}
+                    disabled={savingPreference === preference.type}
+                    onCheckedChange={(checked) => togglePreference(preference.type, checked)}
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
         )}
 
         {!loading && !error && notifications.length > 0 && (

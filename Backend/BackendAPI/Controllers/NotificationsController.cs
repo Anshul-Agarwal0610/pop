@@ -1,4 +1,5 @@
 using BackendAPI.Interfaces;
+using BackendAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -59,6 +60,31 @@ namespace BackendAPI.Controllers
             return updated
                 ? Ok(new { success = true })
                 : NotFound(new { message = $"Notification {id} not found." });
+        }
+
+        // GET /api/notifications/preferences
+        [HttpGet("preferences")]
+        public async Task<IActionResult> GetPreferences()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
+            var preferences = await _notificationsRepo.GetPreferencesAsync(userId.Value);
+            return Ok(preferences);
+        }
+
+        // PUT /api/notifications/preferences
+        [HttpPut("preferences")]
+        public async Task<IActionResult> UpdatePreferences(
+            [FromBody] UpdateNotificationPreferencesRequest request)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
+            var preferences = await _notificationsRepo.ReplacePreferencesAsync(
+                userId.Value,
+                request.DisabledTypes);
+            return Ok(preferences);
         }
     }
 }
