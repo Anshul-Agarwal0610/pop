@@ -5,7 +5,10 @@ namespace BackendAPI.Models
         VoteMilestone,
         LevelUp,
         PollTrending,
-        DailyReminder
+        DailyReminder,
+        ChallengeAvailable,
+        StreakReminder,
+        PollExpiring
     }
 
     public class Notification
@@ -16,6 +19,7 @@ namespace BackendAPI.Models
         public string Title { get; set; } = string.Empty;
         public string Body { get; set; } = string.Empty;
         public long? PollId { get; set; }
+        public string? DedupKey { get; set; }
         public bool IsRead { get; set; }
         public DateTime CreatedAt { get; set; }
     }
@@ -27,5 +31,17 @@ namespace BackendAPI.Models
         public string Title { get; set; } = string.Empty;
         public string Body { get; set; } = string.Empty;
         public long? PollId { get; set; }
+        public string? DedupKey { get; set; }
+    }
+
+    public class NotificationPreference
+    {
+        public NotificationType Type { get; set; }
+        public bool IsEnabled { get; set; } = true;
+    }
+
+    public class UpdateNotificationPreferencesRequest
+    {
+        public List<NotificationType> DisabledTypes { get; set; } = new();
     }
 }

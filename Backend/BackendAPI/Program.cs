@@ -79,6 +79,7 @@ builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
 // ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
 builder.Services.AddScoped<IngestionJob>();
 builder.Services.AddScoped<PollGenerationJob>();
+builder.Services.AddScoped<RetentionNotificationJob>();
 
 // ── Hangfire Dashboard Auth (US-11) ───────────────────────────────────────
 builder.Services.AddSingleton<HangfireDashboardAuthFilter>();
@@ -156,6 +157,11 @@ using (var scope = app.Services.CreateScope())
         "generate-polls-from-topics",
         job => job.RunAsync(),
         "5/35 * * * *");
+
+    recurringJobs.AddOrUpdate<RetentionNotificationJob>(
+        "create-retention-notifications",
+        job => job.RunAsync(),
+        "0 * * * *");
 }
 
 app.Run();
