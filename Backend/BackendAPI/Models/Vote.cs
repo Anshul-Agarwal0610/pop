@@ -20,5 +20,6 @@ namespace BackendAPI.Models
     {
         public Poll Poll { get; set; } = new();
         public VoteRewardResult Reward { get; set; } = new();
+        public IEnumerable<UserChallenge> Challenges { get; set; } = Enumerable.Empty<UserChallenge>();
     }
 }
