@@ -1,0 +1,185 @@
+using BackendAPI.Data;
+using BackendAPI.Interfaces;
+using BackendAPI.Models;
+using Dapper;
+
+namespace BackendAPI.Repository
+{
+    public class ChallengesRepository : IChallengesRepository
+    {
+        private readonly DapperContext _context;
+
+        public ChallengesRepository(DapperContext context)
+        {
+            _context = context;
+        }
+
+        public async Task EnsureDailyChallengeAsync(DateTime utcNow)
+        {
+            using var conn = _context.CreateConnection();
+            var start = utcNow.Date;
+            var end = start.AddDays(1);
+
+            var exists = await conn.ExecuteScalarAsync<int>(
+                @"SELECT COUNT(1)
+                  FROM Challenges
+                  WHERE StartAt = @StartAt
+                    AND EndAt = @EndAt
+                    AND Title = @Title",
+                new { StartAt = start, EndAt = end, Title = "Daily Pulse" });
+
+            if (exists > 0) return;
+
+            await conn.ExecuteAsync(
+                @"INSERT INTO Challenges
+                    (Title, Category, RequiredVotes, RewardXp, RewardBadge, StartAt, EndAt, IsActive, CreatedAt)
+                  VALUES
+                    (@Title, NULL, 3, 75, @RewardBadge, @StartAt, @EndAt, 1, GETUTCDATE())",
+                new
+                {
+                    Title = "Daily Pulse",
+                    RewardBadge = "Daily Voter",
+                    StartAt = start,
+                    EndAt = end
+                });
+        }
+
+        public async Task<IEnumerable<UserChallenge>> GetActiveForUserAsync(long userId, DateTime utcNow)
+        {
+            await EnsureDailyChallengeAsync(utcNow);
+
+            using var conn = _context.CreateConnection();
+            return await conn.QueryAsync<UserChallenge>(
+                @"SELECT
+                      c.Id AS ChallengeId,
+                      c.Title,
+                      c.Category,
+                      c.RequiredVotes,
+                      c.RewardXp,
+                      c.RewardBadge,
+                      c.StartAt,
+                      c.EndAt,
+                      COALESCE(uc.CurrentVotes, 0) AS CurrentVotes,
+                      CAST(COALESCE(uc.IsCompleted, 0) AS bit) AS IsCompleted,
+                      CAST(COALESCE(uc.RewardGranted, 0) AS bit) AS RewardGranted,
+                      uc.CompletedAt
+                  FROM Challenges c
+                  LEFT JOIN UserChallengeProgress uc
+                    ON uc.ChallengeId = c.Id AND uc.UserId = @UserId
+                  WHERE c.IsActive = 1
+                    AND c.StartAt <= @UtcNow
+                    AND c.EndAt > @UtcNow
+                  ORDER BY c.EndAt ASC, c.Id ASC",
+                new { UserId = userId, UtcNow = utcNow });
+        }
+
+        public async Task<IEnumerable<UserChallenge>> AdvanceForVoteAsync(long userId, Poll poll, DateTime utcNow)
+        {
+            await EnsureDailyChallengeAsync(utcNow);
+
+            using var conn = _context.CreateConnection();
+            conn.Open();
+            using var transaction = conn.BeginTransaction();
+
+            try
+            {
+                var challenges = (await conn.QueryAsync<Challenge>(
+                    @"SELECT *
+                      FROM Challenges
+                      WHERE IsActive = 1
+                        AND StartAt <= @UtcNow
+                        AND EndAt > @UtcNow
+                        AND (Category IS NULL OR LOWER(Category) = LOWER(@Category))",
+                    new { UtcNow = utcNow, poll.Category },
+                    transaction)).ToList();
+
+                foreach (var challenge in challenges)
+                {
+                    await conn.ExecuteAsync(
+                        @"IF NOT EXISTS (
+                              SELECT 1 FROM UserChallengeProgress
+                              WHERE UserId = @UserId AND ChallengeId = @ChallengeId
+                          )
+                          BEGIN
+                              INSERT INTO UserChallengeProgress
+                                  (UserId, ChallengeId, CurrentVotes, IsCompleted, RewardGranted, CreatedAt, UpdatedAt)
+                              VALUES
+                                  (@UserId, @ChallengeId, 0, 0, 0, GETUTCDATE(), GETUTCDATE())
+                          END",
+                        new { UserId = userId, ChallengeId = challenge.Id },
+                        transaction);
+
+                    var progress = await conn.QuerySingleAsync<UserChallenge>(
+                        @"UPDATE UserChallengeProgress
+                          SET CurrentVotes = CASE
+                                  WHEN IsCompleted = 1 THEN CurrentVotes
+                                  ELSE CASE
+                                      WHEN CurrentVotes + 1 > @RequiredVotes THEN @RequiredVotes
+                                      ELSE CurrentVotes + 1
+                                  END
+                              END,
+                              IsCompleted = CASE
+                                  WHEN IsCompleted = 1 OR CurrentVotes + 1 >= @RequiredVotes THEN 1
+                                  ELSE 0
+                              END,
+                              CompletedAt = CASE
+                                  WHEN CompletedAt IS NULL AND CurrentVotes + 1 >= @RequiredVotes THEN GETUTCDATE()
+                                  ELSE CompletedAt
+                              END,
+                              UpdatedAt = GETUTCDATE()
+                          OUTPUT
+                              inserted.ChallengeId,
+                              @Title AS Title,
+                              @Category AS Category,
+                              @RequiredVotes AS RequiredVotes,
+                              @RewardXp AS RewardXp,
+                              @RewardBadge AS RewardBadge,
+                              @StartAt AS StartAt,
+                              @EndAt AS EndAt,
+                              inserted.CurrentVotes,
+                              inserted.IsCompleted,
+                              inserted.RewardGranted,
+                              inserted.CompletedAt
+                          WHERE UserId = @UserId AND ChallengeId = @ChallengeId",
+                        new
+                        {
+                            UserId = userId,
+                            ChallengeId = challenge.Id,
+                            challenge.Title,
+                            challenge.Category,
+                            challenge.RequiredVotes,
+                            challenge.RewardXp,
+                            challenge.RewardBadge,
+                            challenge.StartAt,
+                            challenge.EndAt
+                        },
+                        transaction);
+
+                    if (progress.IsCompleted && !progress.RewardGranted)
+                    {
+                        await conn.ExecuteAsync(
+                            "UPDATE Users SET Xp = Xp + @RewardXp WHERE Id = @UserId",
+                            new { UserId = userId, challenge.RewardXp },
+                            transaction);
+
+                        await conn.ExecuteAsync(
+                            @"UPDATE UserChallengeProgress
+                              SET RewardGranted = 1, UpdatedAt = GETUTCDATE()
+                              WHERE UserId = @UserId AND ChallengeId = @ChallengeId",
+                            new { UserId = userId, ChallengeId = challenge.Id },
+                            transaction);
+                    }
+                }
+
+                transaction.Commit();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+
+            return await GetActiveForUserAsync(userId, utcNow);
+        }
+    }
+}

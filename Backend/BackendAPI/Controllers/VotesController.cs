@@ -15,17 +15,20 @@ namespace BackendAPI.Controllers
         private readonly IUsersRepository _usersRepo;
         private readonly IPollsRepository _pollsRepo;
         private readonly INotificationsRepository _notificationsRepo;
+        private readonly IChallengesRepository _challengesRepo;
 
         public VotesController(
             IVotesRepository votesRepo,
             IUsersRepository usersRepo,
             IPollsRepository pollsRepo,
-            INotificationsRepository notificationsRepo)
+            INotificationsRepository notificationsRepo,
+            IChallengesRepository challengesRepo)
         {
             _votesRepo = votesRepo;
             _usersRepo = usersRepo;
             _pollsRepo = pollsRepo;
             _notificationsRepo = notificationsRepo;
+            _challengesRepo = challengesRepo;
         }
 
         // POST /api/votes  (US-15: requires authentication)
@@ -72,6 +75,7 @@ namespace BackendAPI.Controllers
                 userId,
                 GamificationRules.VoteXp(poll),
                 DateTime.UtcNow);
+            var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
 
             if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)
             {
@@ -101,7 +105,8 @@ namespace BackendAPI.Controllers
             return Ok(new CastVoteResponse
             {
                 Poll = updated!,
-                Reward = reward
+                Reward = reward,
+                Challenges = challenges
             });
         }
 

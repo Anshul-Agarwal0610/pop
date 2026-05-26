@@ -2,15 +2,29 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { BarChart3, Check, ChevronRight, Clock, Loader2, Plus, RefreshCw, SlidersHorizontal, TrendingUp, Trophy, Users, Zap } from "lucide-react"
+import {
+  BarChart3,
+  Check,
+  ChevronRight,
+  Clock,
+  Loader2,
+  Plus,
+  RefreshCw,
+  SlidersHorizontal,
+  Target,
+  TrendingUp,
+  Trophy,
+  Users,
+  Zap,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import { AppShell } from "@/components/app-shell"
 import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
-import { cn } from "@/lib/utils"
 import { POLL_CATEGORIES } from "@/lib/categories"
-import { pollsApi, usersApi, type ApiPoll } from "@/lib/api"
+import { challengesApi, pollsApi, usersApi, type ApiChallenge, type ApiPoll } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 function timeLeft(iso: string) {
   const diff = new Date(iso).getTime() - Date.now()
@@ -25,6 +39,7 @@ function timeLeft(iso: string) {
 export default function HomePage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [polls, setPolls] = useState<ApiPoll[]>([])
+  const [challenges, setChallenges] = useState<ApiChallenge[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [preferredCategories, setPreferredCategories] = useState<string[]>([])
@@ -42,6 +57,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isAuthenticated) {
       setPreferredCategories([])
+      setChallenges([])
       return
     }
 
@@ -52,6 +68,10 @@ export default function HomePage() {
         )
       })
       .catch(() => setPreferredCategories([]))
+
+    challengesApi.getActive()
+      .then(setChallenges)
+      .catch(() => setChallenges([]))
   }, [isAuthenticated])
 
   async function togglePreference(category: string) {
@@ -152,6 +172,57 @@ export default function HomePage() {
                 )
               })}
             </div>
+          </motion.div>
+        )}
+
+        {isAuthenticated && challenges.length > 0 && (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            transition={{ delay: 0.15 }}
+          >
+            <div className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold text-foreground">Daily Challenges</h2>
+            </div>
+
+            {challenges.map((challenge) => {
+              const progress = Math.min(100, Math.round((challenge.currentVotes / challenge.requiredVotes) * 100))
+              const remaining = Math.max(0, challenge.requiredVotes - challenge.currentVotes)
+
+              return (
+                <div
+                  className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50"
+                  key={challenge.challengeId}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground">{challenge.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {challenge.isCompleted
+                          ? `Completed. +${challenge.rewardXp} XP earned.`
+                          : `${remaining} more vote${remaining === 1 ? "" : "s"} for +${challenge.rewardXp} XP`}
+                      </p>
+                    </div>
+                    {challenge.rewardBadge && (
+                      <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                        {challenge.rewardBadge}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {challenge.currentVotes}/{challenge.requiredVotes} votes today
+                  </div>
+                </div>
+              )
+            })}
           </motion.div>
         )}
 

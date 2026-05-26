@@ -63,6 +63,22 @@ export interface ApiVoteReward {
 export interface ApiCastVoteResponse {
   poll: ApiPoll
   reward: ApiVoteReward
+  challenges: ApiChallenge[]
+}
+
+export interface ApiChallenge {
+  challengeId: number
+  title: string
+  category: string | null
+  requiredVotes: number
+  rewardXp: number
+  rewardBadge: string | null
+  startAt: string
+  endAt: string
+  currentVotes: number
+  isCompleted: boolean
+  rewardGranted: boolean
+  completedAt: string | null
 }
 
 export interface ApiNotification {
@@ -225,6 +241,10 @@ export const notificationsApi = {
 }
 
 // ── User endpoints ────────────────────────────────────────────────────────────
+
+export const challengesApi = {
+  getActive: () => request<ApiChallenge[]>("/api/challenges/active"),
+}
 
 export interface ApiUser {
   id: number
