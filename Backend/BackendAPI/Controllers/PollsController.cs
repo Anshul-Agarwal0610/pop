@@ -58,6 +58,19 @@ namespace BackendAPI.Controllers
             return Ok(polls);
         }
 
+        // GET /api/polls/personalized
+        [HttpGet("personalized")]
+        public async Task<IActionResult> GetPersonalized(
+            [FromQuery] int count = 20,
+            [FromQuery] string? category = null)
+        {
+            var polls = await _pollsRepo.GetPersonalizedAsync(
+                CurrentUserId(),
+                Math.Clamp(count, 1, 50),
+                category);
+            return Ok(polls);
+        }
+
         // GET /api/polls/search?q=keyword
         [HttpGet("search")]
         public async Task<IActionResult> Search(

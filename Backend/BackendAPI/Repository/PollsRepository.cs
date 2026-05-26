@@ -162,6 +162,75 @@ namespace BackendAPI.Repository
 
         // ── GetRecent ─────────────────────────────────────────────────────────
 
+        public async Task<IEnumerable<Poll>> GetPersonalizedAsync(
+            long? userId = null,
+            int count = 20,
+            string? category = null)
+        {
+            if (userId == null)
+            {
+                return await GetTrendingAsync(count, null, category);
+            }
+
+            using var conn = _context.CreateConnection();
+            var pollDict = new Dictionary<long, Poll>();
+            var normalizedCategory = NormalizeFilterCategory(category);
+
+            await conn.QueryAsync<Poll, PollOption, Poll>(
+                @"WITH Activity AS (
+                    SELECT p.Category, COUNT_BIG(*) AS VoteCount
+                    FROM Votes v
+                    JOIN Polls p ON p.Id = v.PollId
+                    WHERE v.UserId = @UserId
+                      AND p.Category <> 'Health'
+                    GROUP BY p.Category
+                  ),
+                  RankedPolls AS (
+                    SELECT TOP (@Count)
+                      p.*,
+                      CAST(
+                        CASE WHEN pref.Category IS NOT NULL THEN 100 ELSE 0 END
+                        + CASE WHEN activity.Category IS NOT NULL THEN
+                            CASE WHEN activity.VoteCount > 10 THEN 50 ELSE activity.VoteCount * 5 END
+                          ELSE 0 END
+                        + CASE WHEN p.IsTrending = 1 THEN 20 ELSE 0 END
+                        + CASE WHEN p.CreatedAt >= DATEADD(day, -2, GETUTCDATE()) THEN 10 ELSE 0 END
+                        AS int
+                      ) AS PersonalizationScore
+                    FROM Polls p
+                    LEFT JOIN UserCategoryPreferences pref
+                      ON pref.UserId = @UserId AND LOWER(pref.Category) = LOWER(p.Category)
+                    LEFT JOIN Activity activity
+                      ON LOWER(activity.Category) = LOWER(p.Category)
+                    WHERE p.IsActive = 1
+                      AND p.ModerationStatus = 'Published'
+                      AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
+                    ORDER BY PersonalizationScore DESC, p.TotalVotes DESC, p.CreatedAt DESC
+                  )
+                  SELECT rp.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                  FROM RankedPolls rp
+                  LEFT JOIN Users u ON u.Id = rp.CreatedByUserId
+                  LEFT JOIN PollOptions o ON o.PollId = rp.Id
+                  ORDER BY rp.PersonalizationScore DESC, rp.TotalVotes DESC, rp.CreatedAt DESC",
+                (poll, option) =>
+                {
+                    if (!pollDict.TryGetValue(poll.Id, out var existing))
+                    {
+                        existing = poll;
+                        existing.Options = new List<PollOption>();
+                        pollDict[poll.Id] = existing;
+                    }
+                    if (option != null) existing.Options.Add(option);
+                    return existing;
+                },
+                new { UserId = userId.Value, Count = count, Category = normalizedCategory },
+                splitOn: "Id"
+            );
+
+            var userVotes = await GetUserVotesAsync(userId);
+            return ApplyVoteState(pollDict.Values, userVotes);
+        }
+
         public async Task<IEnumerable<Poll>> SearchAsync(string query, string? category = null, long? userId = null)
         {
             using var conn = _context.CreateConnection();

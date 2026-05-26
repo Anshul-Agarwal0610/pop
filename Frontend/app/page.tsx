@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { BarChart3, ChevronRight, Clock, Loader2, Plus, TrendingUp, Trophy, Users, Zap } from "lucide-react"
+import { BarChart3, Check, ChevronRight, Clock, Loader2, Plus, RefreshCw, SlidersHorizontal, TrendingUp, Trophy, Users, Zap } from "lucide-react"
 import { motion } from "framer-motion"
 import { AppShell } from "@/components/app-shell"
 import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
-import { pollsApi, type ApiPoll } from "@/lib/api"
+import { cn } from "@/lib/utils"
+import { POLL_CATEGORIES } from "@/lib/categories"
+import { pollsApi, usersApi, type ApiPoll } from "@/lib/api"
 
 function timeLeft(iso: string) {
   const diff = new Date(iso).getTime() - Date.now()
@@ -25,6 +27,8 @@ export default function HomePage() {
   const [polls, setPolls] = useState<ApiPoll[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [preferredCategories, setPreferredCategories] = useState<string[]>([])
+  const [savingPreferences, setSavingPreferences] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -34,6 +38,48 @@ export default function HomePage() {
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setPreferredCategories([])
+      return
+    }
+
+    usersApi.getCategoryPreferences()
+      .then((preferences) => {
+        setPreferredCategories(
+          preferences.filter((preference) => preference.isExplicit).map((preference) => preference.category)
+        )
+      })
+      .catch(() => setPreferredCategories([]))
+  }, [isAuthenticated])
+
+  async function togglePreference(category: string) {
+    const next = preferredCategories.includes(category)
+      ? preferredCategories.filter((item) => item !== category)
+      : [...preferredCategories, category]
+
+    setPreferredCategories(next)
+    setSavingPreferences(true)
+    try {
+      const preferences = await usersApi.updateCategoryPreferences(next)
+      setPreferredCategories(
+        preferences.filter((preference) => preference.isExplicit).map((preference) => preference.category)
+      )
+    } finally {
+      setSavingPreferences(false)
+    }
+  }
+
+  async function resetPreferences() {
+    setSavingPreferences(true)
+    try {
+      await usersApi.resetCategoryPreferences()
+      setPreferredCategories([])
+    } finally {
+      setSavingPreferences(false)
+    }
+  }
 
   const displayName = isAuthenticated ? user?.displayName ?? user?.username : "there"
   const stats = [
@@ -57,6 +103,57 @@ export default function HomePage() {
             {isAuthenticated ? "Your live activity is ready." : "Sign in to track XP, streaks, and poll history."}
           </p>
         </motion.div>
+
+        {isAuthenticated && (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50"
+            initial={{ opacity: 0, y: 20 }}
+            transition={{ delay: 0.08 }}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold text-foreground">Feed Preferences</h2>
+              </div>
+              <Button
+                className="gap-2 text-muted-foreground"
+                disabled={savingPreferences || preferredCategories.length === 0}
+                onClick={resetPreferences}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reset
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {POLL_CATEGORIES.filter((category) => category.name !== "Health").map((category) => {
+                const selected = preferredCategories.includes(category.name)
+
+                return (
+                  <button
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ring-1 transition-colors",
+                      selected
+                        ? "bg-primary text-primary-foreground ring-primary"
+                        : "bg-secondary text-secondary-foreground ring-border hover:bg-secondary/80"
+                    )}
+                    disabled={savingPreferences}
+                    key={category.name}
+                    onClick={() => togglePreference(category.name)}
+                    type="button"
+                  >
+                    {selected && <Check className="h-3.5 w-3.5" />}
+                    {category.name}
+                  </button>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
 
         <motion.div
           animate={{ opacity: 1, y: 0 }}

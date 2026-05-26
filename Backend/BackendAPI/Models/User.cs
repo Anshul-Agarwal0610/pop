@@ -39,4 +39,16 @@ namespace BackendAPI.Models
         public bool StreakAdvanced { get; set; }
         public DateTime? LastVoteDate { get; set; }
     }
+
+    public class UserCategoryPreference
+    {
+        public string Category { get; set; } = string.Empty;
+        public bool IsExplicit { get; set; }
+        public int VoteCount { get; set; }
+    }
+
+    public class UpdateCategoryPreferencesRequest
+    {
+        public List<string> Categories { get; set; } = new();
+    }
 }

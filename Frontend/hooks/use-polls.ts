@@ -30,7 +30,7 @@ export function usePolls(category?: string): UsePollsResult {
     setPolls([])
     setHasMore(true)
 
-    pollsApi.getTrending(PAGE_SIZE, category)
+    pollsApi.getPersonalized(PAGE_SIZE, category)
       .then((data) => {
         if (cancelled) return
         // US-19: filter out polls the user has already voted on

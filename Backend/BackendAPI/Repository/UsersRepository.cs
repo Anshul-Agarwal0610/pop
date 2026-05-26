@@ -120,5 +120,73 @@ namespace BackendAPI.Repository
                 new { UserId = userId, Count = count }
             );
         }
+
+        public async Task<IEnumerable<UserCategoryPreference>> GetCategoryPreferencesAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.QueryAsync<UserCategoryPreference>(
+                @"WITH ExplicitPrefs AS (
+                    SELECT Category
+                    FROM UserCategoryPreferences
+                    WHERE UserId = @UserId
+                  ),
+                  Activity AS (
+                    SELECT p.Category, COUNT_BIG(*) AS VoteCount
+                    FROM Votes v
+                    JOIN Polls p ON p.Id = v.PollId
+                    WHERE v.UserId = @UserId
+                      AND p.Category <> 'Health'
+                    GROUP BY p.Category
+                  )
+                  SELECT
+                    COALESCE(pref.Category, activity.Category) AS Category,
+                    CAST(CASE WHEN pref.Category IS NULL THEN 0 ELSE 1 END AS bit) AS IsExplicit,
+                    CAST(COALESCE(activity.VoteCount, 0) AS int) AS VoteCount
+                  FROM ExplicitPrefs pref
+                  FULL OUTER JOIN Activity activity ON LOWER(activity.Category) = LOWER(pref.Category)
+                  ORDER BY IsExplicit DESC, VoteCount DESC, Category ASC",
+                new { UserId = userId });
+        }
+
+        public async Task<IEnumerable<UserCategoryPreference>> ReplaceCategoryPreferencesAsync(
+            long userId,
+            IEnumerable<string> categories)
+        {
+            var normalized = categories
+                .Select(CategoryCatalog.NormalizeName)
+                .Where(category => !category.Equals("Health", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList();
+
+            using var conn = _context.CreateConnection();
+            conn.Open();
+            using var transaction = conn.BeginTransaction();
+
+            await conn.ExecuteAsync(
+                "DELETE FROM UserCategoryPreferences WHERE UserId = @UserId",
+                new { UserId = userId },
+                transaction);
+
+            foreach (var category in normalized)
+            {
+                await conn.ExecuteAsync(
+                    @"INSERT INTO UserCategoryPreferences (UserId, Category, CreatedAt)
+                      VALUES (@UserId, @Category, GETUTCDATE())",
+                    new { UserId = userId, Category = category },
+                    transaction);
+            }
+
+            transaction.Commit();
+            return await GetCategoryPreferencesAsync(userId);
+        }
+
+        public async Task ResetCategoryPreferencesAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync(
+                "DELETE FROM UserCategoryPreferences WHERE UserId = @UserId",
+                new { UserId = userId });
+        }
     }
 }
