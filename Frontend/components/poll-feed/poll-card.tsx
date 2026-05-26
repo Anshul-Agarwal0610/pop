@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion"
 import {
   TrendingUp,
@@ -14,11 +15,13 @@ import {
   Sparkles,
   ImageOff,
   CheckCircle2,
+  Megaphone,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CategoryBadge } from "@/components/category-badge"
 import { ShareButton } from "@/components/share-button"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
+import { pollsApi } from "@/lib/api"
 import { pollShareText, resultShareText } from "@/lib/share"
 import {
   Tooltip,
@@ -157,6 +160,11 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
   const leadingOption = [...pollOptions].sort((a, b) => (b.votePercentage ?? 0) - (a.votePercentage ?? 0))[0]
   const resultOption = userResultOption ?? leadingOption
 
+  useEffect(() => {
+    if (!isActive || !poll.isSponsored) return
+    pollsApi.recordImpression(poll.id).catch(() => undefined)
+  }, [isActive, poll.id, poll.isSponsored])
+
   function handleDragEnd(_: unknown, info: PanInfo) {
     if (hasVoted || !isBinaryPoll) return
     const threshold = 100
@@ -274,6 +282,19 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                 >
                   <Sparkles className="h-3 w-3 text-violet-400" />
                   <span className="text-xs font-medium text-violet-400">AI Poll</span>
+                </motion.div>
+              )}
+              {poll.isSponsored && (
+                <motion.div
+                  className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-amber-950 shadow-lg"
+                  initial={{ scale: 0, y: -20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  transition={{ delay: 0.28, type: "spring" }}
+                >
+                  <Megaphone className="h-3.5 w-3.5" />
+                  <span className="text-xs font-bold">
+                    Sponsored{poll.sponsorName ? ` by ${poll.sponsorName}` : ""}
+                  </span>
                 </motion.div>
               )}
             </div>

@@ -11,11 +11,16 @@ namespace BackendAPI.Controllers
     public class PollsController : ControllerBase
     {
         private readonly IPollsRepository _pollsRepo;
+        private readonly IBusinessRepository _businessRepo;
         private readonly IConfiguration _config;
 
-        public PollsController(IPollsRepository pollsRepo, IConfiguration config)
+        public PollsController(
+            IPollsRepository pollsRepo,
+            IBusinessRepository businessRepo,
+            IConfiguration config)
         {
             _pollsRepo = pollsRepo;
+            _businessRepo = businessRepo;
             _config = config;
         }
 
@@ -106,6 +111,14 @@ namespace BackendAPI.Controllers
             var poll = await _pollsRepo.GetByIdAsync(id, CurrentUserId());
             if (poll == null) return NotFound(new { message = $"Poll {id} not found." });
             return Ok(poll);
+        }
+
+        // POST /api/polls/{id}/impression
+        [HttpPost("{id}/impression")]
+        public async Task<IActionResult> RecordImpression(long id)
+        {
+            var tracked = await _businessRepo.RecordImpressionAsync(id);
+            return tracked ? Ok(new { success = true }) : NoContent();
         }
 
         // POST /api/polls

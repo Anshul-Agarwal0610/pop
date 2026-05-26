@@ -64,9 +64,12 @@ namespace BackendAPI.Repository
             var normalizedCategory = NormalizeFilterCategory(category);
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM Polls p
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
+                  LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND p.ModerationStatus = 'Published'
@@ -99,9 +102,12 @@ namespace BackendAPI.Repository
             var pollDict   = new Dictionary<long, Poll>();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM Polls p
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
+                  LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.Id = @Id",
                 (poll, option) =>
@@ -133,9 +139,12 @@ namespace BackendAPI.Repository
 
             // US-09: order by TotalVotes DESC directly
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM Polls p
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
+                  LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND p.ModerationStatus = 'Published'
@@ -207,9 +216,12 @@ namespace BackendAPI.Repository
                       AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                     ORDER BY PersonalizationScore DESC, p.TotalVotes DESC, p.CreatedAt DESC
                   )
-                  SELECT rp.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                  SELECT rp.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM RankedPolls rp
                   LEFT JOIN Users u ON u.Id = rp.CreatedByUserId
+                  LEFT JOIN BusinessAccounts b ON b.Id = rp.BusinessId
+                  LEFT JOIN BusinessCampaigns c ON c.Id = rp.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = rp.Id
                   ORDER BY rp.PersonalizationScore DESC, rp.TotalVotes DESC, rp.CreatedAt DESC",
                 (poll, option) =>
@@ -247,9 +259,12 @@ namespace BackendAPI.Repository
                       AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                     ORDER BY p.TotalVotes DESC, p.CreatedAt DESC
                   )
-                  SELECT sp.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                  SELECT sp.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM SearchPolls sp
                   LEFT JOIN Users u ON u.Id = sp.CreatedByUserId
+                  LEFT JOIN BusinessAccounts b ON b.Id = sp.BusinessId
+                  LEFT JOIN BusinessCampaigns c ON c.Id = sp.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = sp.Id
                   ORDER BY sp.TotalVotes DESC, sp.CreatedAt DESC",
                 (poll, option) =>
@@ -277,9 +292,12 @@ namespace BackendAPI.Repository
             var pollDict   = new Dictionary<long, Poll>();
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM Polls p
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
+                  LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND p.ModerationStatus = 'Published'
@@ -313,9 +331,12 @@ namespace BackendAPI.Repository
                 : PollModerationStatus.Normalize(status, PollModerationStatus.PendingReview);
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
-                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName, o.*
+                @"SELECT TOP (@Count) p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM Polls p
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
+                  LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND (@Status IS NULL OR p.ModerationStatus = @Status)

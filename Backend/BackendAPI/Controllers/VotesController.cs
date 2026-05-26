@@ -16,19 +16,22 @@ namespace BackendAPI.Controllers
         private readonly IPollsRepository _pollsRepo;
         private readonly INotificationsRepository _notificationsRepo;
         private readonly IChallengesRepository _challengesRepo;
+        private readonly IBusinessRepository _businessRepo;
 
         public VotesController(
             IVotesRepository votesRepo,
             IUsersRepository usersRepo,
             IPollsRepository pollsRepo,
             INotificationsRepository notificationsRepo,
-            IChallengesRepository challengesRepo)
+            IChallengesRepository challengesRepo,
+            IBusinessRepository businessRepo)
         {
             _votesRepo = votesRepo;
             _usersRepo = usersRepo;
             _pollsRepo = pollsRepo;
             _notificationsRepo = notificationsRepo;
             _challengesRepo = challengesRepo;
+            _businessRepo = businessRepo;
         }
 
         // POST /api/votes  (US-15: requires authentication)
@@ -95,6 +98,10 @@ namespace BackendAPI.Controllers
             if (updated != null)
             {
                 await CreateVoteMilestoneNotificationAsync(poll, updated.TotalVotes);
+                if (updated.IsSponsored)
+                {
+                    await _businessRepo.RecordVoteAsync(updated.Id);
+                }
             }
 
             if (updated != null)

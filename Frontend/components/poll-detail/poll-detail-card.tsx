@@ -10,6 +10,7 @@ import {
   Flag,
   ImageOff,
   Loader2,
+  Megaphone,
   Newspaper,
   Sparkles,
   Users,
@@ -119,6 +120,11 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   useEffect(() => {
     loadPoll()
   }, [loadPoll])
+
+  useEffect(() => {
+    if (!poll?.isSponsored) return
+    pollsApi.recordImpression(poll.id).catch(() => undefined)
+  }, [poll?.id, poll?.isSponsored])
 
   const expired = useMemo(() => {
     if (!poll) return false
@@ -269,6 +275,12 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
                 <span className="flex items-center gap-1.5 rounded-full bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-400 ring-1 ring-violet-500/30">
                   <Sparkles className="h-3 w-3" />
                   AI Poll
+                </span>
+              )}
+              {poll.isSponsored && (
+                <span className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold text-amber-950">
+                  <Megaphone className="h-3.5 w-3.5" />
+                  Sponsored{poll.sponsorName ? ` by ${poll.sponsorName}` : ""}
                 </span>
               )}
             </div>

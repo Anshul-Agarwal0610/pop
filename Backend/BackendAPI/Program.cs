@@ -61,6 +61,7 @@ builder.Services.AddScoped<INotificationsRepository, NotificationsRepository>();
 builder.Services.AddScoped<IDashboardRepository,     DashboardRepository>();
 builder.Services.AddScoped<ITrendingTopicRepository, TrendingTopicRepository>();
 builder.Services.AddScoped<IChallengesRepository,    ChallengesRepository>();
+builder.Services.AddScoped<IBusinessRepository,      BusinessRepository>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();

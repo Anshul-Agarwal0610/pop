@@ -14,6 +14,11 @@ namespace BackendAPI.Models
         public long? CreatedByUserId { get; set; }
         public string? CreatedByUsername { get; set; }
         public string? CreatedByDisplayName { get; set; }
+        public bool IsSponsored { get; set; }
+        public long? BusinessId { get; set; }
+        public long? CampaignId { get; set; }
+        public string? SponsorName { get; set; }
+        public string? CampaignName { get; set; }
         public string ModerationStatus { get; set; } = PollModerationStatus.Published;
         public string? ModerationReason { get; set; }
         public long? ModeratedByUserId { get; set; }
