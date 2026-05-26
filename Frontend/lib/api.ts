@@ -153,6 +153,13 @@ export const pollsApi = {
     return request<ApiPoll[]>(`/api/polls/trending?${query.toString()}`)
   },
 
+  /** Fetch personalized polls. Anonymous users receive the default trending feed. */
+  getPersonalized: (count = 20, category?: string) => {
+    const query = new URLSearchParams({ count: String(count) })
+    if (category) query.set("category", category)
+    return request<ApiPoll[]>(`/api/polls/personalized?${query.toString()}`)
+  },
+
   /** Fetch all polls. Includes hasVoted when authenticated. */
   getAll: (category?: string) => {
     const query = categoryQuery(category)
@@ -263,6 +270,12 @@ export interface ApiVoteHistoryItem {
   votedAt: string
 }
 
+export interface ApiCategoryPreference {
+  category: string
+  isExplicit: boolean
+  voteCount: number
+}
+
 export const usersApi = {
   /** Leaderboard — top users by XP. */
   getLeaderboard: (count = 20) =>
@@ -271,6 +284,18 @@ export const usersApi = {
   /** Vote history for the current authenticated user. */
   getMyVotes: (count = 10) =>
     request<ApiVoteHistoryItem[]>(`/api/users/me/votes?count=${count}`),
+
+  getCategoryPreferences: () =>
+    request<ApiCategoryPreference[]>("/api/users/me/preferences/categories"),
+
+  updateCategoryPreferences: (categories: string[]) =>
+    request<ApiCategoryPreference[]>("/api/users/me/preferences/categories", {
+      method: "PUT",
+      body: JSON.stringify({ categories }),
+    }),
+
+  resetCategoryPreferences: () =>
+    request<void>("/api/users/me/preferences/categories", { method: "DELETE" }),
 }
 
 // ── Auth endpoints ────────────────────────────────────────────────────────────

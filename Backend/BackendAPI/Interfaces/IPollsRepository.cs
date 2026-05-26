@@ -8,6 +8,7 @@ namespace BackendAPI.Interfaces
         Task<IEnumerable<Poll>> GetAllAsync(long? userId = null, string? category = null);
         Task<Poll?> GetByIdAsync(long id, long? userId = null);
         Task<IEnumerable<Poll>> GetTrendingAsync(int count = 10, long? userId = null, string? category = null);
+        Task<IEnumerable<Poll>> GetPersonalizedAsync(long? userId = null, int count = 20, string? category = null);
         Task<IEnumerable<Poll>> SearchAsync(string query, string? category = null, long? userId = null);
         Task<IEnumerable<Poll>> GetRecentAsync(int count = 10);
         Task<IEnumerable<Poll>> GetModerationQueueAsync(string? status = null, int count = 50);

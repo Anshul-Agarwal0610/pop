@@ -53,6 +53,45 @@ namespace BackendAPI.Controllers
             return Ok(history);
         }
 
+        // GET /api/users/me/preferences/categories
+        [HttpGet("me/preferences/categories")]
+        [Authorize]
+        public async Task<IActionResult> GetMyCategoryPreferences()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var preferences = await _usersRepo.GetCategoryPreferencesAsync(userId.Value);
+            return Ok(preferences);
+        }
+
+        // PUT /api/users/me/preferences/categories
+        [HttpPut("me/preferences/categories")]
+        [Authorize]
+        public async Task<IActionResult> UpdateMyCategoryPreferences(
+            [FromBody] UpdateCategoryPreferencesRequest request)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var preferences = await _usersRepo.ReplaceCategoryPreferencesAsync(
+                userId.Value,
+                request.Categories);
+            return Ok(preferences);
+        }
+
+        // DELETE /api/users/me/preferences/categories
+        [HttpDelete("me/preferences/categories")]
+        [Authorize]
+        public async Task<IActionResult> ResetMyCategoryPreferences()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            await _usersRepo.ResetCategoryPreferencesAsync(userId.Value);
+            return NoContent();
+        }
+
         // POST /api/users
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest request)
