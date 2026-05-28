@@ -19,6 +19,9 @@ namespace BackendAPI.Models
         public long? CampaignId { get; set; }
         public string? SponsorName { get; set; }
         public string? CampaignName { get; set; }
+        public bool IsPrivate { get; set; }
+        public bool IsWellness { get; set; }
+        public string PollMode { get; set; } = PollModes.Public;
         public string ModerationStatus { get; set; } = PollModerationStatus.Published;
         public string? ModerationReason { get; set; }
         public long? ModeratedByUserId { get; set; }
@@ -67,6 +70,14 @@ namespace BackendAPI.Models
         public string? SourceUrl { get; set; }
         public string? ThumbnailUrl { get; set; }
         public bool IsAIGenerated { get; set; }
+        public bool IsPrivate { get; set; }
+        public bool IsWellness { get; set; }
+    }
+
+    public static class PollModes
+    {
+        public const string Public = "Public";
+        public const string Wellness = "Wellness";
     }
 
     // ── TrendingTopics staging table model (US-01) ───────────────────────────

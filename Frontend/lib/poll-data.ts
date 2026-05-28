@@ -43,6 +43,8 @@ export interface Poll {
   isSponsored?: boolean
   sponsorName?: string | null
   campaignName?: string | null
+  isPrivate?: boolean
+  isWellness?: boolean
 
   // ── US-12: Full options list for voting (absent on mock polls) ─────────────
   options?: PollOption[]
@@ -97,6 +99,8 @@ export function mapBackendPoll(p: ApiPoll): Poll {
     isSponsored:   p.isSponsored,
     sponsorName:   p.sponsorName,
     campaignName:  p.campaignName,
+    isPrivate:     p.isPrivate,
+    isWellness:    p.isWellness,
     options:      p.options.map((o) => ({
       id:             o.id,
       text:           o.text,

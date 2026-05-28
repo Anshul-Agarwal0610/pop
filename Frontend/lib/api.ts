@@ -35,6 +35,9 @@ export interface ApiPoll {
   campaignId: number | null
   sponsorName: string | null
   campaignName: string | null
+  isPrivate: boolean
+  isWellness: boolean
+  pollMode: "Public" | "Wellness"
   moderationStatus: "Draft" | "PendingReview" | "Published" | "Rejected" | "Flagged"
   moderationReason: string | null
   moderatedByUserId: number | null
@@ -118,6 +121,31 @@ export interface CreatePollPayload {
   sourceUrl?: string
   thumbnailUrl?: string
   isAIGenerated?: boolean
+  isPrivate?: boolean
+  isWellness?: boolean
+}
+
+export interface ApiWellnessResponse {
+  id: number
+  userId: number
+  pollId: number
+  optionId: number
+  question: string
+  optionText: string
+  note: string | null
+  createdAt: string
+}
+
+export interface ApiWellnessInsight {
+  totalCheckIns: number
+  lastCheckInAt: string | null
+  mostCommonResponse: string | null
+}
+
+export interface ApiWellnessOverview {
+  polls: ApiPoll[]
+  history: ApiWellnessResponse[]
+  insight: ApiWellnessInsight
 }
 
 export interface ApiBusinessAccount {
@@ -376,6 +404,32 @@ export const notificationsApi = {
       method: "PUT",
       body: JSON.stringify({ disabledTypes }),
     }),
+}
+
+export const wellnessApi = {
+  getOverview: () => request<ApiWellnessOverview>("/api/wellness/overview"),
+
+  createResponse: (pollId: number, optionId: number, note?: string) =>
+    request<ApiWellnessResponse>("/api/wellness/responses", {
+      method: "POST",
+      body: JSON.stringify({ pollId, optionId, note }),
+    }),
+
+  deleteResponses: () =>
+    request<void>("/api/wellness/responses", { method: "DELETE" }),
+
+  exportCsv: async () => {
+    const res = await fetch(`${API_BASE_URL}/api/wellness/export.csv`, {
+      headers: authHeaders(),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      throw new Error(`API ${res.status}: ${text}`)
+    }
+
+    return res.blob()
+  },
 }
 
 // ── User endpoints ────────────────────────────────────────────────────────────
