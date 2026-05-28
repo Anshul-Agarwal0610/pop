@@ -73,6 +73,8 @@ namespace BackendAPI.Repository
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND p.ModerationStatus = 'Published'
+                    AND COALESCE(p.IsPrivate, 0) = 0
+                    AND COALESCE(p.IsWellness, 0) = 0
                     AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                   ORDER BY p.CreatedAt DESC",
                 (poll, option) =>
@@ -109,7 +111,8 @@ namespace BackendAPI.Repository
                   LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
                   LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
-                  WHERE p.Id = @Id",
+                  WHERE p.Id = @Id
+                    AND (COALESCE(p.IsPrivate, 0) = 0 OR p.CreatedByUserId = @UserId)",
                 (poll, option) =>
                 {
                     if (!pollDict.TryGetValue(poll.Id, out var existing))
@@ -121,7 +124,7 @@ namespace BackendAPI.Repository
                     if (option != null) existing.Options.Add(option);
                     return existing;
                 },
-                new { Id = id },
+                new { Id = id, UserId = userId },
                 splitOn: "Id"
             );
 
@@ -148,6 +151,8 @@ namespace BackendAPI.Repository
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND p.ModerationStatus = 'Published'
+                    AND COALESCE(p.IsPrivate, 0) = 0
+                    AND COALESCE(p.IsWellness, 0) = 0
                     AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                   ORDER BY p.TotalVotes DESC, p.CreatedAt DESC",
                 (poll, option) =>
@@ -213,6 +218,8 @@ namespace BackendAPI.Repository
                       ON LOWER(activity.Category) = LOWER(p.Category)
                     WHERE p.IsActive = 1
                       AND p.ModerationStatus = 'Published'
+                      AND COALESCE(p.IsPrivate, 0) = 0
+                      AND COALESCE(p.IsWellness, 0) = 0
                       AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                     ORDER BY PersonalizationScore DESC, p.TotalVotes DESC, p.CreatedAt DESC
                   )
@@ -255,6 +262,8 @@ namespace BackendAPI.Repository
                     FROM Polls p
                     WHERE p.IsActive = 1
                       AND p.ModerationStatus = 'Published'
+                      AND COALESCE(p.IsPrivate, 0) = 0
+                      AND COALESCE(p.IsWellness, 0) = 0
                       AND p.Question LIKE @Search
                       AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                     ORDER BY p.TotalVotes DESC, p.CreatedAt DESC
@@ -301,6 +310,8 @@ namespace BackendAPI.Repository
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND p.ModerationStatus = 'Published'
+                    AND COALESCE(p.IsPrivate, 0) = 0
+                    AND COALESCE(p.IsWellness, 0) = 0
                   ORDER BY p.CreatedAt DESC",
                 (poll, option) =>
                 {
@@ -366,7 +377,12 @@ namespace BackendAPI.Repository
             conn.Open();
             using var transaction = conn.BeginTransaction();
             var normalizedCategory = CategoryCatalog.NormalizeName(request.Category);
-            var moderationStatus = PollModerationStatus.PendingReview;
+            var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
+            var isPrivate = request.IsPrivate || isWellness;
+            var pollMode = isWellness ? PollModes.Wellness : PollModes.Public;
+            var moderationStatus = isWellness
+                ? PollModerationStatus.Published
+                : PollModerationStatus.PendingReview;
 
             try
             {
@@ -375,11 +391,13 @@ namespace BackendAPI.Repository
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated,
+                         IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated,
+                         @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, NULL, NULL, NULL, 0, NULL);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     new
@@ -392,6 +410,9 @@ namespace BackendAPI.Repository
                         request.SourceUrl,
                         request.ThumbnailUrl,
                         request.IsAIGenerated,
+                        IsPrivate = isPrivate,
+                        IsWellness = isWellness,
+                        PollMode = pollMode,
                         ModerationStatus = moderationStatus,
                         CreatedByUserId = createdByUserId
                     },

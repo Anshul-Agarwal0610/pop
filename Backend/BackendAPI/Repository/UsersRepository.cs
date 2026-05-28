@@ -116,6 +116,9 @@ namespace BackendAPI.Repository
                   JOIN Polls       p ON p.Id = v.PollId
                   JOIN PollOptions o ON o.Id = v.OptionId
                   WHERE v.UserId = @UserId
+                    AND COALESCE(p.IsPrivate, 0) = 0
+                    AND COALESCE(p.IsWellness, 0) = 0
+                    AND p.Category <> 'Health'
                   ORDER BY v.CreatedAt DESC",
                 new { UserId = userId, Count = count }
             );

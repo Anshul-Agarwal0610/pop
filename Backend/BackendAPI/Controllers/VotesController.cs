@@ -56,6 +56,9 @@ namespace BackendAPI.Controllers
             if (!poll.ModerationStatus.Equals(PollModerationStatus.Published, StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { message = "This poll is not open for voting." });
 
+            if (poll.IsWellness || poll.IsPrivate || poll.Category.Equals("Health", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Health and wellness check-ins use private wellness responses." });
+
             var validOption = poll.Options.Any(o => o.Id == request.OptionId);
             if (!validOption)
                 return BadRequest(new { message = "Invalid option for this poll." });
