@@ -72,6 +72,7 @@ namespace BackendAPI.Models
         public bool IsAIGenerated { get; set; }
         public bool IsPrivate { get; set; }
         public bool IsWellness { get; set; }
+        public string? ModerationReason { get; set; }
     }
 
     public static class PollModes

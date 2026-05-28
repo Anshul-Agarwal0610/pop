@@ -19,15 +19,18 @@ namespace BackendAPI.Services
     public class PollGenerationService : IPollGenerationService
     {
         private readonly IEnumerable<ILlmProvider> _providers;
+        private readonly IPollsRepository _pollsRepo;
         private readonly IConfiguration _config;
         private readonly ILogger<PollGenerationService> _logger;
 
         public PollGenerationService(
             IEnumerable<ILlmProvider> providers,
+            IPollsRepository pollsRepo,
             IConfiguration config,
             ILogger<PollGenerationService> logger)
         {
             _providers = providers;
+            _pollsRepo = pollsRepo;
             _config    = config;
             _logger    = logger;
         }
@@ -65,9 +68,31 @@ namespace BackendAPI.Services
             var result = ParsePollJson(rawJson, topic.Category);
 
             if (result == null)
+            {
                 _logger.LogWarning(
-                    "[PollGen] Could not parse response for '{Title}': {Raw}",
-                    topic.Title, rawJson[..Math.Min(200, rawJson.Length)]);
+                    "[PollGen] Could not parse response for topic {TopicId} '{Title}'. Provider={Provider}. Raw={Raw}",
+                    topic.Id, topic.Title, providerName, rawJson[..Math.Min(400, rawJson.Length)]);
+                return null;
+            }
+
+            result.SourceTitle = topic.Title;
+            result.SourceUrl = topic.SourceUrl;
+            await ApplyQualityChecksAsync(result, topic);
+
+            if (result.QualityWarnings.Any(warning => warning.StartsWith("Rejected:", StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.LogWarning(
+                    "[PollGen] Rejected generated poll for topic {TopicId} '{Title}'. Warnings={Warnings}. Question={Question}",
+                    topic.Id, topic.Title, string.Join(" | ", result.QualityWarnings), result.Question);
+                return null;
+            }
+
+            if (result.QualityWarnings.Count > 0)
+            {
+                _logger.LogInformation(
+                    "[PollGen] Generated poll for topic {TopicId} needs review. Warnings={Warnings}",
+                    topic.Id, string.Join(" | ", result.QualityWarnings));
+            }
 
             return result;
         }
@@ -99,8 +124,12 @@ namespace BackendAPI.Services
                 }
 
                 Rules:
-                - Question must be opinionated, specific and under 120 characters
+                - Question must be clear, specific, neutral, and 30-120 characters
+                - Question must be answerable by ordinary readers without niche expertise
+                - Do not use vague questions like "What do you think about this?"
                 - 2 to 4 options, mutually exclusive, short (under 40 chars each)
+                - Options must not overlap in meaning and must not be duplicates
+                - Preserve the source topic meaning; do not invent facts beyond the summary
                 - Category must be one of the valid categories
                 - JSON only — no other text
                 """;
@@ -170,6 +199,109 @@ namespace BackendAPI.Services
             {
                 return null;
             }
+        }
+
+        private async Task ApplyQualityChecksAsync(GeneratedPoll poll, TrendingTopic topic)
+        {
+            if (poll.Question.Length < 30)
+                poll.QualityWarnings.Add("Rejected: question is too short to be clear.");
+
+            if (poll.Question.Length > 120)
+                poll.QualityWarnings.Add("Rejected: question is longer than 120 characters.");
+
+            if (!poll.Question.EndsWith("?"))
+                poll.QualityWarnings.Add("Question should be phrased as a question.");
+
+            var generatedCategory = poll.Category;
+            if (!IsKnownCategory(generatedCategory))
+                poll.QualityWarnings.Add("Rejected: category is not in the allowed catalog.");
+            poll.Category = CategoryCatalog.NormalizeName(generatedCategory);
+
+            poll.Options = poll.Options
+                .Select(option => option.Trim())
+                .Where(option => !string.IsNullOrWhiteSpace(option))
+                .ToList();
+
+            if (poll.Options.Count is < 2 or > 4)
+                poll.QualityWarnings.Add("Rejected: poll must have 2 to 4 options.");
+
+            if (poll.Options.GroupBy(NormalizeText).Any(group => group.Count() > 1))
+                poll.QualityWarnings.Add("Rejected: options contain duplicates.");
+
+            if (poll.Options.Any(option => option.Length > 40))
+                poll.QualityWarnings.Add("Option text should stay under 40 characters.");
+
+            if (HasOverlappingOptions(poll.Options))
+                poll.QualityWarnings.Add("Options may overlap and need human review.");
+
+            var similar = await FindSimilarPollAsync(poll.Question, topic.SourceUrl);
+            if (similar != null)
+            {
+                poll.SimilarPollId = similar.Id;
+                poll.QualityWarnings.Add($"Similar generated poll detected: #{similar.Id}.");
+            }
+        }
+
+        private async Task<Poll?> FindSimilarPollAsync(string question, string? sourceUrl)
+        {
+            var recent = await _pollsRepo.GetRecentGeneratedAsync();
+            var normalizedQuestion = NormalizeText(question);
+
+            return recent.FirstOrDefault(existing =>
+                (!string.IsNullOrWhiteSpace(sourceUrl)
+                    && !string.IsNullOrWhiteSpace(existing.SourceUrl)
+                    && existing.SourceUrl.Equals(sourceUrl, StringComparison.OrdinalIgnoreCase))
+                || Similarity(normalizedQuestion, NormalizeText(existing.Question)) >= 0.72);
+        }
+
+        private static bool HasOverlappingOptions(IEnumerable<string> options)
+        {
+            var normalized = options.Select(NormalizeText).ToList();
+            for (var i = 0; i < normalized.Count; i++)
+            {
+                for (var j = i + 1; j < normalized.Count; j++)
+                {
+                    if (normalized[i].Contains(normalized[j]) || normalized[j].Contains(normalized[i]))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static double Similarity(string left, string right)
+        {
+            var leftTokens = left.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+            var rightTokens = right.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+            if (leftTokens.Count == 0 || rightTokens.Count == 0) return 0;
+
+            var intersection = leftTokens.Intersect(rightTokens).Count();
+            var union = leftTokens.Union(rightTokens).Count();
+            return (double)intersection / union;
+        }
+
+        private static bool IsKnownCategory(string? category)
+        {
+            if (string.IsNullOrWhiteSpace(category)) return false;
+
+            var normalized = category.Trim();
+            return CategoryCatalog.All.Any(item =>
+                item.Name.Equals(normalized, StringComparison.OrdinalIgnoreCase)
+                || item.Slug.Equals(normalized, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string NormalizeText(string value)
+        {
+            var chars = value
+                .ToLowerInvariant()
+                .Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ')
+                .ToArray();
+
+            return string.Join(
+                ' ',
+                new string(chars)
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Where(token => token.Length > 1));
         }
     }
 }

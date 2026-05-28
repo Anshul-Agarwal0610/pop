@@ -333,6 +333,17 @@ namespace BackendAPI.Repository
             return pollDict.Values;
         }
 
+        public async Task<IEnumerable<Poll>> GetRecentGeneratedAsync(int count = 100)
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.QueryAsync<Poll>(
+                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated
+                  FROM Polls
+                  WHERE IsAIGenerated = 1
+                  ORDER BY CreatedAt DESC",
+                new { Count = count });
+        }
+
         // ── Create ────────────────────────────────────────────────────────────
 
         public async Task<IEnumerable<Poll>> GetModerationQueueAsync(string? status = null, int count = 50)
@@ -400,7 +411,7 @@ namespace BackendAPI.Repository
                          @CreatedByUserId,
                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated,
                          @IsPrivate, @IsWellness, @PollMode,
-                         @ModerationStatus, NULL, NULL, NULL, 0, NULL);
+                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     new
                     {
@@ -416,6 +427,9 @@ namespace BackendAPI.Repository
                         IsWellness = isWellness,
                         PollMode = pollMode,
                         ModerationStatus = moderationStatus,
+                        ModerationReason = string.IsNullOrWhiteSpace(request.ModerationReason)
+                            ? null
+                            : request.ModerationReason.Trim(),
                         CreatedByUserId = createdByUserId
                     },
                     transaction
