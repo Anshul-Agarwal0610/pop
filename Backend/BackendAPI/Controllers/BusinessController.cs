@@ -2,6 +2,7 @@ using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text;
 using System.Security.Claims;
 
 namespace BackendAPI.Controllers
@@ -59,6 +60,59 @@ namespace BackendAPI.Controllers
             return Ok(campaigns);
         }
 
+        [HttpGet("campaigns/{campaignId}/analytics")]
+        public async Task<IActionResult> GetCampaignAnalytics(long campaignId)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
+            var analytics = await _businessRepo.GetCampaignAnalyticsAsync(userId.Value, campaignId);
+            return analytics == null
+                ? NotFound(new { message = $"Campaign {campaignId} not found." })
+                : Ok(analytics);
+        }
+
+        [HttpGet("campaigns/{campaignId}/export.csv")]
+        public async Task<IActionResult> ExportCampaignAnalytics(long campaignId)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
+            var analytics = await _businessRepo.GetCampaignAnalyticsAsync(userId.Value, campaignId);
+            if (analytics == null) return NotFound(new { message = $"Campaign {campaignId} not found." });
+
+            var csv = new StringBuilder();
+            csv.AppendLine("Campaign,PollId,Question,Status,Impressions,Votes,Completions,CompletionRate,Option,OptionVotes,OptionPercentage");
+
+            foreach (var poll in analytics.Polls)
+            {
+                var options = analytics.OptionBreakdown
+                    .Where(option => option.PollId == poll.PollId)
+                    .DefaultIfEmpty(new CampaignOptionBreakdown());
+
+                foreach (var option in options)
+                {
+                    csv.AppendLine(string.Join(",",
+                        Csv(analytics.Campaign.Name),
+                        poll.PollId,
+                        Csv(poll.Question),
+                        Csv(poll.ModerationStatus),
+                        poll.Impressions,
+                        poll.Votes,
+                        poll.Completions,
+                        poll.CompletionRate.ToString("0.##"),
+                        Csv(option.OptionText),
+                        option.VoteCount,
+                        option.VotePercentage.ToString("0.##")));
+                }
+            }
+
+            return File(
+                Encoding.UTF8.GetBytes(csv.ToString()),
+                "text/csv",
+                $"campaign-{campaignId}-analytics.csv");
+        }
+
         [HttpPost("accounts/{businessId}/campaigns")]
         public async Task<IActionResult> CreateCampaign(
             long businessId,
@@ -94,6 +148,12 @@ namespace BackendAPI.Controllers
 
             var poll = await _pollsRepo.GetByIdAsync(pollId.Value, userId.Value);
             return CreatedAtAction("GetById", "Polls", new { id = pollId.Value }, poll);
+        }
+
+        private static string Csv(string? value)
+        {
+            var text = value ?? string.Empty;
+            return $"\"{text.Replace("\"", "\"\"")}\"";
         }
     }
 }

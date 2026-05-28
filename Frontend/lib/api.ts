@@ -145,6 +145,39 @@ export interface ApiBusinessCampaign {
   completionRate: number
 }
 
+export interface ApiCampaignPollMetric {
+  campaignId: number
+  pollId: number
+  question: string
+  moderationStatus: string
+  createdAt: string
+  impressions: number
+  votes: number
+  completions: number
+  completionRate: number
+  updatedAt: string
+}
+
+export interface ApiCampaignOptionBreakdown {
+  pollId: number
+  optionId: number
+  optionText: string
+  voteCount: number
+  votePercentage: number
+}
+
+export interface ApiCampaignDailyMetric {
+  date: string
+  votes: number
+}
+
+export interface ApiCampaignAnalytics {
+  campaign: ApiBusinessCampaign
+  polls: ApiCampaignPollMetric[]
+  optionBreakdown: ApiCampaignOptionBreakdown[]
+  dailyVotes: ApiCampaignDailyMetric[]
+}
+
 export interface CreateBusinessAccountPayload {
   name: string
   websiteUrl?: string
@@ -268,6 +301,22 @@ export const businessApi = {
     }),
 
   getCampaigns: () => request<ApiBusinessCampaign[]>("/api/business/campaigns"),
+
+  getCampaignAnalytics: (campaignId: number) =>
+    request<ApiCampaignAnalytics>(`/api/business/campaigns/${campaignId}/analytics`),
+
+  exportCampaignCsv: async (campaignId: number) => {
+    const res = await fetch(`${API_BASE_URL}/api/business/campaigns/${campaignId}/export.csv`, {
+      headers: authHeaders(),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      throw new Error(`API ${res.status}: ${text}`)
+    }
+
+    return res.blob()
+  },
 
   createCampaign: (businessId: number, payload: CreateBusinessCampaignPayload) =>
     request<ApiBusinessCampaign>(`/api/business/accounts/${businessId}/campaigns`, {
