@@ -9,28 +9,44 @@ namespace BackendAPI.Repository
     public class UsersRepository : IUsersRepository
     {
         private readonly DapperContext _context;
+        private readonly IAchievementsRepository _achievementsRepo;
 
-        public UsersRepository(DapperContext context)
+        public UsersRepository(DapperContext context, IAchievementsRepository achievementsRepo)
         {
             _context = context;
+            _achievementsRepo = achievementsRepo;
         }
 
         public async Task<IEnumerable<User>> GetLeaderboardAsync(int count = 20)
         {
             using var conn = _context.CreateConnection();
-            return await conn.QueryAsync<User>(
+            var users = (await conn.QueryAsync<User>(
                 "SELECT TOP (@Count) * FROM Users ORDER BY Xp DESC",
                 new { Count = count }
-            );
+            )).ToList();
+
+            var badgesByUser = await _achievementsRepo.GetBadgesForUsersAsync(users.Select(user => user.Id));
+            foreach (var user in users)
+            {
+                if (badgesByUser.TryGetValue(user.Id, out var badges))
+                    user.Badges = badges;
+            }
+
+            return users;
         }
 
         public async Task<User?> GetByIdAsync(long id)
         {
             using var conn = _context.CreateConnection();
-            return await conn.QueryFirstOrDefaultAsync<User>(
+            var user = await conn.QueryFirstOrDefaultAsync<User>(
                 "SELECT * FROM Users WHERE Id = @Id",
                 new { Id = id }
             );
+
+            if (user != null)
+                user.Badges = (await _achievementsRepo.GetUserBadgesAsync(id)).ToList();
+
+            return user;
         }
 
         public async Task<User?> GetByUsernameAsync(string username)
@@ -51,6 +67,16 @@ namespace BackendAPI.Repository
                   SELECT SCOPE_IDENTITY();",
                 new { request.Username, request.DisplayName }
             );
+        }
+
+        public async Task IncrementPollsCreatedAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync(
+                "UPDATE Users SET PollsCreated = PollsCreated + 1 WHERE Id = @UserId",
+                new { UserId = userId });
+
+            await _achievementsRepo.AwardEligibleBadgesAsync(userId, DateTime.UtcNow);
         }
 
         public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, int xpToAdd, DateTime utcNow)
@@ -97,6 +123,15 @@ namespace BackendAPI.Repository
             );
 
             transaction.Commit();
+
+            var awards = await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
+            updated.AwardedBadges = awards.AwardedBadges;
+            if (awards.BonusXpAwarded > 0)
+            {
+                updated.Xp += awards.BonusXpAwarded;
+                updated.XpAwarded += awards.BonusXpAwarded;
+            }
+
             return updated;
         }
 

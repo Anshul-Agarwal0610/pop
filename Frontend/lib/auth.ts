@@ -16,6 +16,17 @@ export interface AuthUser {
   pollsCreated: number
   lastVoteDate?: string | null
   createdAt: string
+  level?: number
+  badges?: Array<{
+    id: number
+    userId: number
+    badgeId: number
+    code: string
+    name: string
+    description: string
+    icon: string
+    awardedAt: string
+  }>
 }
 
 export interface AuthResponse {

@@ -13,11 +13,16 @@ namespace BackendAPI.Repository
     {
         private readonly DapperContext _context;
         private readonly IConfiguration _config;
+        private readonly IAchievementsRepository _achievementsRepo;
 
-        public AuthRepository(DapperContext context, IConfiguration config)
+        public AuthRepository(
+            DapperContext context,
+            IConfiguration config,
+            IAchievementsRepository achievementsRepo)
         {
             _context = context;
             _config = config;
+            _achievementsRepo = achievementsRepo;
         }
 
         // ── Register ─────────────────────────────────────────────────────────
@@ -124,12 +129,17 @@ namespace BackendAPI.Repository
         private async Task<UserResponse?> GetUserResponseAsync(long id)
         {
             using var conn = _context.CreateConnection();
-            return await conn.QueryFirstOrDefaultAsync<UserResponse>(
+            var user = await conn.QueryFirstOrDefaultAsync<UserResponse>(
                 @"SELECT Id, Username, DisplayName, Email, AvatarUrl, AuthProvider,
                          Xp, Streak, TotalVotes, PollsCreated, LastVoteDate, CreatedAt
                   FROM Users WHERE Id = @Id",
                 new { Id = id }
             );
+
+            if (user != null)
+                user.Badges = (await _achievementsRepo.GetUserBadgesAsync(id)).ToList();
+
+            return user;
         }
 
         private string GenerateToken(UserResponse user)

@@ -63,6 +63,7 @@ builder.Services.AddScoped<ITrendingTopicRepository, TrendingTopicRepository>();
 builder.Services.AddScoped<IChallengesRepository,    ChallengesRepository>();
 builder.Services.AddScoped<IBusinessRepository,      BusinessRepository>();
 builder.Services.AddScoped<IWellnessRepository,      WellnessRepository>();
+builder.Services.AddScoped<IAchievementsRepository,  AchievementsRepository>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
