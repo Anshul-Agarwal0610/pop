@@ -8,10 +8,12 @@ namespace BackendAPI.Repository
     public class ChallengesRepository : IChallengesRepository
     {
         private readonly DapperContext _context;
+        private readonly IAchievementsRepository _achievementsRepo;
 
-        public ChallengesRepository(DapperContext context)
+        public ChallengesRepository(DapperContext context, IAchievementsRepository achievementsRepo)
         {
             _context = context;
+            _achievementsRepo = achievementsRepo;
         }
 
         public async Task EnsureDailyChallengeAsync(DateTime utcNow)
@@ -178,6 +180,8 @@ namespace BackendAPI.Repository
                 transaction.Rollback();
                 throw;
             }
+
+            await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
 
             return await GetActiveForUserAsync(userId, utcNow);
         }

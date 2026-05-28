@@ -8,10 +8,12 @@ namespace BackendAPI.Repository
     public class PollsRepository : IPollsRepository
     {
         private readonly DapperContext _context;
+        private readonly IUsersRepository _usersRepo;
 
-        public PollsRepository(DapperContext context)
+        public PollsRepository(DapperContext context, IUsersRepository usersRepo)
         {
             _context = context;
+            _usersRepo = usersRepo;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
@@ -428,16 +430,11 @@ namespace BackendAPI.Repository
                     );
                 }
 
+                transaction.Commit();
                 if (createdByUserId != null)
                 {
-                    await conn.ExecuteAsync(
-                        "UPDATE Users SET PollsCreated = PollsCreated + 1 WHERE Id = @UserId",
-                        new { UserId = createdByUserId },
-                        transaction
-                    );
+                    await _usersRepo.IncrementPollsCreatedAsync(createdByUserId.Value);
                 }
-
-                transaction.Commit();
                 return pollId;
             }
             catch

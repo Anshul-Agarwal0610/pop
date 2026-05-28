@@ -61,11 +61,13 @@ export interface CastVoteRequest {
 
 export interface ApiVoteReward {
   xp: number
+  level: number
   streak: number
   totalVotes: number
   xpAwarded: number
   streakAdvanced: boolean
   lastVoteDate: string | null
+  awardedBadges: ApiUserBadge[]
 }
 
 export interface ApiCastVoteResponse {
@@ -451,6 +453,19 @@ export interface ApiUser {
   pollsCreated: number
   lastVoteDate?: string | null
   createdAt: string
+  level: number
+  badges: ApiUserBadge[]
+}
+
+export interface ApiUserBadge {
+  id: number
+  userId: number
+  badgeId: number
+  code: string
+  name: string
+  description: string
+  icon: string
+  awardedAt: string
 }
 
 export interface ApiVoteHistoryItem {

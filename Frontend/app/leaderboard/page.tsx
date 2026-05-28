@@ -134,6 +134,18 @@ export default function LeaderboardPage() {
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">@{user.username}</p>
+                    {user.badges?.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {user.badges.slice(0, 2).map((badge) => (
+                          <span
+                            className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+                            key={badge.id}
+                          >
+                            {badge.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-right">
@@ -142,7 +154,7 @@ export default function LeaderboardPage() {
                       {user.xp.toLocaleString()}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Level {levelFromXp(user.xp)} · {user.totalVotes.toLocaleString()} votes
+                      Level {user.level ?? levelFromXp(user.xp)} - {user.totalVotes.toLocaleString()} votes
                     </p>
                   </div>
                 </motion.div>
