@@ -59,11 +59,37 @@ namespace BackendAPI.Models
     {
         public long CampaignId { get; set; }
         public long PollId { get; set; }
+        public string Question { get; set; } = string.Empty;
+        public string ModerationStatus { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
         public int Impressions { get; set; }
         public int Votes { get; set; }
         public int Completions { get; set; }
         public double CompletionRate { get; set; }
         public DateTime UpdatedAt { get; set; }
+    }
+
+    public class CampaignOptionBreakdown
+    {
+        public long PollId { get; set; }
+        public long OptionId { get; set; }
+        public string OptionText { get; set; } = string.Empty;
+        public int VoteCount { get; set; }
+        public double VotePercentage { get; set; }
+    }
+
+    public class CampaignDailyMetric
+    {
+        public DateTime Date { get; set; }
+        public int Votes { get; set; }
+    }
+
+    public class CampaignAnalytics
+    {
+        public BusinessCampaign Campaign { get; set; } = new();
+        public List<CampaignPollMetric> Polls { get; set; } = new();
+        public List<CampaignOptionBreakdown> OptionBreakdown { get; set; } = new();
+        public List<CampaignDailyMetric> DailyVotes { get; set; } = new();
     }
 
     public class CreateBusinessAccountRequest

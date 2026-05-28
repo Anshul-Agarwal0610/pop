@@ -102,6 +102,83 @@ namespace BackendAPI.Repository
                 new { OwnerUserId = ownerUserId });
         }
 
+        public async Task<CampaignAnalytics?> GetCampaignAnalyticsAsync(long ownerUserId, long campaignId)
+        {
+            using var conn = _context.CreateConnection();
+
+            var campaign = await conn.QuerySingleOrDefaultAsync<BusinessCampaign>(
+                @"SELECT c.*,
+                         b.Name AS BusinessName,
+                         COALESCE(SUM(m.Impressions), 0) AS Impressions,
+                         COALESCE(SUM(m.Votes), 0) AS Votes,
+                         COALESCE(SUM(m.Completions), 0) AS Completions,
+                         CAST(CASE
+                            WHEN COALESCE(SUM(m.Impressions), 0) = 0 THEN 0
+                            ELSE COALESCE(SUM(m.Completions), 0) * 100.0 / COALESCE(SUM(m.Impressions), 0)
+                         END AS float) AS CompletionRate
+                  FROM BusinessCampaigns c
+                  JOIN BusinessAccounts b ON b.Id = c.BusinessId
+                  LEFT JOIN SponsoredPollMetrics m ON m.CampaignId = c.Id
+                  WHERE c.Id = @CampaignId AND b.OwnerUserId = @OwnerUserId
+                  GROUP BY c.Id, c.BusinessId, b.Name, c.Name, c.Objective, c.StartsAt, c.EndsAt, c.Status, c.CreatedAt",
+                new { CampaignId = campaignId, OwnerUserId = ownerUserId });
+
+            if (campaign == null) return null;
+
+            var polls = (await conn.QueryAsync<CampaignPollMetric>(
+                @"SELECT
+                      m.CampaignId,
+                      p.Id AS PollId,
+                      p.Question,
+                      p.ModerationStatus,
+                      p.CreatedAt,
+                      m.Impressions,
+                      m.Votes,
+                      m.Completions,
+                      CAST(CASE
+                          WHEN m.Impressions = 0 THEN 0
+                          ELSE m.Completions * 100.0 / m.Impressions
+                      END AS float) AS CompletionRate,
+                      m.UpdatedAt
+                  FROM SponsoredPollMetrics m
+                  JOIN Polls p ON p.Id = m.PollId
+                  WHERE m.CampaignId = @CampaignId
+                  ORDER BY p.CreatedAt DESC",
+                new { CampaignId = campaignId })).ToList();
+
+            var optionBreakdown = (await conn.QueryAsync<CampaignOptionBreakdown>(
+                @"SELECT
+                      p.Id AS PollId,
+                      o.Id AS OptionId,
+                      o.Text AS OptionText,
+                      o.VoteCount,
+                      o.VotePercentage
+                  FROM Polls p
+                  JOIN PollOptions o ON o.PollId = p.Id
+                  WHERE p.CampaignId = @CampaignId
+                  ORDER BY p.Id, o.VoteCount DESC, o.Id",
+                new { CampaignId = campaignId })).ToList();
+
+            var dailyVotes = (await conn.QueryAsync<CampaignDailyMetric>(
+                @"SELECT
+                      CAST(CONVERT(date, v.CreatedAt) AS datetime2) AS Date,
+                      COUNT(1) AS Votes
+                  FROM Votes v
+                  JOIN Polls p ON p.Id = v.PollId
+                  WHERE p.CampaignId = @CampaignId
+                  GROUP BY CONVERT(date, v.CreatedAt)
+                  ORDER BY Date ASC",
+                new { CampaignId = campaignId })).ToList();
+
+            return new CampaignAnalytics
+            {
+                Campaign = campaign,
+                Polls = polls,
+                OptionBreakdown = optionBreakdown,
+                DailyVotes = dailyVotes
+            };
+        }
+
         public async Task<long?> CreateSponsoredPollAsync(long ownerUserId, CreateSponsoredPollRequest request)
         {
             using var conn = _context.CreateConnection();
