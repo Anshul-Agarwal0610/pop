@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  ExternalLink,
   Flag,
   ImageOff,
   Loader2,
@@ -328,6 +329,17 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
               <p className="text-base leading-7 text-muted-foreground">
                 {poll.description}
               </p>
+            )}
+            {poll.sourceUrl && (
+              <a
+                className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                href={poll.sourceUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Source attribution
+              </a>
             )}
           </div>
 

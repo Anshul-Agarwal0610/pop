@@ -16,5 +16,13 @@ namespace BackendAPI.Interfaces
         public string Question { get; set; } = string.Empty;
         public List<string> Options { get; set; } = new();
         public string Category { get; set; } = "General";
+        public List<string> QualityWarnings { get; set; } = new();
+        public long? SimilarPollId { get; set; }
+        public string? SourceTitle { get; set; }
+        public string? SourceUrl { get; set; }
+        public string ReviewNotes =>
+            QualityWarnings.Count == 0
+                ? "AI review: passed automated quality checks."
+                : $"AI review: {string.Join(" ", QualityWarnings)}";
     }
 }
