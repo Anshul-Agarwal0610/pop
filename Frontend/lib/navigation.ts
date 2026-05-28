@@ -1,4 +1,4 @@
-import { Home, BarChart2, PlusCircle, Trophy, Bell, User } from "lucide-react"
+import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness } from "lucide-react"
 
 export const navigationItems = [
   {
@@ -25,6 +25,11 @@ export const navigationItems = [
     label: "Notifications",
     href: "/notifications",
     icon: Bell,
+  },
+  {
+    label: "Business",
+    href: "/business",
+    icon: BriefcaseBusiness,
   },
   {
     label: "Profile",

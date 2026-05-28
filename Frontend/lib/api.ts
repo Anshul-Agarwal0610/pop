@@ -30,6 +30,11 @@ export interface ApiPoll {
   createdByUserId: number | null
   createdByUsername: string | null
   createdByDisplayName: string | null
+  isSponsored: boolean
+  businessId: number | null
+  campaignId: number | null
+  sponsorName: string | null
+  campaignName: string | null
   moderationStatus: "Draft" | "PendingReview" | "Published" | "Rejected" | "Flagged"
   moderationReason: string | null
   moderatedByUserId: number | null
@@ -113,6 +118,48 @@ export interface CreatePollPayload {
   sourceUrl?: string
   thumbnailUrl?: string
   isAIGenerated?: boolean
+}
+
+export interface ApiBusinessAccount {
+  id: number
+  ownerUserId: number
+  name: string
+  websiteUrl: string | null
+  status: string
+  createdAt: string
+}
+
+export interface ApiBusinessCampaign {
+  id: number
+  businessId: number
+  businessName: string
+  name: string
+  objective: string
+  startsAt: string | null
+  endsAt: string | null
+  status: string
+  createdAt: string
+  impressions: number
+  votes: number
+  completions: number
+  completionRate: number
+}
+
+export interface CreateBusinessAccountPayload {
+  name: string
+  websiteUrl?: string
+}
+
+export interface CreateBusinessCampaignPayload {
+  name: string
+  objective: string
+  startsAt?: string
+  endsAt?: string
+  status?: string
+}
+
+export interface CreateSponsoredPollPayload extends CreatePollPayload {
+  campaignId?: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -204,6 +251,33 @@ export const pollsApi = {
   moderate: (id: number | string, payload: ModeratePollPayload) =>
     request<ApiPoll>(`/api/polls/${id}/moderation`, {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  recordImpression: (id: number | string) =>
+    request<void>(`/api/polls/${id}/impression`, { method: "POST" }),
+}
+
+export const businessApi = {
+  getAccounts: () => request<ApiBusinessAccount[]>("/api/business/accounts"),
+
+  createAccount: (payload: CreateBusinessAccountPayload) =>
+    request<ApiBusinessAccount>("/api/business/accounts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getCampaigns: () => request<ApiBusinessCampaign[]>("/api/business/campaigns"),
+
+  createCampaign: (businessId: number, payload: CreateBusinessCampaignPayload) =>
+    request<ApiBusinessCampaign>(`/api/business/accounts/${businessId}/campaigns`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  createSponsoredPoll: (campaignId: number, payload: CreateSponsoredPollPayload) =>
+    request<ApiPoll>(`/api/business/campaigns/${campaignId}/polls`, {
+      method: "POST",
       body: JSON.stringify(payload),
     }),
 }
