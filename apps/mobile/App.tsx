@@ -17,7 +17,8 @@ import {
 
 import { API_BASE_URL } from './src/config/api';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { pollsApi, usersApi, votesApi } from './src/lib/api';
+import { notificationsApi, pollsApi, usersApi, votesApi } from './src/lib/api';
+import { getExpoPushToken } from './src/lib/pushNotifications';
 import { hasCompletedOnboarding, markOnboardingComplete } from './src/lib/session';
 import type { AuthUser } from './src/types/auth';
 import type { ApiPoll, ApiPollOption, VoteReward } from './src/types/poll';
@@ -440,6 +441,8 @@ function OnboardingPoint({ copy, title }: { copy: string; title: string }) {
 function SignedInHome() {
   const { applyVoteReward, signOut, user } = useAuth();
   const [activeTab, setActiveTab] = useState<SignedInTab>('home');
+  const [pushToken, setPushToken] = useState<string | null>(null);
+  const [pushNotice, setPushNotice] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<AuthUser[]>([]);
   const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
@@ -487,6 +490,34 @@ function SignedInHome() {
   }, [loadPolls]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    async function registerForPush() {
+      try {
+        const token = await getExpoPushToken();
+        if (!token) {
+          if (isMounted) setPushNotice('Enable notifications to get streak and daily poll reminders.');
+          return;
+        }
+
+        await notificationsApi.registerDeviceToken(token, Platform.OS);
+        if (isMounted) {
+          setPushToken(token);
+          setPushNotice(null);
+        }
+      } catch {
+        if (isMounted) setPushNotice('Push reminders could not be enabled on this device.');
+      }
+    }
+
+    registerForPush();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeTab === 'leaderboard' && leaderboard.length === 0) {
       loadLeaderboard();
     }
@@ -510,6 +541,14 @@ function SignedInHome() {
     }
   }
 
+  async function logout() {
+    if (pushToken) {
+      await notificationsApi.disableDeviceToken(pushToken).catch(() => undefined);
+    }
+
+    await signOut();
+  }
+
   if (!user) return null;
 
   const level = getLevel(user.xp ?? 0);
@@ -522,7 +561,7 @@ function SignedInHome() {
           <Text style={styles.eyebrow}>Pollify</Text>
           <Text style={styles.feedTitle}>Hi, {user.displayName}</Text>
         </View>
-        <Pressable onPress={signOut} style={styles.logoutButton}>
+        <Pressable onPress={logout} style={styles.logoutButton}>
           <Text style={styles.logoutButtonText}>Logout</Text>
         </Pressable>
       </View>
@@ -555,6 +594,12 @@ function SignedInHome() {
               ? `Daily streak is now ${latestReward.streak}.`
               : `Streak stays at ${latestReward.streak}.`}
           </Text>
+        </View>
+      )}
+
+      {pushNotice && (
+        <View style={styles.pushNotice}>
+          <Text style={styles.pushNoticeText}>{pushNotice}</Text>
         </View>
       )}
 
@@ -1081,6 +1126,21 @@ const styles = StyleSheet.create({
     color: '#E7EFF2',
     fontSize: 14,
     fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 20,
+  },
+  pushNotice: {
+    backgroundColor: '#FFF6D8',
+    borderColor: '#F4D35E',
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+    padding: 12,
+  },
+  pushNoticeText: {
+    color: '#5C4A12',
+    fontSize: 14,
+    fontWeight: '800',
     letterSpacing: 0,
     lineHeight: 20,
   },

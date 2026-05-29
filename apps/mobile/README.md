@@ -10,6 +10,8 @@ The app uses the existing Pollify backend auth endpoints:
 
 JWT sessions are stored with Expo SecureStore on device.
 
+The app registers an Expo push token after sign-in so retention notifications can reach Android users. Logout disables the current device token through the backend before clearing the local session.
+
 Signed-in users can switch between mobile gamification surfaces:
 
 - Home: current XP, streak, level progress, and native trending poll feed.
@@ -30,6 +32,13 @@ The feed is backed by:
 - `POST /api/votes`
 
 Vote responses update the selected poll, XP, streak, and total vote count in the mobile UI.
+
+Push reminders use:
+
+- `POST /api/notifications/device-tokens`
+- `DELETE /api/notifications/device-tokens?token=...`
+
+Expo push does not require a committed secret for this MVP path. Production EAS builds should still define a stable Expo project and keep any future service credentials in EAS environment settings, not in the repo.
 
 ## Requirements
 
