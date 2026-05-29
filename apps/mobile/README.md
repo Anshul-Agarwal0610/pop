@@ -70,6 +70,8 @@ $env:EXPO_PUBLIC_API_URL = "http://192.168.1.10:5177"
 npm run android
 ```
 
+You can also copy `.env.example` for a local default API URL.
+
 The web app remains in `Frontend` and can continue to use `NEXT_PUBLIC_API_URL`.
 
 ## Auth Notes
@@ -82,9 +84,9 @@ Android release builds use EAS profiles in `eas.json`.
 
 ```powershell
 cd apps/mobile
-npm run typecheck
+npm run verify:android:release
 npm run build:android:preview
 npm run build:android:production
 ```
 
-See `docs/android-release.md` for Play Store checklist, privacy policy requirements, credential handling, and submit instructions.
+See `docs/android-release.md` for Play Store checklist, privacy policy requirements, credential handling, and submit instructions. Use `docs/android-smoke-test.md` before uploading an internal testing build.

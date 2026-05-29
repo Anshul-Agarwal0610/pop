@@ -16,14 +16,22 @@ Do not commit credentials or private keys. Store these in EAS or local developer
 - Google Play service account JSON: configure through `eas submit:configure` or EAS secrets, never as a committed file.
 - Android signing key: let EAS manage credentials, or store keystores outside the repo.
 
-Before production builds, replace the placeholder API URL in `eas.json` with the deployed backend URL or set it through EAS environment variables.
+Before production builds, replace the placeholder API URL in `eas.json` with the deployed backend URL or set it through EAS environment variables. For local development, copy `.env.example` and set the URL for your emulator or physical device.
+
+## Prerequisites
+
+- Node.js 20.19.4 or newer.
+- Expo/EAS CLI access through `npx eas`.
+- Android Studio for emulator testing, or a physical Android device.
+- A reachable backend URL for the target device.
+- A Play Console app and internal testing track before production submit.
 
 ## Release Commands
 
 ```powershell
 cd apps/mobile
 npm install
-npm run typecheck
+npm run verify:android:release
 npx eas login
 npx eas build:configure
 npm run build:android:preview
@@ -64,5 +72,6 @@ The privacy policy must cover:
 - Confirm `android.versionCode` increments for each Play Store upload.
 - Confirm `expo.android.permissions` stays minimal.
 - Confirm no `.env`, service account JSON, keystore, or secret file is staged.
-- Run `npm run typecheck`.
+- Run `npm run verify:android:release`.
 - Build preview APK first, install on Android, then build production AAB.
+- Complete the real-device checklist in `docs/android-smoke-test.md`.
