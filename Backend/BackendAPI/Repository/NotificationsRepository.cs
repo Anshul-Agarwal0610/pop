@@ -138,6 +138,103 @@ namespace BackendAPI.Repository
             return await QueryPreferencesAsync(userId);
         }
 
+        public async Task RegisterDeviceTokenAsync(long userId, RegisterPushTokenRequest request)
+        {
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync(
+                @"IF EXISTS (SELECT 1 FROM MobileDeviceTokens WHERE Token = @Token)
+                  BEGIN
+                      UPDATE MobileDeviceTokens
+                         SET UserId = @UserId,
+                             Platform = @Platform,
+                             DeviceId = @DeviceId,
+                             IsActive = 1,
+                             UpdatedAt = GETUTCDATE(),
+                             LastSeenAt = GETUTCDATE()
+                       WHERE Token = @Token;
+                  END
+                  ELSE
+                  BEGIN
+                      INSERT INTO MobileDeviceTokens (UserId, Token, Platform, DeviceId, IsActive, CreatedAt, UpdatedAt, LastSeenAt)
+                      VALUES (@UserId, @Token, @Platform, @DeviceId, 1, GETUTCDATE(), GETUTCDATE(), GETUTCDATE());
+                  END",
+                new
+                {
+                    UserId = userId,
+                    Token = request.Token.Trim(),
+                    Platform = string.IsNullOrWhiteSpace(request.Platform) ? "android" : request.Platform.Trim().ToLowerInvariant(),
+                    DeviceId = string.IsNullOrWhiteSpace(request.DeviceId) ? null : request.DeviceId.Trim()
+                });
+        }
+
+        public async Task DisableDeviceTokenAsync(long userId, string token)
+        {
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync(
+                @"UPDATE MobileDeviceTokens
+                     SET IsActive = 0,
+                         UpdatedAt = GETUTCDATE()
+                   WHERE UserId = @UserId AND Token = @Token",
+                new { UserId = userId, Token = token.Trim() });
+        }
+
+        public async Task<IEnumerable<PushNotificationCandidate>> GetPendingPushNotificationsAsync(int count = 100)
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.QueryAsync<PushNotificationCandidate>(
+                @"SELECT TOP (@Count)
+                         n.Id AS NotificationId,
+                         token.Id AS DeviceTokenId,
+                         token.Token,
+                         n.Title,
+                         n.Body,
+                         n.PollId,
+                         n.Type
+                    FROM Notifications n
+                    JOIN MobileDeviceTokens token
+                      ON token.UserId = n.UserId
+                     AND token.IsActive = 1
+                    WHERE n.CreatedAt >= DATEADD(day, -2, GETUTCDATE())
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM NotificationPushDeliveries delivery
+                          WHERE delivery.NotificationId = n.Id
+                            AND delivery.DeviceTokenId = token.Id
+                      )
+                    ORDER BY n.CreatedAt ASC",
+                new { Count = Math.Clamp(count, 1, 500) });
+        }
+
+        public async Task MarkPushAttemptAsync(
+            long notificationId,
+            long deviceTokenId,
+            bool success,
+            string? providerMessageId,
+            string? errorMessage)
+        {
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync(
+                @"IF NOT EXISTS (
+                      SELECT 1
+                      FROM NotificationPushDeliveries
+                      WHERE NotificationId = @NotificationId AND DeviceTokenId = @DeviceTokenId
+                  )
+                  BEGIN
+                      INSERT INTO NotificationPushDeliveries (
+                          NotificationId, DeviceTokenId, Status, ProviderMessageId, ErrorMessage, AttemptedAt)
+                      VALUES (
+                          @NotificationId, @DeviceTokenId, @Status, @ProviderMessageId, @ErrorMessage, GETUTCDATE());
+                  END",
+                new
+                {
+                    NotificationId = notificationId,
+                    DeviceTokenId = deviceTokenId,
+                    Status = success ? "Sent" : "Failed",
+                    ProviderMessageId = providerMessageId,
+                    ErrorMessage = errorMessage
+                });
+        }
+
         public async Task<int> CreateDailyChallengeNotificationsAsync(DateTime utcNow)
         {
             using var conn = _context.CreateConnection();

@@ -68,6 +68,19 @@ export const usersApi = {
     }),
 };
 
+export const notificationsApi = {
+  registerDeviceToken: (token: string, platform: 'android' | 'ios' | string) =>
+    apiRequest<{ success: boolean }>('/api/notifications/device-tokens', {
+      method: 'POST',
+      body: JSON.stringify({ token, platform }),
+    }),
+  disableDeviceToken: (token: string) =>
+    apiRequest<{ success: boolean }>(
+      `/api/notifications/device-tokens?token=${encodeURIComponent(token)}`,
+      { method: 'DELETE' },
+    ),
+};
+
 export const pollsApi = {
   getTrending: (count = 20) => apiRequest<ApiPoll[]>(`/api/polls/trending?count=${count}`),
 };

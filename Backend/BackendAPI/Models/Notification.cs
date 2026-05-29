@@ -44,4 +44,22 @@ namespace BackendAPI.Models
     {
         public List<NotificationType> DisabledTypes { get; set; } = new();
     }
+
+    public class RegisterPushTokenRequest
+    {
+        public string Token { get; set; } = string.Empty;
+        public string Platform { get; set; } = "android";
+        public string? DeviceId { get; set; }
+    }
+
+    public class PushNotificationCandidate
+    {
+        public long NotificationId { get; set; }
+        public long DeviceTokenId { get; set; }
+        public string Token { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Body { get; set; } = string.Empty;
+        public long? PollId { get; set; }
+        public NotificationType Type { get; set; }
+    }
 }

@@ -67,6 +67,7 @@ builder.Services.AddScoped<IAchievementsRepository,  AchievementsRepository>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient<IPushNotificationService, ExpoPushNotificationService>();
 builder.Services.AddScoped<IRssIngestionService,     RssIngestionService>();
 builder.Services.AddScoped<IYouTubeIngestionService, YouTubeIngestionService>();
 builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();

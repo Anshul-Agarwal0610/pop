@@ -86,5 +86,31 @@ namespace BackendAPI.Controllers
                 request.DisabledTypes);
             return Ok(preferences);
         }
+
+        // POST /api/notifications/device-tokens
+        [HttpPost("device-tokens")]
+        public async Task<IActionResult> RegisterDeviceToken([FromBody] RegisterPushTokenRequest request)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return BadRequest(new { message = "Push token is required." });
+
+            await _notificationsRepo.RegisterDeviceTokenAsync(userId.Value, request);
+            return Ok(new { success = true });
+        }
+
+        // DELETE /api/notifications/device-tokens?token=ExponentPushToken...
+        [HttpDelete("device-tokens")]
+        public async Task<IActionResult> DisableDeviceToken([FromQuery] string? token)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+            if (string.IsNullOrWhiteSpace(token))
+                return BadRequest(new { message = "Push token is required." });
+
+            await _notificationsRepo.DisableDeviceTokenAsync(userId.Value, token);
+            return Ok(new { success = true });
+        }
     }
 }

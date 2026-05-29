@@ -13,6 +13,15 @@ namespace BackendAPI.Interfaces
         Task<IEnumerable<NotificationPreference>> ReplacePreferencesAsync(
             long userId,
             IEnumerable<NotificationType> disabledTypes);
+        Task RegisterDeviceTokenAsync(long userId, RegisterPushTokenRequest request);
+        Task DisableDeviceTokenAsync(long userId, string token);
+        Task<IEnumerable<PushNotificationCandidate>> GetPendingPushNotificationsAsync(int count = 100);
+        Task MarkPushAttemptAsync(
+            long notificationId,
+            long deviceTokenId,
+            bool success,
+            string? providerMessageId,
+            string? errorMessage);
         Task<int> CreateDailyChallengeNotificationsAsync(DateTime utcNow);
         Task<int> CreateStreakReminderNotificationsAsync(DateTime utcNow);
         Task<int> CreateTrendingPollNotificationsAsync(DateTime utcNow);
