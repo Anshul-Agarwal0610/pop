@@ -1,6 +1,12 @@
 import { API_BASE_URL } from '../config/api';
 import { getToken } from './session';
-import type { AuthResponse, AuthUser, LoginPayload, RegisterPayload } from '../types/auth';
+import type {
+  AuthResponse,
+  AuthUser,
+  CategoryPreference,
+  LoginPayload,
+  RegisterPayload,
+} from '../types/auth';
 import type { ApiPoll, CastVoteResponse } from '../types/poll';
 
 interface ApiErrorShape {
@@ -53,6 +59,13 @@ export const authApi = {
 
 export const usersApi = {
   getLeaderboard: (count = 20) => apiRequest<AuthUser[]>(`/api/users/leaderboard?count=${count}`),
+  getCategoryPreferences: () =>
+    apiRequest<CategoryPreference[]>('/api/users/me/preferences/categories'),
+  updateCategoryPreferences: (categories: string[]) =>
+    apiRequest<CategoryPreference[]>('/api/users/me/preferences/categories', {
+      method: 'PUT',
+      body: JSON.stringify({ categories }),
+    }),
 };
 
 export const pollsApi = {

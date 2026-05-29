@@ -18,11 +18,23 @@ import {
 import { API_BASE_URL } from './src/config/api';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { pollsApi, usersApi, votesApi } from './src/lib/api';
+import { hasCompletedOnboarding, markOnboardingComplete } from './src/lib/session';
 import type { AuthUser } from './src/types/auth';
 import type { ApiPoll, ApiPollOption, VoteReward } from './src/types/poll';
 
 type AuthMode = 'login' | 'register';
 type SignedInTab = 'home' | 'profile' | 'leaderboard';
+
+const onboardingCategories = [
+  'Technology',
+  'Society',
+  'Work',
+  'Environment',
+  'Culture',
+  'Sports',
+  'Health',
+  'Politics',
+];
 
 export default function App() {
   return (
@@ -33,12 +45,51 @@ export default function App() {
 }
 
 function PollifyApp() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadOnboardingState() {
+      if (!user) {
+        setOnboardingComplete(false);
+        setIsCheckingOnboarding(false);
+        return;
+      }
+
+      setIsCheckingOnboarding(true);
+      try {
+        const completed = await hasCompletedOnboarding(user.id);
+        if (isMounted) setOnboardingComplete(completed);
+      } finally {
+        if (isMounted) setIsCheckingOnboarding(false);
+      }
+    }
+
+    loadOnboardingState();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-      {isLoading ? <LoadingScreen /> : isAuthenticated ? <SignedInHome /> : <AuthScreen />}
+      {isLoading || isCheckingOnboarding ? (
+        <LoadingScreen />
+      ) : isAuthenticated && user && !onboardingComplete ? (
+        <OnboardingScreen
+          onComplete={() => setOnboardingComplete(true)}
+          user={user}
+        />
+      ) : isAuthenticated ? (
+        <SignedInHome />
+      ) : (
+        <AuthScreen />
+      )}
     </SafeAreaView>
   );
 }
@@ -224,6 +275,164 @@ function LabeledInput({
         style={styles.input}
         value={value}
       />
+    </View>
+  );
+}
+
+function OnboardingScreen({
+  onComplete,
+  user,
+}: {
+  onComplete: () => void;
+  user: AuthUser;
+}) {
+  const [step, setStep] = useState(0);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isPreferenceStep = step === 2;
+
+  function toggleCategory(category: string) {
+    setSelectedCategories((current) =>
+      current.includes(category)
+        ? current.filter((item) => item !== category)
+        : [...current, category],
+    );
+  }
+
+  async function finish(skipPreferences = false) {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      if (!skipPreferences && selectedCategories.length > 0) {
+        await usersApi.updateCategoryPreferences(selectedCategories);
+      }
+
+      await markOnboardingComplete(user.id);
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save onboarding');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.onboardingContainer}>
+      <View style={styles.onboardingHeader}>
+        <Text style={styles.eyebrow}>Welcome, {user.displayName}</Text>
+        <Text style={styles.titleSmall}>
+          {step === 0
+            ? 'Vote in seconds'
+            : step === 1
+              ? 'Build your streak'
+              : 'Tune your feed'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {step === 0
+            ? 'Open Pollify, answer a quick poll, see live results, and keep moving.'
+            : step === 1
+              ? 'Every vote earns XP. Daily activity keeps your streak alive and helps you climb ranks.'
+              : 'Pick a few categories so your first mobile feed feels closer to your interests.'}
+        </Text>
+      </View>
+
+      <View style={styles.onboardingCard}>
+        {step === 0 && (
+          <>
+            <OnboardingPoint title="Fresh polls" copy="Trending questions are pulled from the backend feed." />
+            <OnboardingPoint title="Fast voting" copy="Tap an option, get results, and continue your session." />
+            <OnboardingPoint title="Share-worthy results" copy="Public polls can be shared once you want to bring friends in." />
+          </>
+        )}
+
+        {step === 1 && (
+          <>
+            <OnboardingPoint title="XP rewards" copy="Votes update your XP and level right away." />
+            <OnboardingPoint title="Daily streaks" copy="Come back daily to keep your streak growing." />
+            <OnboardingPoint title="Ranks" copy="The leaderboard uses real backend XP data, no mock scores." />
+          </>
+        )}
+
+        {isPreferenceStep && (
+          <>
+            <Text style={styles.panelTitle}>Choose categories</Text>
+            <View style={styles.categoryGrid}>
+              {onboardingCategories.map((category) => {
+                const selected = selectedCategories.includes(category);
+                return (
+                  <Pressable
+                    key={category}
+                    onPress={() => toggleCategory(category)}
+                    style={[styles.categoryChoice, selected && styles.categoryChoiceActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryChoiceText,
+                        selected && styles.categoryChoiceTextActive,
+                      ]}
+                    >
+                      {category}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        )}
+      </View>
+
+      {error && <Text style={styles.errorText}>{error}</Text>}
+
+      <View style={styles.onboardingDots}>
+        {[0, 1, 2].map((item) => (
+          <View
+            key={item}
+            style={[styles.onboardingDot, step === item && styles.onboardingDotActive]}
+          />
+        ))}
+      </View>
+
+      <View style={styles.onboardingActions}>
+        <Pressable
+          disabled={isSaving}
+          onPress={() => finish(true)}
+          style={styles.skipButton}
+        >
+          <Text style={styles.skipButtonText}>Skip</Text>
+        </Pressable>
+        <Pressable
+          disabled={isSaving}
+          onPress={() => {
+            if (step < 2) {
+              setStep((current) => current + 1);
+            } else {
+              finish(false);
+            }
+          }}
+          style={[styles.primaryButton, styles.onboardingPrimaryButton, isSaving && styles.primaryButtonDisabled]}
+        >
+          {isSaving ? (
+            <ActivityIndicator color="#1F2B32" />
+          ) : (
+            <Text style={styles.primaryButtonText}>{step < 2 ? 'Next' : 'Start voting'}</Text>
+          )}
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+
+function OnboardingPoint({ copy, title }: { copy: string; title: string }) {
+  return (
+    <View style={styles.onboardingPoint}>
+      <View style={styles.onboardingPointBullet} />
+      <View style={styles.onboardingPointText}>
+        <Text style={styles.onboardingPointTitle}>{title}</Text>
+        <Text style={styles.onboardingPointCopy}>{copy}</Text>
+      </View>
     </View>
   );
 }
@@ -686,6 +895,116 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F7F5EF',
+  },
+  onboardingContainer: {
+    flexGrow: 1,
+    gap: 18,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  onboardingHeader: {
+    gap: 4,
+  },
+  onboardingCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E0D4',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 14,
+    padding: 18,
+  },
+  onboardingPoint: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  onboardingPointBullet: {
+    backgroundColor: '#F4D35E',
+    borderRadius: 8,
+    height: 14,
+    marginTop: 5,
+    width: 14,
+  },
+  onboardingPointText: {
+    flex: 1,
+    gap: 4,
+  },
+  onboardingPointTitle: {
+    color: '#222222',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  onboardingPointCopy: {
+    color: '#54514A',
+    fontSize: 15,
+    letterSpacing: 0,
+    lineHeight: 22,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  categoryChoice: {
+    backgroundColor: '#F9F7F2',
+    borderColor: '#DED6C8',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+  },
+  categoryChoiceActive: {
+    backgroundColor: '#233D4D',
+    borderColor: '#233D4D',
+  },
+  categoryChoiceText: {
+    color: '#4C473F',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  categoryChoiceTextActive: {
+    color: '#FFFFFF',
+  },
+  onboardingDots: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  onboardingDot: {
+    backgroundColor: '#DED6C8',
+    borderRadius: 8,
+    height: 8,
+    width: 8,
+  },
+  onboardingDotActive: {
+    backgroundColor: '#B0413E',
+    width: 22,
+  },
+  onboardingActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  onboardingPrimaryButton: {
+    flex: 1,
+  },
+  skipButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E0D4',
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 50,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+  },
+  skipButtonText: {
+    color: '#756F63',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   keyboard: {
     flex: 1,

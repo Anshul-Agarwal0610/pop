@@ -16,6 +16,14 @@ Signed-in users can switch between mobile gamification surfaces:
 - Profile: votes, polls created, XP, streak, level, and joined date.
 - Ranks: real backend leaderboard data from `GET /api/users/leaderboard`.
 
+First-time signed-in users see a short native onboarding flow before the tabs:
+
+- Core voting loop: open the app, answer a poll, and see results.
+- Gamification: XP, daily streaks, levels, and rankings.
+- Category preferences: selected categories are saved to `PUT /api/users/me/preferences/categories`.
+
+Onboarding completion is stored per user in Expo SecureStore so future launches go straight to the app. Users can skip onboarding and enter the app without saving preferences.
+
 The feed is backed by:
 
 - `GET /api/polls/trending`

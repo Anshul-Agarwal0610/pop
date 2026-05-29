@@ -13,6 +13,12 @@ export interface AuthUser {
   createdAt: string;
 }
 
+export interface CategoryPreference {
+  category: string;
+  isExplicit: boolean;
+  voteCount: number;
+}
+
 export interface AuthResponse {
   token: string;
   user: AuthUser;

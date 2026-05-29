@@ -4,6 +4,7 @@ import type { AuthResponse, AuthUser } from '../types/auth';
 
 const TOKEN_KEY = 'pollify_token';
 const USER_KEY = 'pollify_user';
+const ONBOARDING_PREFIX = 'pollify_onboarding_complete_';
 
 async function secureStoreAvailable() {
   return SecureStore.isAvailableAsync().catch(() => false);
@@ -44,4 +45,17 @@ export async function clearSession() {
     SecureStore.deleteItemAsync(TOKEN_KEY),
     SecureStore.deleteItemAsync(USER_KEY),
   ]);
+}
+
+export async function hasCompletedOnboarding(userId: number) {
+  if (!(await secureStoreAvailable())) return false;
+
+  const value = await SecureStore.getItemAsync(`${ONBOARDING_PREFIX}${userId}`);
+  return value === 'true';
+}
+
+export async function markOnboardingComplete(userId: number) {
+  if (!(await secureStoreAvailable())) return;
+
+  await SecureStore.setItemAsync(`${ONBOARDING_PREFIX}${userId}`, 'true');
 }
