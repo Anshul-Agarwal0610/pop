@@ -59,6 +59,23 @@ export interface CastVoteRequest {
   optionId: number
 }
 
+export interface ApiProgression {
+  totalXp: number
+  level: number
+  currentLevelXp: number
+  nextLevelXp: number
+  xpIntoLevel: number
+  xpRequiredForNextLevel: number
+  progressPercent: number
+}
+
+export interface ApiRewardEvent {
+  type: "Vote" | "Challenge" | "Achievement"
+  sourceId: string
+  awardedXp: number
+  label: string | null
+}
+
 export interface ApiVoteReward {
   xp: number
   level: number
@@ -68,6 +85,12 @@ export interface ApiVoteReward {
   streakAdvanced: boolean
   lastVoteDate: string | null
   awardedBadges: ApiUserBadge[]
+  awardedXp: number
+  progression: ApiProgression
+  previousLevel: number
+  leveledUp: boolean
+  levelsGained: number
+  events: ApiRewardEvent[]
 }
 
 export interface ApiCastVoteResponse {
@@ -454,6 +477,7 @@ export interface ApiUser {
   lastVoteDate?: string | null
   createdAt: string
   level: number
+  progression: ApiProgression
   badges: ApiUserBadge[]
 }
 

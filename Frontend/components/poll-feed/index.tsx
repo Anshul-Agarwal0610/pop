@@ -12,16 +12,21 @@ import { ProgressIndicator } from "./progress-indicator"
 import { Button } from "@/components/ui/button"
 import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
+import type { ApiVoteReward } from "@/lib/api"
+import { useAuth } from "@/contexts/auth-context"
 
 export function PollFeed() {
+  const { user, applyProgression } = useAuth()
   const [selectedCategory, setSelectedCategory] = useState("All")
   const feedCategory = selectedCategory === "All" ? undefined : selectedCategory
   const { polls, loading, error, castVote, loadMore, hasMore } = usePolls(feedCategory)
   const [currentIndex, setCurrentIndex]   = useState(0)
   const [streak, setStreak]               = useState(0)
-  const [totalXp, setTotalXp]             = useState(1250)
+  const [totalXp, setTotalXp]             = useState(user?.xp ?? 0)
   const [currentVote, setCurrentVote]     = useState<"yes" | "no" | "option" | null>(null)
   const [sessionXp, setSessionXp]         = useState(0)
+  const [reward, setReward]               = useState<ApiVoteReward | null>(null)
+  const [voteError, setVoteError]         = useState<string | null>(null)
 
   const currentPoll: Poll | undefined = polls[currentIndex]
   const hasMorePolls = currentIndex < polls.length
@@ -51,14 +56,20 @@ export function PollFeed() {
     async (optionId: number, feedback: "yes" | "no" | "option") => {
       if (!currentPoll || currentVote) return
 
-      setCurrentVote(feedback)
-      setStreak((s) => s + 1)
-      setTotalXp((xp) => xp + currentPoll.xpReward)
-      setSessionXp((xp) => xp + currentPoll.xpReward)
-
-      await castVote(currentPoll.id, optionId)
+      setVoteError(null)
+      try {
+        const result = await castVote(currentPoll.id, optionId)
+        setReward(result.reward)
+        setCurrentVote(feedback)
+        setStreak(result.reward.streak)
+        setTotalXp(result.reward.progression.totalXp)
+        setSessionXp((xp) => xp + result.reward.awardedXp)
+        applyProgression(result.reward.progression)
+      } catch (err) {
+        setVoteError((err as Error).message)
+      }
     },
-    [currentPoll, currentVote, castVote]
+    [currentPoll, currentVote, castVote, applyProgression]
   )
 
   const handleFeedbackComplete = useCallback(() => {
@@ -204,10 +215,15 @@ export function PollFeed() {
       {/* Vote Feedback Overlay */}
       <VoteFeedback
         vote={currentVote}
-        xpEarned={currentPoll?.xpReward || 0}
+        reward={reward}
         streakCount={streak}
         onComplete={handleFeedbackComplete}
       />
+      {voteError && (
+        <p className="px-4 pb-2 text-center text-sm text-destructive" role="alert">
+          Vote failed. Your XP was not changed.
+        </p>
+      )}
     </div>
   )
 }

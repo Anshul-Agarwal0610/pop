@@ -170,6 +170,9 @@ namespace BackendAPI.Repository
                               WHERE UserId = @UserId AND ChallengeId = @ChallengeId",
                             new { UserId = userId, ChallengeId = challenge.Id },
                             transaction);
+
+                        progress.RewardGranted = true;
+                        progress.AwardedXp = challenge.RewardXp;
                     }
                 }
 

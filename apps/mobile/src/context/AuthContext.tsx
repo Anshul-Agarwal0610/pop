@@ -86,6 +86,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         ? {
             ...current,
             xp: reward.xp,
+            level: reward.progression.level,
+            progression: reward.progression,
             streak: reward.streak,
             totalVotes: reward.totalVotes,
             lastVoteDate: reward.lastVoteDate,

@@ -28,5 +28,6 @@ namespace BackendAPI.Models
         public bool IsCompleted { get; set; }
         public bool RewardGranted { get; set; }
         public DateTime? CompletedAt { get; set; }
+        public int AwardedXp { get; set; }
     }
 }

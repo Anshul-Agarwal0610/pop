@@ -71,27 +71,76 @@ namespace BackendAPI.Controllers
                                         ex.Message.Contains("duplicate key") ||
                                         ex.Message.Contains("UNIQUE"))
             {
-                return Conflict(new { message = "You have already voted on this poll." });
+                var currentUser = await _usersRepo.GetByIdAsync(userId);
+                var progression = GamificationRules.FromTotalXp(currentUser?.Xp ?? 0);
+                return Conflict(new
+                {
+                    message = "You have already voted on this poll.",
+                    reward = new ProgressionReward
+                    {
+                        AwardedXp = 0,
+                        Progression = progression,
+                        PreviousLevel = progression.Level,
+                        Streak = currentUser?.Streak ?? 0,
+                        TotalVotes = currentUser?.TotalVotes ?? 0,
+                        LastVoteDate = currentUser?.LastVoteDate
+                    }
+                });
             }
 
             var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
 
             // US-50: Award XP and apply daily streak rules after a unique vote.
-            var reward = await _usersRepo.ApplyVoteRewardAsync(
+            var voteReward = await _usersRepo.ApplyVoteRewardAsync(
                 userId,
                 GamificationRules.VoteXp(poll),
                 DateTime.UtcNow);
-            var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
-
-            if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)
+            var challenges = (await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow)).ToList();
+            var finalUser = await _usersRepo.GetByIdAsync(userId);
+            var previousProgression = GamificationRules.FromTotalXp(userBeforeReward?.Xp ?? 0);
+            var finalProgression = GamificationRules.FromTotalXp(finalUser?.Xp ?? voteReward.Xp);
+            var events = new List<RewardEvent>
             {
-                var level = reward.Xp / 1000;
+                new(RewardEventType.Vote, request.PollId.ToString(), GamificationRules.VoteXp(poll), "Vote")
+            };
+            events.AddRange(challenges
+                .Where(challenge => challenge.AwardedXp > 0)
+                .Select(challenge => new RewardEvent(
+                    RewardEventType.Challenge,
+                    challenge.ChallengeId.ToString(),
+                    challenge.AwardedXp,
+                    challenge.Title)));
+            var achievementXp = Math.Max(0, voteReward.XpAwarded - GamificationRules.VoteXp(poll));
+            if (achievementXp > 0)
+            {
+                events.Add(new RewardEvent(
+                    RewardEventType.Achievement,
+                    string.Join(",", voteReward.AwardedBadges.Select(badge => badge.BadgeId)),
+                    achievementXp,
+                    string.Join(", ", voteReward.AwardedBadges.Select(badge => badge.Name))));
+            }
+
+            var reward = new ProgressionReward
+            {
+                AwardedXp = Math.Max(0, finalProgression.TotalXp - previousProgression.TotalXp),
+                Progression = finalProgression,
+                PreviousLevel = previousProgression.Level,
+                Events = events,
+                Streak = voteReward.Streak,
+                TotalVotes = voteReward.TotalVotes,
+                StreakAdvanced = voteReward.StreakAdvanced,
+                LastVoteDate = voteReward.LastVoteDate,
+                AwardedBadges = voteReward.AwardedBadges
+            };
+
+            if (reward.LeveledUp)
+            {
                 await _notificationsRepo.CreateAsync(new CreateNotificationRequest
                 {
                     UserId = userId,
                     Type = NotificationType.LevelUp,
                     Title = "Level up!",
-                    Body = $"You reached level {level} with {reward.Xp:N0} XP.",
+                    Body = $"You reached level {reward.Level} with {reward.Xp:N0} XP.",
                     PollId = null
                 });
             }

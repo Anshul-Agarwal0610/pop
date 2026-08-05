@@ -14,7 +14,9 @@ import {
   getStoredUser,
   saveSession,
   clearSession,
+  saveStoredUser,
 } from "@/lib/auth"
+import type { ApiProgression } from "@/lib/api"
 
 interface AuthContextValue {
   user: AuthUser | null
@@ -22,6 +24,7 @@ interface AuthContextValue {
   isAuthenticated: boolean
   login:  (data: AuthResponse) => void
   logout: () => void
+  applyProgression: (progression: ApiProgression) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -46,9 +49,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const applyProgression = useCallback((progression: ApiProgression) => {
+    setUser((current) => {
+      if (!current) return current
+      const next = { ...current, xp: progression.totalXp, level: progression.level, progression }
+      saveStoredUser(next)
+      return next
+    })
+  }, [])
+
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: !!user, login, logout }}
+      value={{ user, isLoading, isAuthenticated: !!user, login, logout, applyProgression }}
     >
       {children}
     </AuthContext.Provider>
