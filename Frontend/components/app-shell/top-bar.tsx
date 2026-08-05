@@ -106,7 +106,7 @@ export function TopBar({
                   variant="ghost"
                   size="icon"
                   className="h-10 w-10 rounded-xl text-muted-foreground hover:text-foreground"
-                  onClick={() => { logout(); router.push("/login") }}
+                  onClick={() => { logout(); router.replace("/") }}
                   title="Sign out"
                 >
                   <LogOut className="h-5 w-5" />

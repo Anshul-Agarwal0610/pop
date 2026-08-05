@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { Bell, CheckCheck, Loader2, RefreshCw, Sparkles, TrendingUp, Trophy } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
@@ -47,8 +46,7 @@ const preferenceLabels: Record<ApiNotification["type"], string> = {
 }
 
 export default function NotificationsPage() {
-  const router = useRouter()
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated } = useAuth()
   const [notifications, setNotifications] = useState<ApiNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [preferences, setPreferences] = useState<ApiNotificationPreference[]>([])
@@ -77,13 +75,8 @@ export default function NotificationsPage() {
   }, [isAuthenticated])
 
   useEffect(() => {
-    if (authLoading) return
-    if (!isAuthenticated) {
-      router.push("/login?message=Sign in to view notifications&redirect=/notifications")
-      return
-    }
-    loadNotifications()
-  }, [authLoading, isAuthenticated, loadNotifications, router])
+    if (isAuthenticated) loadNotifications()
+  }, [isAuthenticated, loadNotifications])
 
   async function markRead(notification: ApiNotification) {
     if (notification.isRead) return

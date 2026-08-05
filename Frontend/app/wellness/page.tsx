@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { Download, HeartPulse, Loader2, RefreshCw, ShieldCheck, Trash2 } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
@@ -10,8 +9,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { wellnessApi, type ApiPoll, type ApiWellnessOverview } from "@/lib/api"
 
 export default function WellnessPage() {
-  const router = useRouter()
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated } = useAuth()
   const [overview, setOverview] = useState<ApiWellnessOverview | null>(null)
   const [loading, setLoading] = useState(true)
   const [savingOptionId, setSavingOptionId] = useState<number | null>(null)
@@ -35,13 +33,8 @@ export default function WellnessPage() {
   }, [isAuthenticated])
 
   useEffect(() => {
-    if (authLoading) return
-    if (!isAuthenticated) {
-      router.push("/login?message=Sign in to use private wellness mode&redirect=/wellness")
-      return
-    }
-    loadOverview()
-  }, [authLoading, isAuthenticated, loadOverview, router])
+    if (isAuthenticated) loadOverview()
+  }, [isAuthenticated, loadOverview])
 
   const latestResponse = overview?.history[0]
   const insight = overview?.insight

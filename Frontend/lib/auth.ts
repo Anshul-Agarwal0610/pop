@@ -98,3 +98,14 @@ export async function apiLogin(
 export async function apiGoogleLogin(idToken: string): Promise<AuthResponse> {
   return post<AuthResponse>("/api/auth/google", { idToken })
 }
+
+export async function getCurrentUser(): Promise<AuthUser> {
+  const token = getToken()
+  if (!token) throw new Error("Missing authentication token")
+
+  const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error("Session is no longer valid")
+  return res.json() as Promise<AuthUser>
+}

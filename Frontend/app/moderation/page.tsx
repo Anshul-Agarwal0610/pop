@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import {
   CheckCircle2,
   ExternalLink,
@@ -17,8 +16,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { pollsApi, type ApiPoll } from "@/lib/api"
 
 export default function ModerationPage() {
-  const router = useRouter()
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated } = useAuth()
   const [polls, setPolls] = useState<ApiPoll[]>([])
   const [loading, setLoading] = useState(true)
   const [actingPollId, setActingPollId] = useState<number | null>(null)
@@ -39,14 +37,8 @@ export default function ModerationPage() {
   }, [isAuthenticated])
 
   useEffect(() => {
-    if (authLoading) return
-    if (!isAuthenticated) {
-      router.push("/login?message=Sign in to review polls&redirect=/moderation")
-      return
-    }
-
-    loadQueue()
-  }, [authLoading, isAuthenticated, loadQueue, router])
+    if (isAuthenticated) loadQueue()
+  }, [isAuthenticated, loadQueue])
 
   async function moderatePoll(poll: ApiPoll, status: "Published" | "Rejected") {
     setActingPollId(poll.id)

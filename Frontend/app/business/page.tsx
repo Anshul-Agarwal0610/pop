@@ -1,7 +1,6 @@
 "use client"
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import {
   BarChart3,
   BriefcaseBusiness,
@@ -27,8 +26,7 @@ import {
 import { cn } from "@/lib/utils"
 
 export default function BusinessPage() {
-  const router = useRouter()
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated } = useAuth()
   const [accounts, setAccounts] = useState<ApiBusinessAccount[]>([])
   const [campaigns, setCampaigns] = useState<ApiBusinessCampaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null)
@@ -91,13 +89,8 @@ export default function BusinessPage() {
   }, [])
 
   useEffect(() => {
-    if (authLoading) return
-    if (!isAuthenticated) {
-      router.push("/login?message=Sign in to manage business campaigns&redirect=/business")
-      return
-    }
-    loadBusiness()
-  }, [authLoading, isAuthenticated, loadBusiness, router])
+    if (isAuthenticated) loadBusiness()
+  }, [isAuthenticated, loadBusiness])
 
   useEffect(() => {
     loadAnalytics(selectedCampaignId)
