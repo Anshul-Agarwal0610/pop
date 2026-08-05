@@ -48,19 +48,7 @@ Override it with `NEXT_PUBLIC_API_URL` when needed.
 
 ## Mobile App
 
-Pollify now includes an Expo React Native foundation in `apps/mobile` for Android-first delivery while keeping iOS support in the same codebase.
-
-```bash
-cd apps/mobile
-npm install
-```
-
-```powershell
-$env:EXPO_PUBLIC_API_URL = "http://10.0.2.2:5177"
-npm run android
-```
-
-Use `http://10.0.2.2:5177` for the Android emulator, or your machine's LAN IP address when testing from a physical device.
+The mobile app uses Expo; see the [mobile setup guide](apps/mobile/README.md) to get started.
 
 ### Other commands
 
