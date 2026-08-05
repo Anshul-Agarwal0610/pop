@@ -1,8 +1,10 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { RefreshCw, Sparkles, AlertCircle, Loader2 } from "lucide-react"
+import { FEED_CATEGORIES, normalizeCategoryName } from "@/lib/categories"
+import { CategoryChips } from "./category-chips"
 import { PollCard } from "./poll-card"
 import { VoteFeedback } from "./vote-feedback"
 import { StreakCounter } from "./streak-counter"
@@ -12,34 +14,49 @@ import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
 
 export function PollFeed() {
-  const { polls, loading, error, castVote, loadMore, hasMore } = usePolls()
-
+  const [selectedCategory, setSelectedCategory] = useState("All")
+  const feedCategory = selectedCategory === "All" ? undefined : selectedCategory
+  const { polls, loading, error, castVote, loadMore, hasMore } = usePolls(feedCategory)
   const [currentIndex, setCurrentIndex]   = useState(0)
   const [streak, setStreak]               = useState(0)
   const [totalXp, setTotalXp]             = useState(1250)
-  const [currentVote, setCurrentVote]     = useState<"yes" | "no" | null>(null)
+  const [currentVote, setCurrentVote]     = useState<"yes" | "no" | "option" | null>(null)
   const [sessionXp, setSessionXp]         = useState(0)
 
   const currentPoll: Poll | undefined = polls[currentIndex]
   const hasMorePolls = currentIndex < polls.length
 
+  useEffect(() => {
+    const saved = window.localStorage.getItem("poll-feed-category")
+    if (!saved) return
+    if (saved === "All") {
+      setSelectedCategory(saved)
+      return
+    }
+
+    const normalized = normalizeCategoryName(saved)
+    if (FEED_CATEGORIES.includes(normalized as (typeof FEED_CATEGORIES)[number])) {
+      setSelectedCategory(normalized)
+    }
+  }, [])
+
+  const handleCategorySelect = useCallback((category: string) => {
+    setSelectedCategory(category)
+    setCurrentIndex(0)
+    setCurrentVote(null)
+    window.localStorage.setItem("poll-feed-category", category)
+  }, [])
+
   const handleVote = useCallback(
-    async (vote: "yes" | "no") => {
+    async (optionId: number, feedback: "yes" | "no" | "option") => {
       if (!currentPoll || currentVote) return
 
-      setCurrentVote(vote)
+      setCurrentVote(feedback)
       setStreak((s) => s + 1)
       setTotalXp((xp) => xp + currentPoll.xpReward)
       setSessionXp((xp) => xp + currentPoll.xpReward)
 
-      // Map yes → options[0], no → options[last]
-      if (currentPoll.options && currentPoll.options.length >= 2) {
-        const optionId =
-          vote === "yes"
-            ? currentPoll.options[0].id
-            : currentPoll.options[currentPoll.options.length - 1].id
-        await castVote(currentPoll.id, optionId)
-      }
+      await castVote(currentPoll.id, optionId)
     },
     [currentPoll, currentVote, castVote]
   )
@@ -64,9 +81,12 @@ export function PollFeed() {
   // ── Loading state ─────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading polls...</p>
+      <div className="relative flex h-full flex-col">
+        <CategoryChips selected={selectedCategory} onSelect={handleCategorySelect} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading polls...</p>
+        </div>
       </div>
     )
   }
@@ -74,20 +94,25 @@ export function PollFeed() {
   // ── Error state ───────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
-        <AlertCircle className="h-10 w-10 text-destructive" />
-        <p className="font-semibold text-foreground">Could not load polls</p>
-        <p className="text-sm text-muted-foreground">{error}</p>
-        <Button variant="outline" onClick={() => window.location.reload()} className="gap-2">
-          <RefreshCw className="h-4 w-4" />
-          Retry
-        </Button>
+      <div className="relative flex h-full flex-col">
+        <CategoryChips selected={selectedCategory} onSelect={handleCategorySelect} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
+          <AlertCircle className="h-10 w-10 text-destructive" />
+          <p className="font-semibold text-foreground">Could not load polls</p>
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button variant="outline" onClick={() => window.location.reload()} className="gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Retry
+          </Button>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="relative flex h-full flex-col">
+      <CategoryChips selected={selectedCategory} onSelect={handleCategorySelect} />
+
       {/* Header Stats */}
       <motion.div
         className="flex items-center justify-between px-4 py-3"

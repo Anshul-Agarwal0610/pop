@@ -14,8 +14,10 @@ import {
   Clock,
   LogOut,
   CheckCircle2,
+  Award,
 } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
+import { CategoryBadge } from "@/components/category-badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -95,6 +97,7 @@ export default function ProfilePage() {
   // Use fresh API data when available, fall back to cached auth user
   const displayUser = profile ?? authUser
   const { level, progress, nextXp } = xpLevel(displayUser.xp ?? 0)
+  const badges = displayUser.badges ?? []
 
   const stats = [
     { icon: BarChart3, label: "Polls Created", value: String(displayUser.pollsCreated ?? 0), color: "text-primary"     },
@@ -165,7 +168,7 @@ export default function ProfilePage() {
                     <span className="text-muted-foreground">Level {level}</span>
                     <span className="flex items-center gap-1 font-medium text-primary">
                       <Zap className="h-3.5 w-3.5" />
-                      {authUser.xp ?? 0} / {nextXp} XP
+                      {displayUser.xp ?? 0} / {nextXp} XP
                     </span>
                   </div>
                   <div className="mt-1 h-2 overflow-hidden rounded-full bg-background">
@@ -209,6 +212,42 @@ export default function ProfilePage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+          className="mb-6"
+        >
+          <h2 className="mb-3 text-lg font-semibold text-foreground">Badges</h2>
+          {badges.length === 0 ? (
+            <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border/50">
+              <Award className="mx-auto h-8 w-8 text-muted-foreground" />
+              <p className="mt-2 text-sm text-muted-foreground">
+                Keep voting, creating, and completing challenges to earn badges.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {badges.slice(0, 6).map((badge) => (
+                <div
+                  className="rounded-2xl bg-card p-4 ring-1 ring-border/50"
+                  key={badge.id}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Award className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-foreground">{badge.name}</p>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">{badge.description}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
           <h2 className="mb-3 text-lg font-semibold text-foreground">Recent Votes</h2>
@@ -232,9 +271,7 @@ export default function ProfilePage() {
                   <div className="min-w-0 flex-1">
                     <h3 className="line-clamp-2 font-medium text-foreground">{item.question}</h3>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">
-                        {item.category}
-                      </span>
+                      <CategoryBadge category={item.category} className="px-2 py-0.5" />
                       <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         {item.votedOptionText}

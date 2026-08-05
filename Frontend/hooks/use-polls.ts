@@ -15,7 +15,7 @@ interface UsePollsResult {
 
 const PAGE_SIZE = 20
 
-export function usePolls(): UsePollsResult {
+export function usePolls(category?: string): UsePollsResult {
   const [polls, setPolls]   = useState<Poll[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState<string | null>(null)
@@ -25,7 +25,12 @@ export function usePolls(): UsePollsResult {
   useEffect(() => {
     let cancelled = false
 
-    pollsApi.getTrending(PAGE_SIZE)
+    setLoading(true)
+    setError(null)
+    setPolls([])
+    setHasMore(true)
+
+    pollsApi.getPersonalized(PAGE_SIZE, category)
       .then((data) => {
         if (cancelled) return
         // US-19: filter out polls the user has already voted on
@@ -42,12 +47,12 @@ export function usePolls(): UsePollsResult {
       })
 
     return () => { cancelled = true }
-  }, [])
+  }, [category])
 
   // Load more (fetch all and append new ones)
   const loadMore = useCallback(async () => {
     try {
-      const data = await pollsApi.getAll()
+      const data = await pollsApi.getAll(category)
       const existing = new Set(polls.map((p) => p.id))
       // US-19: exclude already-voted and already-loaded polls
       const fresh = data
@@ -58,7 +63,7 @@ export function usePolls(): UsePollsResult {
     } catch (err) {
       setError((err as Error).message)
     }
-  }, [polls])
+  }, [category, polls])
 
   // Cast a vote — optimistically update percentages
   const castVote = useCallback(async (pollId: string, optionId: number) => {

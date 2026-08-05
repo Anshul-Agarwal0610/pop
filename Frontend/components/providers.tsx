@@ -3,6 +3,7 @@
 import { GoogleOAuthProvider } from "@react-oauth/google"
 import { AuthProvider } from "@/contexts/auth-context"
 import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/toaster"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -17,6 +18,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           disableTransitionOnChange
         >
           {children}
+          <Toaster />
         </ThemeProvider>
       </AuthProvider>
     </GoogleOAuthProvider>

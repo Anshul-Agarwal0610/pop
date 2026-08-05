@@ -1,151 +1,260 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { motion } from "framer-motion"
-import {
-  TrendingUp,
-  Users,
-  Clock,
-  ChevronRight,
-  Zap,
-  BarChart3,
-  Flame,
-  AlertCircle,
-  Loader2,
-} from "lucide-react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import {
+  BarChart3,
+  Check,
+  ChevronRight,
+  Clock,
+  Loader2,
+  Plus,
+  RefreshCw,
+  SlidersHorizontal,
+  Target,
+  TrendingUp,
+  Trophy,
+  Users,
+  Zap,
+} from "lucide-react"
+import { motion } from "framer-motion"
 import { AppShell } from "@/components/app-shell"
+import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import { authApi, pollsApi, type ApiPoll, type ApiUser } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
+import { POLL_CATEGORIES } from "@/lib/categories"
+import { challengesApi, pollsApi, usersApi, type ApiChallenge, type ApiPoll } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
-function timeLeft(expiresAt: string): string {
-  const diff = new Date(expiresAt).getTime() - Date.now()
-  if (diff <= 0) return "Expired"
-
-  const minutes = Math.ceil(diff / 60_000)
-  if (minutes < 60) return `${minutes}m left`
-
-  const hours = Math.ceil(minutes / 60)
-  if (hours < 24) return `${hours}h left`
-
-  return `${Math.ceil(hours / 24)}d left`
+function timeLeft(iso: string) {
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return "Ended"
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 60) return `${mins}m left`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h left`
+  return `${Math.floor(hrs / 24)}d left`
 }
 
 export default function HomePage() {
-  const { user: authUser, isAuthenticated, isLoading: authLoading } = useAuth()
-  const [profile, setProfile] = useState<ApiUser | null>(null)
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [polls, setPolls] = useState<ApiPoll[]>([])
+  const [challenges, setChallenges] = useState<ApiChallenge[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [preferredCategories, setPreferredCategories] = useState<string[]>([])
+  const [savingPreferences, setSavingPreferences] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
+    setLoading(true)
+    setError(null)
+    pollsApi.getTrending(5)
+      .then(setPolls)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [])
 
-    async function loadHome() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const [trending, me] = await Promise.all([
-          pollsApi.getTrending(3),
-          isAuthenticated ? authApi.getMe().catch(() => null) : Promise.resolve(null),
-        ])
-
-        if (cancelled) return
-        setPolls(trending)
-        setProfile(me)
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load home data")
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setPreferredCategories([])
+      setChallenges([])
+      return
     }
 
-    if (!authLoading) loadHome()
+    usersApi.getCategoryPreferences()
+      .then((preferences) => {
+        setPreferredCategories(
+          preferences.filter((preference) => preference.isExplicit).map((preference) => preference.category)
+        )
+      })
+      .catch(() => setPreferredCategories([]))
 
-    return () => {
-      cancelled = true
+    challengesApi.getActive()
+      .then(setChallenges)
+      .catch(() => setChallenges([]))
+  }, [isAuthenticated])
+
+  async function togglePreference(category: string) {
+    const next = preferredCategories.includes(category)
+      ? preferredCategories.filter((item) => item !== category)
+      : [...preferredCategories, category]
+
+    setPreferredCategories(next)
+    setSavingPreferences(true)
+    try {
+      const preferences = await usersApi.updateCategoryPreferences(next)
+      setPreferredCategories(
+        preferences.filter((preference) => preference.isExplicit).map((preference) => preference.category)
+      )
+    } finally {
+      setSavingPreferences(false)
     }
-  }, [authLoading, isAuthenticated])
+  }
 
-  const displayUser = profile ?? authUser
-  const displayName = displayUser?.displayName || displayUser?.username || "there"
+  async function resetPreferences() {
+    setSavingPreferences(true)
+    try {
+      await usersApi.resetCategoryPreferences()
+      setPreferredCategories([])
+    } finally {
+      setSavingPreferences(false)
+    }
+  }
 
-  const quickStats = useMemo(
-    () => [
-      {
-        icon: BarChart3,
-        label: "Polls Voted",
-        value: String(displayUser?.totalVotes ?? 0),
-        color: "text-primary",
-      },
-      {
-        icon: Flame,
-        label: "Day Streak",
-        value: String(displayUser?.streak ?? 0),
-        color: "text-orange-500",
-      },
-      {
-        icon: Zap,
-        label: "Total XP",
-        value: (displayUser?.xp ?? 0).toLocaleString(),
-        color: "text-amber-500",
-      },
-    ],
-    [displayUser]
-  )
+  const displayName = isAuthenticated ? user?.displayName ?? user?.username : "there"
+  const stats = [
+    { icon: BarChart3, label: "Polls Voted", value: user?.totalVotes ?? 0, color: "text-primary" },
+    { icon: Plus, label: "Polls Created", value: user?.pollsCreated ?? 0, color: "text-emerald-500" },
+    { icon: Zap, label: "Total XP", value: user?.xp ?? 0, color: "text-amber-500" },
+  ]
 
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-4 py-6">
-        {/* Welcome Section */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
+          initial={{ opacity: 0, y: 20 }}
         >
           <h1 className="text-2xl font-bold text-foreground md:text-3xl">
-            Welcome back, {displayName}!
+            Welcome back, {authLoading ? "..." : displayName}!
           </h1>
           <p className="mt-1 text-muted-foreground">
-            Ready to share your opinion today?
+            {isAuthenticated ? "Your live activity is ready." : "Sign in to track XP, streaks, and poll history."}
           </p>
         </motion.div>
 
-        {/* Quick Stats */}
+        {isAuthenticated && (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50"
+            initial={{ opacity: 0, y: 20 }}
+            transition={{ delay: 0.08 }}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold text-foreground">Feed Preferences</h2>
+              </div>
+              <Button
+                className="gap-2 text-muted-foreground"
+                disabled={savingPreferences || preferredCategories.length === 0}
+                onClick={resetPreferences}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reset
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {POLL_CATEGORIES.filter((category) => category.name !== "Health").map((category) => {
+                const selected = preferredCategories.includes(category.name)
+
+                return (
+                  <button
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ring-1 transition-colors",
+                      selected
+                        ? "bg-primary text-primary-foreground ring-primary"
+                        : "bg-secondary text-secondary-foreground ring-border hover:bg-secondary/80"
+                    )}
+                    disabled={savingPreferences}
+                    key={category.name}
+                    onClick={() => togglePreference(category.name)}
+                    type="button"
+                  >
+                    {selected && <Check className="h-3.5 w-3.5" />}
+                    {category.name}
+                  </button>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {isAuthenticated && challenges.length > 0 && (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 space-y-3"
+            initial={{ opacity: 0, y: 20 }}
+            transition={{ delay: 0.15 }}
+          >
+            <div className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold text-foreground">Daily Challenges</h2>
+            </div>
+
+            {challenges.map((challenge) => {
+              const progress = Math.min(100, Math.round((challenge.currentVotes / challenge.requiredVotes) * 100))
+              const remaining = Math.max(0, challenge.requiredVotes - challenge.currentVotes)
+
+              return (
+                <div
+                  className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50"
+                  key={challenge.challengeId}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground">{challenge.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {challenge.isCompleted
+                          ? `Completed. +${challenge.rewardXp} XP earned.`
+                          : `${remaining} more vote${remaining === 1 ? "" : "s"} for +${challenge.rewardXp} XP`}
+                      </p>
+                    </div>
+                    {challenge.rewardBadge && (
+                      <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                        {challenge.rewardBadge}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {challenge.currentVotes}/{challenge.requiredVotes} votes today
+                  </div>
+                </div>
+              )
+            })}
+          </motion.div>
+        )}
+
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
           className="mb-6 grid grid-cols-3 gap-3"
+          initial={{ opacity: 0, y: 20 }}
+          transition={{ delay: 0.1 }}
         >
-          {quickStats.map((stat, index) => (
+          {stats.map((stat, index) => (
             <motion.div
-              key={stat.label}
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
+              animate={{ opacity: 1, y: 0 }}
               className="flex flex-col items-center rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50"
               initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              key={stat.label}
               transition={{ delay: 0.1 + index * 0.05 }}
+              whileHover={{ scale: 1.02, y: -2 }}
             >
-              <stat.icon className={cn("h-5 w-5", stat.color)} />
+              <stat.icon className={`h-5 w-5 ${stat.color}`} />
               <span className="mt-2 text-xl font-bold text-foreground">
-                {stat.value}
+                {Number(stat.value).toLocaleString()}
               </span>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-center text-[10px] text-muted-foreground">
                 {stat.label}
               </span>
             </motion.div>
           ))}
         </motion.div>
 
-        {/* Trending Polls Section */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 20 }}
           transition={{ delay: 0.2 }}
         >
           <div className="mb-4 flex items-center justify-between">
@@ -155,7 +264,7 @@ export default function HomePage() {
                 Trending Polls
               </h2>
             </div>
-            <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+            <Button asChild className="text-muted-foreground" size="sm" variant="ghost">
               <Link href="/polls">
                 View all
                 <ChevronRight className="ml-1 h-4 w-4" />
@@ -163,38 +272,44 @@ export default function HomePage() {
             </Button>
           </div>
 
-          {loading ? (
-            <div className="flex items-center justify-center rounded-2xl bg-card p-8 text-muted-foreground ring-1 ring-border/50">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading polls...
+          {loading && (
+            <div className="flex items-center justify-center gap-2 rounded-2xl bg-card py-12 text-sm text-muted-foreground ring-1 ring-border/50">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading trending polls...
             </div>
-          ) : error ? (
-            <div className="rounded-2xl bg-card p-5 text-sm text-destructive ring-1 ring-border/50">
-              <AlertCircle className="mb-2 h-5 w-5" />
-              {error}
+          )}
+
+          {!loading && error && (
+            <div className="rounded-2xl bg-destructive/10 p-5 text-center text-sm text-destructive">
+              Could not load trending polls.
             </div>
-          ) : polls.length === 0 ? (
-            <div className="rounded-2xl bg-card p-5 text-sm text-muted-foreground ring-1 ring-border/50">
-              No active polls yet. Create the first one and get the conversation moving.
+          )}
+
+          {!loading && !error && polls.length === 0 && (
+            <div className="rounded-2xl bg-card p-8 text-center ring-1 ring-border/50">
+              <Trophy className="mx-auto h-10 w-10 text-muted-foreground" />
+              <p className="mt-3 font-semibold text-foreground">No trending polls yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">Create or vote on polls to get the feed moving.</p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {polls.map((poll, index) => (
-                <motion.div
-                  key={poll.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.25 + index * 0.05 }}
-                  whileHover={{ scale: 1.01, x: 4 }}
-                  whileTap={{ scale: 0.99 }}
-                  className="group cursor-pointer rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50 transition-shadow hover:shadow-md"
+          )}
+
+          <div className="space-y-3">
+            {polls.map((poll, index) => (
+              <motion.div
+                animate={{ opacity: 1, x: 0 }}
+                initial={{ opacity: 0, x: -20 }}
+                key={poll.id}
+                transition={{ delay: 0.25 + index * 0.05 }}
+                whileHover={{ scale: 1.01, x: 4 }}
+              >
+                <Link
+                  className="group block rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50 transition-shadow hover:shadow-md"
+                  href={`/polls/${poll.id}`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <div className="mb-2 flex items-center gap-2">
-                        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
-                          {poll.category}
-                        </span>
+                        <CategoryBadge category={poll.category} className="px-2.5 py-0.5" />
                         {poll.isTrending && (
                           <span className="flex items-center gap-1 text-xs font-medium text-primary">
                             <TrendingUp className="h-3 w-3" />
@@ -202,7 +317,7 @@ export default function HomePage() {
                           </span>
                         )}
                       </div>
-                      <h3 className="font-semibold text-foreground transition-colors group-hover:text-primary">
+                      <h3 className="line-clamp-2 font-semibold text-foreground transition-colors group-hover:text-primary">
                         {poll.question}
                       </h3>
                       <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
@@ -218,45 +333,30 @@ export default function HomePage() {
                     </div>
                     <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
                   </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
+                </Link>
+              </motion.div>
+            ))}
+          </div>
         </motion.div>
 
-        {/* Create Poll CTA */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
           className="mt-6"
+          initial={{ opacity: 0, y: 20 }}
+          transition={{ delay: 0.4 }}
         >
-          <motion.div
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-accent p-6 text-primary-foreground shadow-lg"
-          >
-            {/* Background decoration */}
-            <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10" />
-            <div className="absolute -bottom-4 -left-4 h-24 w-24 rounded-full bg-white/5" />
-
-            <div className="relative">
-              <h3 className="text-xl font-bold">Create Your First Poll</h3>
-              <p className="mt-1 text-sm text-primary-foreground/80">
-                Ask the world a question and see what they think!
-              </p>
-              <Button
-                asChild
-                variant="secondary"
-                className="mt-4 bg-white text-primary hover:bg-white/90"
-              >
-                <Link href="/create">
-                  <Zap className="mr-2 h-4 w-4" />
-                  Create Poll
-                </Link>
-              </Button>
-            </div>
-          </motion.div>
+          <div className="relative overflow-hidden rounded-2xl bg-primary p-6 text-primary-foreground shadow-lg">
+            <h3 className="text-xl font-bold">Create a poll</h3>
+            <p className="mt-1 text-sm text-primary-foreground/80">
+              Ask the community a question and watch the votes come in.
+            </p>
+            <Button asChild className="mt-4 bg-white text-primary hover:bg-white/90" variant="secondary">
+              <Link href="/create">
+                <Zap className="mr-2 h-4 w-4" />
+                Create Poll
+              </Link>
+            </Button>
+          </div>
         </motion.div>
       </div>
     </AppShell>

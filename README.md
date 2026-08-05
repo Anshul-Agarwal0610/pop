@@ -23,6 +23,7 @@ A gamified public opinion polling platform built with Next.js, TypeScript, and T
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) v18+ (includes npm)
+- For mobile development, Node.js 20.19.4+ is recommended by the current Expo dependency set.
 
 ### Steps
 
@@ -44,6 +45,22 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 By default, the frontend expects the ASP.NET Core backend at `http://localhost:5177`.
 Override it with `NEXT_PUBLIC_API_URL` when needed.
+
+## Mobile App
+
+Pollify now includes an Expo React Native foundation in `apps/mobile` for Android-first delivery while keeping iOS support in the same codebase.
+
+```bash
+cd apps/mobile
+npm install
+```
+
+```powershell
+$env:EXPO_PUBLIC_API_URL = "http://10.0.2.2:5177"
+npm run android
+```
+
+Use `http://10.0.2.2:5177` for the Android emulator, or your machine's LAN IP address when testing from a physical device.
 
 ### Other commands
 

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion"
 import {
   TrendingUp,
@@ -14,9 +15,14 @@ import {
   Sparkles,
   ImageOff,
   CheckCircle2,
+  Megaphone,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { CategoryBadge } from "@/components/category-badge"
+import { ShareButton } from "@/components/share-button"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
+import { pollsApi } from "@/lib/api"
+import { pollShareText, resultShareText } from "@/lib/share"
 import {
   Tooltip,
   TooltipContent,
@@ -70,27 +76,46 @@ function VotedResultsBar({
   label: string
   percentage: number
   isUserVote: boolean
-  color: "emerald" | "red"
+  color: "emerald" | "red" | "blue" | "amber"
 }) {
-  const barColor   = color === "emerald" ? "bg-emerald-500" : "bg-red-500"
-  const textColor  = color === "emerald" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-  const trackColor = color === "emerald" ? "bg-emerald-500/10" : "bg-red-500/10"
+  const styles = {
+    emerald: {
+      bar: "bg-emerald-500",
+      text: "text-emerald-600 dark:text-emerald-400",
+      track: "bg-emerald-500/10",
+    },
+    red: {
+      bar: "bg-red-500",
+      text: "text-red-600 dark:text-red-400",
+      track: "bg-red-500/10",
+    },
+    blue: {
+      bar: "bg-blue-500",
+      text: "text-blue-600 dark:text-blue-400",
+      track: "bg-blue-500/10",
+    },
+    amber: {
+      bar: "bg-amber-500",
+      text: "text-amber-600 dark:text-amber-400",
+      track: "bg-amber-500/10",
+    },
+  }[color]
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-sm font-medium">
-        <span className={cn("flex items-center gap-1.5", isUserVote ? textColor : "text-muted-foreground")}>
+        <span className={cn("flex min-w-0 items-center gap-1.5", isUserVote ? styles.text : "text-muted-foreground")}>
           {isUserVote && <CheckCircle2 className="h-4 w-4" />}
-          {label}
+          <span className="truncate">{label}</span>
           {isUserVote && <span className="text-xs font-normal opacity-70">(your vote)</span>}
         </span>
-        <span className={isUserVote ? textColor : "text-muted-foreground"}>
+        <span className={isUserVote ? styles.text : "text-muted-foreground"}>
           {Math.round(percentage)}%
         </span>
       </div>
-      <div className={cn("h-2.5 w-full overflow-hidden rounded-full", trackColor)}>
+      <div className={cn("h-2.5 w-full overflow-hidden rounded-full", styles.track)}>
         <motion.div
-          className={cn("h-full rounded-full", barColor)}
+          className={cn("h-full rounded-full", styles.bar)}
           initial={{ width: 0 }}
           animate={{ width: `${percentage}%` }}
           transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
@@ -103,7 +128,7 @@ function VotedResultsBar({
 // ── Component ─────────────────────────────────────────────────────────────────
 interface PollCardProps {
   poll: Poll
-  onVote: (vote: "yes" | "no") => void
+  onVote: (optionId: number, feedback: "yes" | "no" | "option") => void
   isActive: boolean
 }
 
@@ -126,16 +151,28 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
 
   // US-19: voted state
   const hasVoted        = poll.hasVoted ?? false
+  const pollOptions     = poll.options ?? []
+  const isBinaryPoll    = pollOptions.length <= 2
   const yesOption       = poll.options?.[0]
   const noOption        = poll.options?.[poll.options.length - 1]
-  const userVotedYes    = hasVoted && poll.userVotedOptionId === yesOption?.id
-  const userVotedNo     = hasVoted && poll.userVotedOptionId === noOption?.id
+  const resultColors    = ["emerald", "red", "blue", "amber"] as const
+  const userResultOption = pollOptions.find((option) => option.id === poll.userVotedOptionId)
+  const leadingOption = [...pollOptions].sort((a, b) => (b.votePercentage ?? 0) - (a.votePercentage ?? 0))[0]
+  const resultOption = userResultOption ?? leadingOption
+
+  useEffect(() => {
+    if (!isActive || !poll.isSponsored) return
+    pollsApi.recordImpression(poll.id).catch(() => undefined)
+  }, [isActive, poll.id, poll.isSponsored])
 
   function handleDragEnd(_: unknown, info: PanInfo) {
-    if (hasVoted) return                          // no drag on voted cards
+    if (hasVoted || !isBinaryPoll) return
     const threshold = 100
-    if (info.offset.x > threshold)       onVote("yes")
-    else if (info.offset.x < -threshold) onVote("no")
+    if (info.offset.x > threshold && yesOption) {
+      onVote(yesOption.id, "yes")
+    } else if (info.offset.x < -threshold && noOption) {
+      onVote(noOption.id, "no")
+    }
   }
 
   return (
@@ -143,10 +180,10 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
       className={cn(
         "absolute inset-x-4 top-0 h-full md:inset-x-0",
         !isActive && "pointer-events-none",
-        hasVoted ? "cursor-default" : "cursor-grab active:cursor-grabbing"
+        hasVoted || !isBinaryPoll ? "cursor-default" : "cursor-grab active:cursor-grabbing"
       )}
       style={{ x, rotate, zIndex: isActive ? 10 : 0 }}
-      drag={isActive && !hasVoted ? "x" : false}
+      drag={isActive && !hasVoted && isBinaryPoll ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.7}
       onDragEnd={handleDragEnd}
@@ -159,7 +196,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
       <div className="relative h-full overflow-hidden rounded-3xl bg-card shadow-2xl ring-1 ring-border/50">
 
         {/* YES / NO swipe overlays — hidden on voted cards */}
-        {!hasVoted && (
+        {!hasVoted && isBinaryPoll && (
           <>
             <motion.div
               className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-emerald-500/20"
@@ -223,7 +260,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
           )}
 
           {/* ── Top Badges ───────────────────────────────────────────────── */}
-          <div className="absolute left-4 right-4 top-4 flex items-start justify-between">
+          <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1.5">
               {poll.trending && (
                 <motion.div
@@ -247,20 +284,43 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                   <span className="text-xs font-medium text-violet-400">AI Poll</span>
                 </motion.div>
               )}
+              {poll.isSponsored && (
+                <motion.div
+                  className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-amber-950 shadow-lg"
+                  initial={{ scale: 0, y: -20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  transition={{ delay: 0.28, type: "spring" }}
+                >
+                  <Megaphone className="h-3.5 w-3.5" />
+                  <span className="text-xs font-bold">
+                    Sponsored{poll.sponsorName ? ` by ${poll.sponsorName}` : ""}
+                  </span>
+                </motion.div>
+              )}
             </div>
 
-            {/* XP Reward — hidden on voted cards */}
-            {!hasVoted && (
-              <motion.div
-                className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-amber-950 shadow-lg"
-                initial={{ scale: 0, y: -20 }}
-                animate={{ scale: 1, y: 0 }}
-                transition={{ delay: 0.3, type: "spring" }}
-              >
-                <Zap className="h-3.5 w-3.5 fill-current" />
-                <span className="text-xs font-bold">+{poll.xpReward} XP</span>
-              </motion.div>
-            )}
+            <div className="flex flex-col items-end gap-2">
+              <ShareButton
+                category={poll.category}
+                className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background"
+                pollId={poll.id}
+                text={pollShareText(poll)}
+                title={poll.question}
+              />
+
+              {/* XP Reward — hidden on voted cards */}
+              {!hasVoted && (
+                <motion.div
+                  className="flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-amber-950 shadow-lg"
+                  initial={{ scale: 0, y: -20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  transition={{ delay: 0.3, type: "spring" }}
+                >
+                  <Zap className="h-3.5 w-3.5 fill-current" />
+                  <span className="text-xs font-bold">+{poll.xpReward} XP</span>
+                </motion.div>
+              )}
+            </div>
           </div>
 
           {/* ── Source Badge ─────────────────────────────────────────────── */}
@@ -284,9 +344,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
         <div className="flex h-[45%] flex-col p-5">
           {/* Category & Time */}
           <div className="mb-3 flex flex-shrink-0 items-center gap-3">
-            <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-              {poll.category}
-            </span>
+            <CategoryBadge category={poll.category} />
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Clock className="h-3 w-3" />
               {poll.timePosted}
@@ -328,31 +386,55 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
               >
-                {yesOption && (
+                {pollOptions.map((option, index) => (
                   <VotedResultsBar
-                    label={yesOption.text}
-                    percentage={yesOption.votePercentage}
-                    isUserVote={userVotedYes}
-                    color="emerald"
+                    color={resultColors[index % resultColors.length]}
+                    isUserVote={poll.userVotedOptionId === option.id}
+                    key={option.id}
+                    label={option.text}
+                    percentage={option.votePercentage}
                   />
-                )}
-                {noOption && noOption.id !== yesOption?.id && (
-                  <VotedResultsBar
-                    label={noOption.text}
-                    percentage={noOption.votePercentage}
-                    isUserVote={userVotedNo}
-                    color="red"
-                  />
-                )}
+                ))}
                 <p className="text-center text-xs text-muted-foreground pt-1">
                   You already voted
                 </p>
+                <div className="flex justify-center">
+                  <ShareButton
+                    category={poll.category}
+                    path={`/polls/${poll.id}?view=results`}
+                    pollId={poll.id}
+                    text={resultShareText(poll, resultOption)}
+                    title={`Poll result: ${poll.question}`}
+                    variant="outline"
+                  />
+                </div>
               </motion.div>
+            ) : !isBinaryPoll ? (
+              <div className="grid gap-2">
+                {pollOptions.map((option, index) => (
+                  <motion.button
+                    className={cn(
+                      "flex min-h-12 items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-sm font-bold ring-2 transition-colors",
+                      index === 0 && "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 hover:bg-emerald-500/20",
+                      index === 1 && "bg-red-500/10 text-red-600 ring-red-500/20 hover:bg-red-500/20",
+                      index === 2 && "bg-blue-500/10 text-blue-600 ring-blue-500/20 hover:bg-blue-500/20",
+                      index >= 3 && "bg-amber-500/10 text-amber-600 ring-amber-500/20 hover:bg-amber-500/20"
+                    )}
+                    key={option.id}
+                    onClick={() => onVote(option.id, "option")}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <span className="line-clamp-2">{option.text}</span>
+                    <span className="text-xs opacity-70">+{poll.xpReward} XP</span>
+                  </motion.button>
+                ))}
+              </div>
             ) : (
               /* Normal swipe buttons */
               <div className="flex items-center gap-3">
                 <motion.button
-                  onClick={() => onVote("no")}
+                  onClick={() => noOption && onVote(noOption.id, "no")}
                   className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-500/10 py-4 font-bold text-red-500 ring-2 ring-red-500/20 transition-colors hover:bg-red-500/20"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -360,7 +442,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                   <span className="text-2xl">NO</span>
                 </motion.button>
                 <motion.button
-                  onClick={() => onVote("yes")}
+                  onClick={() => yesOption && onVote(yesOption.id, "yes")}
                   className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-500/10 py-4 font-bold text-emerald-500 ring-2 ring-emerald-500/20 transition-colors hover:bg-emerald-500/20"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}

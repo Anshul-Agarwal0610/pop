@@ -14,6 +14,7 @@ import { PrivacyStep } from "./steps/privacy-step"
 import { PreviewStep } from "./steps/preview-step"
 import { getInitialDraft, STEPS, type PollDraft } from "@/lib/poll-creation"
 import { pollsApi } from "@/lib/api"
+import { DEFAULT_CATEGORY } from "@/lib/categories"
 import { cn } from "@/lib/utils"
 
 export function PollCreator() {
@@ -68,7 +69,7 @@ export function PollCreator() {
       await pollsApi.create({
         question:    draft.question.trim(),
         description: draft.description.trim(),
-        category:    "General",
+        category:    DEFAULT_CATEGORY,
         expiresAt,
         options:     ["Yes", "No"],          // default binary options
         sourceType:  "manual",
@@ -89,7 +90,7 @@ export function PollCreator() {
   const isLastStep = currentStep === STEPS.length
   const canGoNext = currentStep === 1 ? draft.question.trim().length > 0 : true
 
-  // Published success state
+  // Submitted success state
   if (isPublished) {
     return (
       <div className="flex min-h-[80vh] flex-col items-center justify-center px-4">
@@ -113,7 +114,7 @@ export function PollCreator() {
           transition={{ delay: 0.3 }}
           className="text-2xl font-bold text-foreground"
         >
-          Poll Published!
+          Poll Submitted!
         </motion.h2>
         <motion.p
           initial={{ opacity: 0, y: 20 }}
@@ -121,7 +122,7 @@ export function PollCreator() {
           transition={{ delay: 0.4 }}
           className="mt-2 text-center text-muted-foreground"
         >
-          Your poll is now live. Redirecting to home...
+          Your poll is in review. Redirecting to home...
         </motion.p>
         
         {/* Confetti-like particles */}

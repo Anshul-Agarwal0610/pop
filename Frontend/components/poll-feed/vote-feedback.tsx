@@ -6,7 +6,7 @@ import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 
 interface VoteFeedbackProps {
-  vote: "yes" | "no" | null
+  vote: "yes" | "no" | "option" | null
   xpEarned: number
   streakCount: number
   onComplete: () => void
@@ -44,23 +44,27 @@ export function VoteFeedback({
           <motion.div
             className={cn(
               "relative flex h-32 w-32 items-center justify-center rounded-full",
-              vote === "yes" ? "bg-emerald-500" : "bg-red-500"
+              vote === "yes" && "bg-emerald-500",
+              vote === "no" && "bg-red-500",
+              vote === "option" && "bg-primary"
             )}
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
           >
-            {vote === "yes" ? (
-              <Check className="h-16 w-16 text-white" strokeWidth={3} />
-            ) : (
+            {vote === "no" ? (
               <X className="h-16 w-16 text-white" strokeWidth={3} />
+            ) : (
+              <Check className="h-16 w-16 text-white" strokeWidth={3} />
             )}
 
             {/* Ripple Effect */}
             <motion.div
               className={cn(
                 "absolute inset-0 rounded-full",
-                vote === "yes" ? "bg-emerald-500" : "bg-red-500"
+                vote === "yes" && "bg-emerald-500",
+                vote === "no" && "bg-red-500",
+                vote === "option" && "bg-primary"
               )}
               initial={{ scale: 1, opacity: 0.5 }}
               animate={{ scale: 2.5, opacity: 0 }}
@@ -69,7 +73,9 @@ export function VoteFeedback({
             <motion.div
               className={cn(
                 "absolute inset-0 rounded-full",
-                vote === "yes" ? "bg-emerald-500" : "bg-red-500"
+                vote === "yes" && "bg-emerald-500",
+                vote === "no" && "bg-red-500",
+                vote === "option" && "bg-primary"
               )}
               initial={{ scale: 1, opacity: 0.3 }}
               animate={{ scale: 3, opacity: 0 }}
@@ -114,7 +120,9 @@ export function VoteFeedback({
               key={i}
               className={cn(
                 "absolute h-3 w-3 rounded-full",
-                vote === "yes" ? "bg-emerald-400" : "bg-red-400"
+                vote === "yes" && "bg-emerald-400",
+                vote === "no" && "bg-red-400",
+                vote === "option" && "bg-primary"
               )}
               initial={{
                 scale: 0,

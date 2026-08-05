@@ -30,6 +30,20 @@ export interface ApiPoll {
   createdByUserId: number | null
   createdByUsername: string | null
   createdByDisplayName: string | null
+  isSponsored: boolean
+  businessId: number | null
+  campaignId: number | null
+  sponsorName: string | null
+  campaignName: string | null
+  isPrivate: boolean
+  isWellness: boolean
+  pollMode: "Public" | "Wellness"
+  moderationStatus: "Draft" | "PendingReview" | "Published" | "Rejected" | "Flagged"
+  moderationReason: string | null
+  moderatedByUserId: number | null
+  moderatedAt: string | null
+  reportCount: number
+  lastReportedAt: string | null
   sourceType: string | null
   sourceUrl: string | null
   thumbnailUrl: string | null
@@ -47,16 +61,56 @@ export interface CastVoteRequest {
 
 export interface ApiVoteReward {
   xp: number
+  level: number
   streak: number
   totalVotes: number
   xpAwarded: number
   streakAdvanced: boolean
   lastVoteDate: string | null
+  awardedBadges: ApiUserBadge[]
 }
 
 export interface ApiCastVoteResponse {
   poll: ApiPoll
   reward: ApiVoteReward
+  challenges: ApiChallenge[]
+}
+
+export interface ApiChallenge {
+  challengeId: number
+  title: string
+  category: string | null
+  requiredVotes: number
+  rewardXp: number
+  rewardBadge: string | null
+  startAt: string
+  endAt: string
+  currentVotes: number
+  isCompleted: boolean
+  rewardGranted: boolean
+  completedAt: string | null
+}
+
+export interface ApiNotification {
+  id: number
+  userId: number
+  type: "VoteMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring"
+  title: string
+  body: string
+  pollId: number | null
+  dedupKey: string | null
+  isRead: boolean
+  createdAt: string
+}
+
+export interface ApiNotificationsResponse {
+  notifications: ApiNotification[]
+  unreadCount: number
+}
+
+export interface ApiNotificationPreference {
+  type: ApiNotification["type"]
+  isEnabled: boolean
 }
 
 export interface CreatePollPayload {
@@ -69,6 +123,106 @@ export interface CreatePollPayload {
   sourceUrl?: string
   thumbnailUrl?: string
   isAIGenerated?: boolean
+  isPrivate?: boolean
+  isWellness?: boolean
+}
+
+export interface ApiWellnessResponse {
+  id: number
+  userId: number
+  pollId: number
+  optionId: number
+  question: string
+  optionText: string
+  note: string | null
+  createdAt: string
+}
+
+export interface ApiWellnessInsight {
+  totalCheckIns: number
+  lastCheckInAt: string | null
+  mostCommonResponse: string | null
+}
+
+export interface ApiWellnessOverview {
+  polls: ApiPoll[]
+  history: ApiWellnessResponse[]
+  insight: ApiWellnessInsight
+}
+
+export interface ApiBusinessAccount {
+  id: number
+  ownerUserId: number
+  name: string
+  websiteUrl: string | null
+  status: string
+  createdAt: string
+}
+
+export interface ApiBusinessCampaign {
+  id: number
+  businessId: number
+  businessName: string
+  name: string
+  objective: string
+  startsAt: string | null
+  endsAt: string | null
+  status: string
+  createdAt: string
+  impressions: number
+  votes: number
+  completions: number
+  completionRate: number
+}
+
+export interface ApiCampaignPollMetric {
+  campaignId: number
+  pollId: number
+  question: string
+  moderationStatus: string
+  createdAt: string
+  impressions: number
+  votes: number
+  completions: number
+  completionRate: number
+  updatedAt: string
+}
+
+export interface ApiCampaignOptionBreakdown {
+  pollId: number
+  optionId: number
+  optionText: string
+  voteCount: number
+  votePercentage: number
+}
+
+export interface ApiCampaignDailyMetric {
+  date: string
+  votes: number
+}
+
+export interface ApiCampaignAnalytics {
+  campaign: ApiBusinessCampaign
+  polls: ApiCampaignPollMetric[]
+  optionBreakdown: ApiCampaignOptionBreakdown[]
+  dailyVotes: ApiCampaignDailyMetric[]
+}
+
+export interface CreateBusinessAccountPayload {
+  name: string
+  websiteUrl?: string
+}
+
+export interface CreateBusinessCampaignPayload {
+  name: string
+  objective: string
+  startsAt?: string
+  endsAt?: string
+  status?: string
+}
+
+export interface CreateSponsoredPollPayload extends CreatePollPayload {
+  campaignId?: number
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,17 +252,110 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ── Poll endpoints ────────────────────────────────────────────────────────────
 
+function categoryQuery(category?: string) {
+  return category ? `category=${encodeURIComponent(category)}` : ""
+}
+
+export interface ModeratePollPayload {
+  status: ApiPoll["moderationStatus"]
+  reason?: string
+}
+
 export const pollsApi = {
   /** Fetch trending polls for the feed. Includes hasVoted when authenticated. */
-  getTrending: (count = 20) =>
-    request<ApiPoll[]>(`/api/polls/trending?count=${count}`),
+  getTrending: (count = 20, category?: string) => {
+    const query = new URLSearchParams({ count: String(count) })
+    if (category) query.set("category", category)
+    return request<ApiPoll[]>(`/api/polls/trending?${query.toString()}`)
+  },
+
+  /** Fetch personalized polls. Anonymous users receive the default trending feed. */
+  getPersonalized: (count = 20, category?: string) => {
+    const query = new URLSearchParams({ count: String(count) })
+    if (category) query.set("category", category)
+    return request<ApiPoll[]>(`/api/polls/personalized?${query.toString()}`)
+  },
 
   /** Fetch all polls. Includes hasVoted when authenticated. */
-  getAll: () => request<ApiPoll[]>("/api/polls"),
+  getAll: (category?: string) => {
+    const query = categoryQuery(category)
+    return request<ApiPoll[]>(`/api/polls${query ? `?${query}` : ""}`)
+  },
+
+  /** Fetch one poll. Includes hasVoted when authenticated. */
+  getById: (id: number | string) => request<ApiPoll>(`/api/polls/${id}`),
+
+  /** Search active polls by question. Includes hasVoted when authenticated. */
+  search: (q: string, category?: string) => {
+    const query = new URLSearchParams({ q })
+    if (category) query.set("category", category)
+    return request<ApiPoll[]>(`/api/polls/search?${query.toString()}`)
+  },
 
   /** Create a new poll. Returns the created poll. */
   create: (payload: CreatePollPayload) =>
     request<ApiPoll>("/api/polls", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  report: (id: number | string, reason: string) =>
+    request<{ message: string }>(`/api/polls/${id}/report`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  getModerationQueue: (status?: ApiPoll["moderationStatus"], count = 50) => {
+    const query = new URLSearchParams({ count: String(count) })
+    if (status) query.set("status", status)
+    return request<ApiPoll[]>(`/api/polls/moderation?${query.toString()}`)
+  },
+
+  moderate: (id: number | string, payload: ModeratePollPayload) =>
+    request<ApiPoll>(`/api/polls/${id}/moderation`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  recordImpression: (id: number | string) =>
+    request<void>(`/api/polls/${id}/impression`, { method: "POST" }),
+}
+
+export const businessApi = {
+  getAccounts: () => request<ApiBusinessAccount[]>("/api/business/accounts"),
+
+  createAccount: (payload: CreateBusinessAccountPayload) =>
+    request<ApiBusinessAccount>("/api/business/accounts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getCampaigns: () => request<ApiBusinessCampaign[]>("/api/business/campaigns"),
+
+  getCampaignAnalytics: (campaignId: number) =>
+    request<ApiCampaignAnalytics>(`/api/business/campaigns/${campaignId}/analytics`),
+
+  exportCampaignCsv: async (campaignId: number) => {
+    const res = await fetch(`${API_BASE_URL}/api/business/campaigns/${campaignId}/export.csv`, {
+      headers: authHeaders(),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      throw new Error(`API ${res.status}: ${text}`)
+    }
+
+    return res.blob()
+  },
+
+  createCampaign: (businessId: number, payload: CreateBusinessCampaignPayload) =>
+    request<ApiBusinessCampaign>(`/api/business/accounts/${businessId}/campaigns`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  createSponsoredPoll: (campaignId: number, payload: CreateSponsoredPollPayload) =>
+    request<ApiPoll>(`/api/business/campaigns/${campaignId}/polls`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -125,7 +372,73 @@ export const votesApi = {
     }),
 }
 
+export const notificationsApi = {
+  getAll: async (): Promise<ApiNotificationsResponse> => {
+    const res = await fetch(`${API_BASE_URL}/api/notifications`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      throw new Error(`API ${res.status}: ${text}`)
+    }
+
+    return {
+      notifications: (await res.json()) as ApiNotification[],
+      unreadCount: Number(res.headers.get("X-Unread-Count") ?? 0),
+    }
+  },
+
+  markAllRead: () =>
+    request<void>("/api/notifications/read-all", { method: "POST" }),
+
+  markRead: (id: number) =>
+    request<void>(`/api/notifications/${id}/read`, { method: "PATCH" }),
+
+  getPreferences: () =>
+    request<ApiNotificationPreference[]>("/api/notifications/preferences"),
+
+  updatePreferences: (disabledTypes: ApiNotification["type"][]) =>
+    request<ApiNotificationPreference[]>("/api/notifications/preferences", {
+      method: "PUT",
+      body: JSON.stringify({ disabledTypes }),
+    }),
+}
+
+export const wellnessApi = {
+  getOverview: () => request<ApiWellnessOverview>("/api/wellness/overview"),
+
+  createResponse: (pollId: number, optionId: number, note?: string) =>
+    request<ApiWellnessResponse>("/api/wellness/responses", {
+      method: "POST",
+      body: JSON.stringify({ pollId, optionId, note }),
+    }),
+
+  deleteResponses: () =>
+    request<void>("/api/wellness/responses", { method: "DELETE" }),
+
+  exportCsv: async () => {
+    const res = await fetch(`${API_BASE_URL}/api/wellness/export.csv`, {
+      headers: authHeaders(),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      throw new Error(`API ${res.status}: ${text}`)
+    }
+
+    return res.blob()
+  },
+}
+
 // ── User endpoints ────────────────────────────────────────────────────────────
+
+export const challengesApi = {
+  getActive: () => request<ApiChallenge[]>("/api/challenges/active"),
+}
 
 export interface ApiUser {
   id: number
@@ -140,6 +453,19 @@ export interface ApiUser {
   pollsCreated: number
   lastVoteDate?: string | null
   createdAt: string
+  level: number
+  badges: ApiUserBadge[]
+}
+
+export interface ApiUserBadge {
+  id: number
+  userId: number
+  badgeId: number
+  code: string
+  name: string
+  description: string
+  icon: string
+  awardedAt: string
 }
 
 export interface ApiVoteHistoryItem {
@@ -151,6 +477,12 @@ export interface ApiVoteHistoryItem {
   votedAt: string
 }
 
+export interface ApiCategoryPreference {
+  category: string
+  isExplicit: boolean
+  voteCount: number
+}
+
 export const usersApi = {
   /** Leaderboard — top users by XP. */
   getLeaderboard: (count = 20) =>
@@ -159,6 +491,18 @@ export const usersApi = {
   /** Vote history for the current authenticated user. */
   getMyVotes: (count = 10) =>
     request<ApiVoteHistoryItem[]>(`/api/users/me/votes?count=${count}`),
+
+  getCategoryPreferences: () =>
+    request<ApiCategoryPreference[]>("/api/users/me/preferences/categories"),
+
+  updateCategoryPreferences: (categories: string[]) =>
+    request<ApiCategoryPreference[]>("/api/users/me/preferences/categories", {
+      method: "PUT",
+      body: JSON.stringify({ categories }),
+    }),
+
+  resetCategoryPreferences: () =>
+    request<void>("/api/users/me/preferences/categories", { method: "DELETE" }),
 }
 
 // ── Auth endpoints ────────────────────────────────────────────────────────────

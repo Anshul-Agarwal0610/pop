@@ -11,11 +11,16 @@ using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Controllers ───────────────────────────────────────────────────────────
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 
 // ── Swagger ───────────────────────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();
@@ -52,11 +57,17 @@ builder.Services.AddScoped<IAuthRepository,          AuthRepository>();
 builder.Services.AddScoped<IPollsRepository,         PollsRepository>();
 builder.Services.AddScoped<IVotesRepository,         VotesRepository>();
 builder.Services.AddScoped<IUsersRepository,         UsersRepository>();
+builder.Services.AddScoped<INotificationsRepository, NotificationsRepository>();
 builder.Services.AddScoped<IDashboardRepository,     DashboardRepository>();
 builder.Services.AddScoped<ITrendingTopicRepository, TrendingTopicRepository>();
+builder.Services.AddScoped<IChallengesRepository,    ChallengesRepository>();
+builder.Services.AddScoped<IBusinessRepository,      BusinessRepository>();
+builder.Services.AddScoped<IWellnessRepository,      WellnessRepository>();
+builder.Services.AddScoped<IAchievementsRepository,  AchievementsRepository>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient<IPushNotificationService, ExpoPushNotificationService>();
 builder.Services.AddScoped<IRssIngestionService,     RssIngestionService>();
 builder.Services.AddScoped<IYouTubeIngestionService, YouTubeIngestionService>();
 builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();
@@ -72,6 +83,7 @@ builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
 // ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
 builder.Services.AddScoped<IngestionJob>();
 builder.Services.AddScoped<PollGenerationJob>();
+builder.Services.AddScoped<RetentionNotificationJob>();
 
 // ── Hangfire Dashboard Auth (US-11) ───────────────────────────────────────
 builder.Services.AddSingleton<HangfireDashboardAuthFilter>();
@@ -103,7 +115,8 @@ builder.Services.AddCors(options =>
         policy
             .WithOrigins("http://localhost:3000", "https://localhost:3000")
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .WithExposedHeaders("X-Unread-Count");
     });
 });
 
@@ -148,6 +161,11 @@ using (var scope = app.Services.CreateScope())
         "generate-polls-from-topics",
         job => job.RunAsync(),
         "5/35 * * * *");
+
+    recurringJobs.AddOrUpdate<RetentionNotificationJob>(
+        "create-retention-notifications",
+        job => job.RunAsync(),
+        "0 * * * *");
 }
 
 app.Run();

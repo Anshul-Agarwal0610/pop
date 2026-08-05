@@ -14,15 +14,24 @@ namespace BackendAPI.Controllers
         private readonly IVotesRepository _votesRepo;
         private readonly IUsersRepository _usersRepo;
         private readonly IPollsRepository _pollsRepo;
+        private readonly INotificationsRepository _notificationsRepo;
+        private readonly IChallengesRepository _challengesRepo;
+        private readonly IBusinessRepository _businessRepo;
 
         public VotesController(
             IVotesRepository votesRepo,
             IUsersRepository usersRepo,
-            IPollsRepository pollsRepo)
+            IPollsRepository pollsRepo,
+            INotificationsRepository notificationsRepo,
+            IChallengesRepository challengesRepo,
+            IBusinessRepository businessRepo)
         {
             _votesRepo = votesRepo;
             _usersRepo = usersRepo;
             _pollsRepo = pollsRepo;
+            _notificationsRepo = notificationsRepo;
+            _challengesRepo = challengesRepo;
+            _businessRepo = businessRepo;
         }
 
         // POST /api/votes  (US-15: requires authentication)
@@ -44,6 +53,12 @@ namespace BackendAPI.Controllers
             if (!poll.IsActive || poll.ExpiresAt < DateTime.UtcNow)
                 return BadRequest(new { message = "This poll has expired or is no longer active." });
 
+            if (!poll.ModerationStatus.Equals(PollModerationStatus.Published, StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "This poll is not open for voting." });
+
+            if (poll.IsWellness || poll.IsPrivate || poll.Category.Equals("Health", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Health and wellness check-ins use private wellness responses." });
+
             var validOption = poll.Options.Any(o => o.Id == request.OptionId);
             if (!validOption)
                 return BadRequest(new { message = "Invalid option for this poll." });
@@ -59,14 +74,39 @@ namespace BackendAPI.Controllers
                 return Conflict(new { message = "You have already voted on this poll." });
             }
 
+            var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
+
             // US-50: Award XP and apply daily streak rules after a unique vote.
             var reward = await _usersRepo.ApplyVoteRewardAsync(
                 userId,
                 GamificationRules.VoteXp(poll),
                 DateTime.UtcNow);
+            var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
+
+            if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)
+            {
+                var level = reward.Xp / 1000;
+                await _notificationsRepo.CreateAsync(new CreateNotificationRequest
+                {
+                    UserId = userId,
+                    Type = NotificationType.LevelUp,
+                    Title = "Level up!",
+                    Body = $"You reached level {level} with {reward.Xp:N0} XP.",
+                    PollId = null
+                });
+            }
 
             // Return updated poll with hasVoted populated for this user
             var updated = await _pollsRepo.GetByIdAsync(request.PollId);
+            if (updated != null)
+            {
+                await CreateVoteMilestoneNotificationAsync(poll, updated.TotalVotes);
+                if (updated.IsSponsored)
+                {
+                    await _businessRepo.RecordVoteAsync(updated.Id);
+                }
+            }
+
             if (updated != null)
             {
                 updated.HasVoted          = true;
@@ -75,7 +115,28 @@ namespace BackendAPI.Controllers
             return Ok(new CastVoteResponse
             {
                 Poll = updated!,
-                Reward = reward
+                Reward = reward,
+                Challenges = challenges
+            });
+        }
+
+        private async Task CreateVoteMilestoneNotificationAsync(Poll pollBeforeVote, int updatedTotalVotes)
+        {
+            if (pollBeforeVote.CreatedByUserId == null) return;
+
+            var milestones = new[] { 10, 50, 100, 500, 1000 };
+            var crossed = milestones.FirstOrDefault(
+                milestone => pollBeforeVote.TotalVotes < milestone && updatedTotalVotes >= milestone);
+
+            if (crossed == 0) return;
+
+            await _notificationsRepo.CreateAsync(new CreateNotificationRequest
+            {
+                UserId = pollBeforeVote.CreatedByUserId.Value,
+                Type = NotificationType.VoteMilestone,
+                Title = "Vote milestone reached",
+                Body = $"Your poll reached {crossed:N0} votes: {pollBeforeVote.Question}",
+                PollId = pollBeforeVote.Id
             });
         }
 

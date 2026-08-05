@@ -26,6 +26,8 @@ namespace BackendAPI.Repository
 
             foreach (var topic in topics)
             {
+                var normalizedCategory = CategoryCatalog.NormalizeName(topic.Category);
+
                 await conn.ExecuteAsync(@"
                     IF NOT EXISTS (
                         SELECT 1 FROM TrendingTopics
@@ -44,7 +46,7 @@ namespace BackendAPI.Repository
                         topic.SourceType,
                         SourceUrl    = topic.SourceUrl ?? "",
                         topic.ThumbnailUrl,
-                        topic.Category
+                        Category = normalizedCategory
                     });
             }
         }

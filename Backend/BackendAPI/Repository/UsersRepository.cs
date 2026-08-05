@@ -9,28 +9,44 @@ namespace BackendAPI.Repository
     public class UsersRepository : IUsersRepository
     {
         private readonly DapperContext _context;
+        private readonly IAchievementsRepository _achievementsRepo;
 
-        public UsersRepository(DapperContext context)
+        public UsersRepository(DapperContext context, IAchievementsRepository achievementsRepo)
         {
             _context = context;
+            _achievementsRepo = achievementsRepo;
         }
 
         public async Task<IEnumerable<User>> GetLeaderboardAsync(int count = 20)
         {
             using var conn = _context.CreateConnection();
-            return await conn.QueryAsync<User>(
+            var users = (await conn.QueryAsync<User>(
                 "SELECT TOP (@Count) * FROM Users ORDER BY Xp DESC",
                 new { Count = count }
-            );
+            )).ToList();
+
+            var badgesByUser = await _achievementsRepo.GetBadgesForUsersAsync(users.Select(user => user.Id));
+            foreach (var user in users)
+            {
+                if (badgesByUser.TryGetValue(user.Id, out var badges))
+                    user.Badges = badges;
+            }
+
+            return users;
         }
 
         public async Task<User?> GetByIdAsync(long id)
         {
             using var conn = _context.CreateConnection();
-            return await conn.QueryFirstOrDefaultAsync<User>(
+            var user = await conn.QueryFirstOrDefaultAsync<User>(
                 "SELECT * FROM Users WHERE Id = @Id",
                 new { Id = id }
             );
+
+            if (user != null)
+                user.Badges = (await _achievementsRepo.GetUserBadgesAsync(id)).ToList();
+
+            return user;
         }
 
         public async Task<User?> GetByUsernameAsync(string username)
@@ -51,6 +67,16 @@ namespace BackendAPI.Repository
                   SELECT SCOPE_IDENTITY();",
                 new { request.Username, request.DisplayName }
             );
+        }
+
+        public async Task IncrementPollsCreatedAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync(
+                "UPDATE Users SET PollsCreated = PollsCreated + 1 WHERE Id = @UserId",
+                new { UserId = userId });
+
+            await _achievementsRepo.AwardEligibleBadgesAsync(userId, DateTime.UtcNow);
         }
 
         public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, int xpToAdd, DateTime utcNow)
@@ -97,6 +123,15 @@ namespace BackendAPI.Repository
             );
 
             transaction.Commit();
+
+            var awards = await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
+            updated.AwardedBadges = awards.AwardedBadges;
+            if (awards.BonusXpAwarded > 0)
+            {
+                updated.Xp += awards.BonusXpAwarded;
+                updated.XpAwarded += awards.BonusXpAwarded;
+            }
+
             return updated;
         }
 
@@ -116,9 +151,80 @@ namespace BackendAPI.Repository
                   JOIN Polls       p ON p.Id = v.PollId
                   JOIN PollOptions o ON o.Id = v.OptionId
                   WHERE v.UserId = @UserId
+                    AND COALESCE(p.IsPrivate, 0) = 0
+                    AND COALESCE(p.IsWellness, 0) = 0
+                    AND p.Category <> 'Health'
                   ORDER BY v.CreatedAt DESC",
                 new { UserId = userId, Count = count }
             );
+        }
+
+        public async Task<IEnumerable<UserCategoryPreference>> GetCategoryPreferencesAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.QueryAsync<UserCategoryPreference>(
+                @"WITH ExplicitPrefs AS (
+                    SELECT Category
+                    FROM UserCategoryPreferences
+                    WHERE UserId = @UserId
+                  ),
+                  Activity AS (
+                    SELECT p.Category, COUNT_BIG(*) AS VoteCount
+                    FROM Votes v
+                    JOIN Polls p ON p.Id = v.PollId
+                    WHERE v.UserId = @UserId
+                      AND p.Category <> 'Health'
+                    GROUP BY p.Category
+                  )
+                  SELECT
+                    COALESCE(pref.Category, activity.Category) AS Category,
+                    CAST(CASE WHEN pref.Category IS NULL THEN 0 ELSE 1 END AS bit) AS IsExplicit,
+                    CAST(COALESCE(activity.VoteCount, 0) AS int) AS VoteCount
+                  FROM ExplicitPrefs pref
+                  FULL OUTER JOIN Activity activity ON LOWER(activity.Category) = LOWER(pref.Category)
+                  ORDER BY IsExplicit DESC, VoteCount DESC, Category ASC",
+                new { UserId = userId });
+        }
+
+        public async Task<IEnumerable<UserCategoryPreference>> ReplaceCategoryPreferencesAsync(
+            long userId,
+            IEnumerable<string> categories)
+        {
+            var normalized = categories
+                .Select(CategoryCatalog.NormalizeName)
+                .Where(category => !category.Equals("Health", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList();
+
+            using var conn = _context.CreateConnection();
+            conn.Open();
+            using var transaction = conn.BeginTransaction();
+
+            await conn.ExecuteAsync(
+                "DELETE FROM UserCategoryPreferences WHERE UserId = @UserId",
+                new { UserId = userId },
+                transaction);
+
+            foreach (var category in normalized)
+            {
+                await conn.ExecuteAsync(
+                    @"INSERT INTO UserCategoryPreferences (UserId, Category, CreatedAt)
+                      VALUES (@UserId, @Category, GETUTCDATE())",
+                    new { UserId = userId, Category = category },
+                    transaction);
+            }
+
+            transaction.Commit();
+            return await GetCategoryPreferencesAsync(userId);
+        }
+
+        public async Task ResetCategoryPreferencesAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync(
+                "DELETE FROM UserCategoryPreferences WHERE UserId = @UserId",
+                new { UserId = userId });
         }
     }
 }
