@@ -48,6 +48,10 @@ jobs:
         working-directory: Frontend
         run: npm run lint || true
 
+      - name: Run tests
+        working-directory: Frontend
+        run: npm test
+
       - name: Run build
         working-directory: Frontend
         run: npm run build

@@ -1,6 +1,11 @@
-import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse } from "lucide-react"
+import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse, Gamepad2 } from "lucide-react"
 
 export const navigationItems = [
+  {
+    label: "Play",
+    href: "/play",
+    icon: Gamepad2,
+  },
   {
     label: "Home",
     href: "/",
@@ -42,5 +47,9 @@ export const navigationItems = [
     icon: User,
   },
 ] as const
+
+export const mobileNavigationItems = navigationItems.filter(item =>
+  ["/", "/play", "/polls", "/create", "/profile"].includes(item.href)
+)
 
 export type NavigationItem = (typeof navigationItems)[number]

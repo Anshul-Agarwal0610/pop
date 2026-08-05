@@ -3,7 +3,7 @@
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { navigationItems } from "@/lib/navigation"
+import { mobileNavigationItems } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 
 export function BottomNav() {
@@ -13,8 +13,8 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden">
       <div className="border-t border-border/50 bg-background/90 glass bottom-nav-safe">
         <div className="mx-auto flex h-[4.5rem] max-w-lg items-center justify-around px-2">
-          {navigationItems.map((item) => {
-            const isActive = pathname === item.href
+          {mobileNavigationItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))
             const Icon = item.icon
 
             return (
@@ -25,7 +25,7 @@ export function BottomNav() {
               >
                 <motion.div
                   className={cn(
-                    "flex flex-col items-center gap-1 rounded-2xl px-4 py-2 transition-colors",
+                    "flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1 py-2 transition-colors sm:px-3",
                     isActive
                       ? "text-primary"
                       : "text-muted-foreground hover:text-foreground"

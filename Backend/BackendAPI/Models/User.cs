@@ -55,4 +55,37 @@ namespace BackendAPI.Models
     {
         public List<string> Categories { get; set; } = new();
     }
+
+    public class UserProgression
+    {
+        public int Xp { get; set; }
+        public int Level { get; set; }
+        public int CurrentLevelStartXp { get; set; }
+        public int NextLevelXp { get; set; }
+        public int XpIntoLevel { get; set; }
+        public int XpRequiredForLevel { get; set; }
+        public double ProgressPercent { get; set; }
+        public int Streak { get; set; }
+        public bool TodayActivityComplete { get; set; }
+        public DateTime? LastVoteDate { get; set; }
+    }
+
+    public class WeeklyLeaderboardEntry
+    {
+        public long UserId { get; set; }
+        public string Username { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public int Rank { get; set; }
+        public int Score { get; set; }
+        public string ScoreUnit { get; set; } = "votes";
+    }
+
+    public class WeeklyLeaderboardResponse
+    {
+        public DateTime WeekStart { get; set; }
+        public DateTime WeekEnd { get; set; }
+        public List<WeeklyLeaderboardEntry> Entries { get; set; } = new();
+        public WeeklyLeaderboardEntry? CurrentUser { get; set; }
+        public string ScoreUnit { get; set; } = "votes";
+    }
 }

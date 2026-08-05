@@ -1,14 +1,26 @@
 "use client"
 
+import { Suspense } from "react"
 import { AppShell } from "@/components/app-shell"
 import { PollFeed } from "@/components/poll-feed"
+import { useSearchParams } from "next/navigation"
 
-export default function PollsPage() {
+function PollsPageContent() {
+  const category = useSearchParams().get("category")
+
   return (
     <AppShell hideBottomPadding>
       <div className="h-[calc(100vh-4rem-4.5rem)] md:h-[calc(100vh-4rem)]">
-        <PollFeed />
+        <PollFeed initialCategory={category} />
       </div>
     </AppShell>
+  )
+}
+
+export default function PollsPage() {
+  return (
+    <Suspense fallback={null}>
+      <PollsPageContent />
+    </Suspense>
   )
 }
