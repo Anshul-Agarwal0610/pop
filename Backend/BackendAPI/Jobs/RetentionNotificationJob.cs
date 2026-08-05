@@ -24,7 +24,7 @@ namespace BackendAPI.Jobs
         public async Task RunAsync()
         {
             var utcNow = DateTime.UtcNow;
-            await _challengesRepo.EnsureDailyChallengeAsync(utcNow);
+            await _challengesRepo.EnsureCurrentOccurrencesAsync(utcNow);
 
             var challengeCount = await _notificationsRepo.CreateDailyChallengeNotificationsAsync(utcNow);
             var streakCount = await _notificationsRepo.CreateStreakReminderNotificationsAsync(utcNow);
