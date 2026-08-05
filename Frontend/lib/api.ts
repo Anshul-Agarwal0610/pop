@@ -468,6 +468,32 @@ export interface ApiUserBadge {
   awardedAt: string
 }
 
+export type LeaderboardPeriod = "weekly" | "allTime"
+
+export interface ApiLeaderboardRow {
+  rank: number
+  id: number
+  username: string
+  displayName: string
+  avatarUrl?: string | null
+  periodXp: number
+  lifetimeXp: number
+  level: number
+  badges: ApiUserBadge[]
+}
+
+export interface ApiLeaderboardResponse {
+  rows: ApiLeaderboardRow[]
+  currentUser: ApiLeaderboardRow | null
+  period: "Weekly" | "AllTime"
+  periodStartUtc: string | null
+  periodEndUtc: string | null
+  nextResetAtUtc: string | null
+  limit: number
+  offset: number
+  hasMore: boolean
+}
+
 export interface ApiVoteHistoryItem {
   pollId: number
   question: string
@@ -487,6 +513,11 @@ export const usersApi = {
   /** Leaderboard — top users by XP. */
   getLeaderboard: (count = 20) =>
     request<ApiUser[]>(`/api/users/leaderboard?count=${count}`),
+
+  getRankings: (period: LeaderboardPeriod, limit = 20, offset = 0) =>
+    request<ApiLeaderboardResponse>(
+      `/api/users/leaderboard/rankings?period=${period}&limit=${limit}&offset=${offset}`
+    ),
 
   /** Vote history for the current authenticated user. */
   getMyVotes: (count = 10) =>

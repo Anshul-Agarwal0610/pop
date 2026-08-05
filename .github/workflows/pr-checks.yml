@@ -72,5 +72,7 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        working-directory: Backend/BackendAPI
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build pop.sln --configuration Release
+
+      - name: Test
+        run: dotnet test pop.sln --no-build --configuration Release

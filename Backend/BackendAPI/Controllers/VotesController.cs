@@ -75,13 +75,16 @@ namespace BackendAPI.Controllers
             }
 
             var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
+            var rewardAtUtc = DateTime.UtcNow;
 
             // US-50: Award XP and apply daily streak rules after a unique vote.
             var reward = await _usersRepo.ApplyVoteRewardAsync(
                 userId,
+                poll.Id,
                 GamificationRules.VoteXp(poll),
-                DateTime.UtcNow);
-            var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
+                rewardAtUtc,
+                !poll.IsPrivate && !poll.IsWellness && !poll.Category.Equals("Health", StringComparison.OrdinalIgnoreCase));
+            var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, rewardAtUtc);
 
             if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)
             {

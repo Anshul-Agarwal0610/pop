@@ -35,6 +35,64 @@ namespace BackendAPI.Repository
             return users;
         }
 
+        public async Task<LeaderboardResponse> GetRankingsAsync(
+            LeaderboardPeriod period, int limit, int offset, long? currentUserId, DateTime utcNow)
+        {
+            limit = Math.Clamp(limit, 1, 100);
+            offset = Math.Max(offset, 0);
+            var window = LeaderboardWindow.For(period, utcNow);
+
+            using var conn = _context.CreateConnection();
+            var candidates = (await conn.QueryAsync<RankedCandidate>(
+                @"WITH Totals AS (
+                      SELECT e.UserId, SUM(CONVERT(BIGINT, e.Amount)) AS PeriodXp
+                      FROM XpEvents e
+                      WHERE e.IsValid = 1 AND e.IsLeaderboardEligible = 1
+                        AND (@StartUtc IS NULL OR e.OccurredAt >= @StartUtc)
+                        AND (@EndUtc IS NULL OR e.OccurredAt < @EndUtc)
+                      GROUP BY e.UserId
+                  ), Ranked AS (
+                      SELECT u.Id, u.Username, u.DisplayName, u.AvatarUrl, u.Xp AS LifetimeXp,
+                             t.PeriodXp,
+                             RANK() OVER (ORDER BY t.PeriodXp DESC) AS Rank,
+                             ROW_NUMBER() OVER (ORDER BY t.PeriodXp DESC, LOWER(u.Username), u.Id) AS RowNumber,
+                             COUNT_BIG(*) OVER () AS TotalCount
+                      FROM Totals t JOIN Users u ON u.Id = t.UserId
+                      WHERE t.PeriodXp > 0
+                  )
+                  SELECT * FROM Ranked
+                  WHERE (RowNumber > @Offset AND RowNumber <= @Offset + @Limit + 1)
+                     OR Id = @CurrentUserId
+                  ORDER BY RowNumber",
+                new { window.StartUtc, window.EndUtc, Limit = limit, Offset = offset, CurrentUserId = currentUserId })).ToList();
+
+            var page = candidates.Where(x => x.RowNumber > offset && x.RowNumber <= offset + limit).Cast<LeaderboardRow>().ToList();
+            var current = currentUserId == null ? null : candidates.FirstOrDefault(x => x.Id == currentUserId.Value);
+            var badgeIds = page.Select(x => x.Id).Append(current?.Id ?? 0).Where(x => x > 0).Distinct();
+            var badges = await _achievementsRepo.GetBadgesForUsersAsync(badgeIds);
+            foreach (var row in page.Append(current).Where(x => x != null).DistinctBy(x => x!.Id))
+                if (badges.TryGetValue(row!.Id, out var userBadges)) row.Badges = userBadges;
+
+            return new LeaderboardResponse
+            {
+                Rows = page,
+                CurrentUser = current,
+                Period = period,
+                PeriodStartUtc = window.StartUtc,
+                PeriodEndUtc = window.EndUtc,
+                NextResetAtUtc = period == LeaderboardPeriod.Weekly ? window.EndUtc : null,
+                Limit = limit,
+                Offset = offset,
+                HasMore = candidates.Any(x => x.RowNumber == (long)offset + limit + 1)
+            };
+        }
+
+        private sealed class RankedCandidate : LeaderboardRow
+        {
+            public long RowNumber { get; set; }
+            public long TotalCount { get; set; }
+        }
+
         public async Task<User?> GetByIdAsync(long id)
         {
             using var conn = _context.CreateConnection();
@@ -79,7 +137,7 @@ namespace BackendAPI.Repository
             await _achievementsRepo.AwardEligibleBadgesAsync(userId, DateTime.UtcNow);
         }
 
-        public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, int xpToAdd, DateTime utcNow)
+        public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, long pollId, int xpToAdd, DateTime utcNow, bool leaderboardEligible = true)
         {
             using var conn = _context.CreateConnection();
             conn.Open();
@@ -121,6 +179,12 @@ namespace BackendAPI.Repository
                 },
                 transaction
             );
+
+            await conn.ExecuteAsync(
+                @"INSERT INTO XpEvents (UserId, Amount, SourceType, PollId, OccurredAt, IsValid, IsLeaderboardEligible)
+                  VALUES (@UserId, @Amount, 'Vote', @PollId, @OccurredAt, 1, @Eligible)",
+                new { UserId = userId, Amount = xpToAdd, PollId = pollId, OccurredAt = utcNow, Eligible = leaderboardEligible },
+                transaction);
 
             transaction.Commit();
 

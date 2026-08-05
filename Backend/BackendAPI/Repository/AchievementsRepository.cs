@@ -102,6 +102,22 @@ namespace BackendAPI.Repository
                     if (inserted == null) continue;
 
                     bonusXp += badge.RewardXp;
+                    if (badge.RewardXp > 0)
+                    {
+                        await conn.ExecuteAsync(
+                            @"INSERT INTO XpEvents (UserId, Amount, SourceType, BadgeId, OccurredAt, IsValid, IsLeaderboardEligible)
+                              VALUES (@UserId, @RewardXp, 'Achievement', @BadgeId, @AwardedAt, 1, @Eligible)",
+                            new
+                            {
+                                UserId = userId,
+                                badge.RewardXp,
+                                BadgeId = badge.Id,
+                                AwardedAt = utcNow,
+                                // Poll creation totals predate privacy attribution, so those rewards stay
+                                // auditable but do not leak private/wellness participation into rankings.
+                                Eligible = badge.RuleType != AchievementRuleType.PollCreation
+                            }, transaction);
+                    }
                     awarded.Add(new UserBadge
                     {
                         Id = inserted.Value,

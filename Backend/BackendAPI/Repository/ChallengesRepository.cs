@@ -159,17 +159,21 @@ namespace BackendAPI.Repository
 
                     if (progress.IsCompleted && !progress.RewardGranted)
                     {
-                        await conn.ExecuteAsync(
-                            "UPDATE Users SET Xp = Xp + @RewardXp WHERE Id = @UserId",
-                            new { UserId = userId, challenge.RewardXp },
-                            transaction);
-
-                        await conn.ExecuteAsync(
+                        var granted = await conn.ExecuteAsync(
                             @"UPDATE UserChallengeProgress
-                              SET RewardGranted = 1, UpdatedAt = GETUTCDATE()
-                              WHERE UserId = @UserId AND ChallengeId = @ChallengeId",
-                            new { UserId = userId, ChallengeId = challenge.Id },
-                            transaction);
+                              SET RewardGranted = 1, UpdatedAt = @UtcNow
+                              WHERE UserId = @UserId AND ChallengeId = @ChallengeId AND RewardGranted = 0",
+                            new { UserId = userId, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
+                        if (granted == 1)
+                        {
+                            await conn.ExecuteAsync(
+                                "UPDATE Users SET Xp = Xp + @RewardXp WHERE Id = @UserId",
+                                new { UserId = userId, challenge.RewardXp }, transaction);
+                            await conn.ExecuteAsync(
+                                @"INSERT INTO XpEvents (UserId, Amount, SourceType, ChallengeId, OccurredAt, IsValid, IsLeaderboardEligible)
+                                  VALUES (@UserId, @RewardXp, 'Challenge', @ChallengeId, @UtcNow, 1, 1)",
+                                new { UserId = userId, challenge.RewardXp, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
+                        }
                     }
                 }
 
