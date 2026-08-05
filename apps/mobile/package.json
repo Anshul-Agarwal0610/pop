@@ -20,6 +20,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "verify:android:config": "npx expo config --type public",
+    "verify:android:release": "npm run typecheck && npm run verify:android:config",
     "build:android:preview": "npx eas build --platform android --profile preview",
     "build:android:production": "npx eas build --platform android --profile production",
     "submit:android:production": "npx eas submit --platform android --profile production"
