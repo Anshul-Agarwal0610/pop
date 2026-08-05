@@ -63,9 +63,11 @@ namespace BackendAPI.Controllers
             if (!validOption)
                 return BadRequest(new { message = "Invalid option for this poll." });
 
+            var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
+            VoteRewardResult reward;
             try
             {
-                await _votesRepo.CastVoteAsync(request, userId);
+                reward = await _votesRepo.CastVoteAsync(request, userId, GamificationRules.VoteXp(poll), DateTime.UtcNow);
             }
             catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser") ||
                                         ex.Message.Contains("duplicate key") ||
@@ -74,14 +76,18 @@ namespace BackendAPI.Controllers
                 return Conflict(new { message = "You have already voted on this poll." });
             }
 
-            var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
-
-            // US-50: Award XP and apply daily streak rules after a unique vote.
-            var reward = await _usersRepo.ApplyVoteRewardAsync(
-                userId,
-                GamificationRules.VoteXp(poll),
-                DateTime.UtcNow);
             var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
+
+            if (reward.MilestoneReached.HasValue)
+                await _notificationsRepo.CreateAsync(new CreateNotificationRequest
+                {
+                    UserId = userId,
+                    Type = NotificationType.StreakMilestone,
+                    Title = $"{reward.MilestoneReached}-day streak",
+                    Body = "Nice consistency. Your vote completed today's streak day.",
+                    PollId = poll.Id,
+                    DedupKey = $"streak:{userId}:{reward.MilestoneReached}"
+                });
 
             if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)
             {

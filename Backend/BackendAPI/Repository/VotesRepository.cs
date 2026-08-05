@@ -1,6 +1,7 @@
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
+using BackendAPI.Services;
 using Dapper;
 
 namespace BackendAPI.Repository
@@ -8,72 +9,86 @@ namespace BackendAPI.Repository
     public class VotesRepository : IVotesRepository
     {
         private readonly DapperContext _context;
-
-        public VotesRepository(DapperContext context)
+        private readonly IAchievementsRepository _achievementsRepo;
+        public VotesRepository(DapperContext context, IAchievementsRepository achievementsRepo)
         {
             _context = context;
+            _achievementsRepo = achievementsRepo;
         }
 
-        public async Task<bool> CastVoteAsync(CastVoteRequest request, long? userId)
+        public async Task<VoteRewardResult> CastVoteAsync(
+            CastVoteRequest request, long userId, int xpAwarded, DateTime utcNow)
         {
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
-
             try
             {
-                // Record the vote — include UserId when authenticated (US-15)
-                await conn.ExecuteAsync(
-                    "INSERT INTO Votes (PollId, OptionId, UserId, CreatedAt) VALUES (@PollId, @OptionId, @UserId, GETUTCDATE())",
-                    new { request.PollId, request.OptionId, UserId = userId },
-                    transaction
-                );
+                // Serializes all streak transitions for a user, including votes on different polls.
+                var user = await conn.QuerySingleAsync<User>(
+                    @"SELECT Id, Xp, Streak, LongestStreak, TotalVotes, LastVoteDate
+                      FROM Users WITH (UPDLOCK, ROWLOCK) WHERE Id = @UserId",
+                    new { UserId = userId }, transaction);
+                var lastRecoveryAt = await conn.QueryFirstOrDefaultAsync<DateTime?>(
+                    "SELECT MAX(AppliedAt) FROM StreakRecoveries WHERE UserId = @UserId",
+                    new { UserId = userId }, transaction);
+                var streak = GamificationRules.ApplyDailyStreak(user.Streak, user.LongestStreak,
+                    user.LastVoteDate, lastRecoveryAt, utcNow, request.UseStreakRecovery);
 
-                // Increment option vote count
+                await conn.ExecuteAsync(
+                    "INSERT INTO Votes (PollId, OptionId, UserId, CreatedAt) VALUES (@PollId, @OptionId, @UserId, @UtcNow)",
+                    new { request.PollId, request.OptionId, UserId = userId, UtcNow = utcNow }, transaction);
                 await conn.ExecuteAsync(
                     "UPDATE PollOptions SET VoteCount = VoteCount + 1 WHERE Id = @OptionId AND PollId = @PollId",
-                    new { request.OptionId, request.PollId },
-                    transaction
-                );
-
-                // Update total votes on poll
+                    new { request.OptionId, request.PollId }, transaction);
                 await conn.ExecuteAsync(
                     "UPDATE Polls SET TotalVotes = TotalVotes + 1 WHERE Id = @PollId",
-                    new { request.PollId },
-                    transaction
-                );
-
-                // Recalculate percentages
+                    new { request.PollId }, transaction);
                 await conn.ExecuteAsync(@"
-                    UPDATE o SET
-                        VotePercentage = CASE
-                            WHEN p.TotalVotes = 0 THEN 0
-                            ELSE CAST(o.VoteCount AS FLOAT) / p.TotalVotes * 100
-                        END
-                    FROM PollOptions o
-                    JOIN Polls p ON p.Id = o.PollId
-                    WHERE o.PollId = @PollId",
-                    new { request.PollId },
-                    transaction
-                );
+                    UPDATE o SET VotePercentage = CASE WHEN p.TotalVotes = 0 THEN 0
+                        ELSE CAST(o.VoteCount AS FLOAT) / p.TotalVotes * 100 END
+                    FROM PollOptions o JOIN Polls p ON p.Id = o.PollId WHERE o.PollId = @PollId",
+                    new { request.PollId }, transaction);
 
+                if (streak.RecoveryUsed)
+                    await conn.ExecuteAsync(@"
+                        INSERT INTO StreakRecoveries (UserId, MissedUtcDate, AppliedAt, PollId)
+                        VALUES (@UserId, @MissedUtcDate, @UtcNow, @PollId)",
+                        new { UserId = userId, MissedUtcDate = streak.LastVoteDate.AddDays(-1), UtcNow = utcNow, request.PollId }, transaction);
+
+                var result = await conn.QuerySingleAsync<VoteRewardResult>(@"
+                    UPDATE Users SET Xp = Xp + @XpAwarded, TotalVotes = TotalVotes + 1,
+                        Streak = @Streak, LongestStreak = @LongestStreak, LastVoteDate = @LastVoteDate
+                    OUTPUT inserted.Xp, inserted.Streak, inserted.LongestStreak, inserted.TotalVotes,
+                        @XpAwarded AS XpAwarded, @StreakAdvanced AS StreakAdvanced,
+                        CAST(1 AS bit) AS TodayComplete, @RecoveryEligible AS RecoveryEligible,
+                        @RecoveryUsed AS RecoveryUsed, @MilestoneReached AS MilestoneReached,
+                        inserted.LastVoteDate
+                    WHERE Id = @UserId",
+                    new { UserId = userId, XpAwarded = xpAwarded, streak.Streak, streak.LongestStreak,
+                        streak.LastVoteDate, streak.StreakAdvanced, streak.RecoveryEligible,
+                        streak.RecoveryUsed, streak.MilestoneReached }, transaction);
+                result.NextRecoveryAt = streak.RecoveryUsed
+                    ? utcNow.AddDays(GamificationRules.RecoveryCooldownDays)
+                    : lastRecoveryAt?.AddDays(GamificationRules.RecoveryCooldownDays);
                 transaction.Commit();
-                return true;
+                var awards = await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
+                result.AwardedBadges = awards.AwardedBadges;
+                if (awards.BonusXpAwarded > 0)
+                {
+                    result.Xp += awards.BonusXpAwarded;
+                    result.XpAwarded += awards.BonusXpAwarded;
+                }
+                return result;
             }
-            catch
-            {
-                transaction.Rollback();
-                throw;
-            }
+            catch { transaction.Rollback(); throw; }
         }
 
         public async Task<IEnumerable<Vote>> GetVotesByPollAsync(long pollId)
         {
             using var conn = _context.CreateConnection();
             return await conn.QueryAsync<Vote>(
-                "SELECT * FROM Votes WHERE PollId = @PollId ORDER BY CreatedAt DESC",
-                new { PollId = pollId }
-            );
+                "SELECT * FROM Votes WHERE PollId = @PollId ORDER BY CreatedAt DESC", new { PollId = pollId });
         }
     }
 }

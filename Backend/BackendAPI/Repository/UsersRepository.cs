@@ -95,7 +95,9 @@ namespace BackendAPI.Repository
 
             var streak = GamificationRules.ApplyDailyStreak(
                 user.Streak,
+                user.LongestStreak,
                 user.LastVoteDate,
+                null,
                 utcNow);
 
             var updated = await conn.QuerySingleAsync<VoteRewardResult>(
@@ -103,9 +105,11 @@ namespace BackendAPI.Repository
                   SET Xp = Xp + @XpAwarded,
                       TotalVotes = TotalVotes + 1,
                       Streak = @Streak,
+                      LongestStreak = @LongestStreak,
                       LastVoteDate = @LastVoteDate
                   OUTPUT inserted.Xp,
                          inserted.Streak,
+                         inserted.LongestStreak,
                          inserted.TotalVotes,
                          @XpAwarded AS XpAwarded,
                          @StreakAdvanced AS StreakAdvanced,
@@ -116,6 +120,7 @@ namespace BackendAPI.Repository
                     Id = userId,
                     XpAwarded = xpToAdd,
                     streak.Streak,
+                    streak.LongestStreak,
                     streak.StreakAdvanced,
                     streak.LastVoteDate
                 },
@@ -133,6 +138,25 @@ namespace BackendAPI.Repository
             }
 
             return updated;
+        }
+
+        public async Task<StreakStatus?> GetStreakStatusAsync(long userId, DateTime utcNow)
+        {
+            using var conn = _context.CreateConnection();
+            var row = await conn.QueryFirstOrDefaultAsync<(int Streak, int LongestStreak, DateTime? LastVoteDate, DateTime? LastRecoveryAt)>(@"
+                SELECT u.Streak, u.LongestStreak, u.LastVoteDate,
+                    (SELECT MAX(r.AppliedAt) FROM StreakRecoveries r WHERE r.UserId = u.Id) AS LastRecoveryAt
+                FROM Users u WHERE u.Id = @UserId", new { UserId = userId });
+            if (row == default) return null;
+            var today = utcNow.ToUniversalTime().Date;
+            var recoverable = row.LastVoteDate?.Date == today.AddDays(-2);
+            var available = !row.LastRecoveryAt.HasValue || row.LastRecoveryAt.Value <= utcNow.AddDays(-GamificationRules.RecoveryCooldownDays);
+            return new StreakStatus {
+                Streak = row.Streak, LongestStreak = row.LongestStreak,
+                TodayComplete = row.LastVoteDate?.Date == today, LastVoteDate = row.LastVoteDate,
+                RecoveryEligible = recoverable && available,
+                NextRecoveryAt = row.LastRecoveryAt?.AddDays(GamificationRules.RecoveryCooldownDays)
+            };
         }
 
         // US-22: Vote history ─────────────────────────────────────────────────

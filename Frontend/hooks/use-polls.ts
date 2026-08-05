@@ -1,14 +1,14 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { pollsApi, votesApi } from "@/lib/api"
+import { pollsApi, votesApi, type ApiCastVoteResponse } from "@/lib/api"
 import { mapBackendPoll, type Poll } from "@/lib/poll-data"
 
 interface UsePollsResult {
   polls:       Poll[]
   loading:     boolean
   error:       string | null
-  castVote:    (pollId: string, optionId: number) => Promise<void>
+  castVote:    (pollId: string, optionId: number, useStreakRecovery?: boolean) => Promise<ApiCastVoteResponse>
   loadMore:    () => Promise<void>
   hasMore:     boolean
 }
@@ -66,19 +66,20 @@ export function usePolls(category?: string): UsePollsResult {
   }, [category, polls])
 
   // Cast a vote — optimistically update percentages
-  const castVote = useCallback(async (pollId: string, optionId: number) => {
+  const castVote = useCallback(async (pollId: string, optionId: number, useStreakRecovery = false) => {
     try {
       const result = await votesApi.cast({
         pollId:   Number(pollId),
-        optionId,
+        optionId, useStreakRecovery,
       })
       const mapped = mapBackendPoll(result.poll)
       setPolls((prev) =>
         prev.map((p) => (p.id === pollId ? mapped : p))
       )
+      return result
     } catch (err) {
       // Non-fatal — vote still registers in the UI via VoteFeedback
-      console.error("Vote failed:", err)
+      throw err
     }
   }, [])
 

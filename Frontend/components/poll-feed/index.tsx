@@ -12,6 +12,7 @@ import { ProgressIndicator } from "./progress-indicator"
 import { Button } from "@/components/ui/button"
 import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
+import { usersApi } from "@/lib/api"
 
 export function PollFeed() {
   const [selectedCategory, setSelectedCategory] = useState("All")
@@ -19,12 +20,29 @@ export function PollFeed() {
   const { polls, loading, error, castVote, loadMore, hasMore } = usePolls(feedCategory)
   const [currentIndex, setCurrentIndex]   = useState(0)
   const [streak, setStreak]               = useState(0)
+  const [longestStreak, setLongestStreak] = useState(0)
+  const [todayComplete, setTodayComplete] = useState(false)
+  const [recoveryEligible, setRecoveryEligible] = useState(false)
+  const [milestoneReached, setMilestoneReached] = useState<number | null>(null)
+  const [voteError, setVoteError] = useState<string | null>(null)
   const [totalXp, setTotalXp]             = useState(1250)
   const [currentVote, setCurrentVote]     = useState<"yes" | "no" | "option" | null>(null)
   const [sessionXp, setSessionXp]         = useState(0)
 
   const currentPoll: Poll | undefined = polls[currentIndex]
   const hasMorePolls = currentIndex < polls.length
+  const nextUtcMidnight = new Date()
+  nextUtcMidnight.setUTCHours(24, 0, 0, 0)
+  const localResetTime = nextUtcMidnight.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZoneName: "short" })
+
+  useEffect(() => {
+    usersApi.getMyStreak().then((status) => {
+      setStreak(status.streak)
+      setLongestStreak(status.longestStreak)
+      setTodayComplete(status.todayComplete)
+      setRecoveryEligible(status.recoveryEligible)
+    }).catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     const saved = window.localStorage.getItem("poll-feed-category")
@@ -51,12 +69,23 @@ export function PollFeed() {
     async (optionId: number, feedback: "yes" | "no" | "option") => {
       if (!currentPoll || currentVote) return
 
-      setCurrentVote(feedback)
-      setStreak((s) => s + 1)
-      setTotalXp((xp) => xp + currentPoll.xpReward)
-      setSessionXp((xp) => xp + currentPoll.xpReward)
-
-      await castVote(currentPoll.id, optionId)
+      setVoteError(null)
+      const useRecovery = recoveryEligible && window.confirm(
+        "Use your streak recovery? It restores exactly one missed UTC day and is available once every 30 days."
+      )
+      try {
+        const result = await castVote(currentPoll.id, optionId, useRecovery)
+        setCurrentVote(feedback)
+        setStreak(result.reward.streak)
+        setLongestStreak(result.reward.longestStreak)
+        setTodayComplete(result.reward.todayComplete)
+        setRecoveryEligible(false)
+        setMilestoneReached(result.reward.milestoneReached)
+        setTotalXp(result.reward.xp)
+        setSessionXp((xp) => xp + result.reward.xpAwarded)
+      } catch (err) {
+        setVoteError((err as Error).message)
+      }
     },
     [currentPoll, currentVote, castVote]
   )
@@ -119,9 +148,14 @@ export function PollFeed() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <StreakCounter streak={streak} totalXp={totalXp} />
+        <StreakCounter streak={streak} longestStreak={longestStreak} todayComplete={todayComplete} totalXp={totalXp} />
         <ProgressIndicator current={currentIndex} total={polls.length} />
       </motion.div>
+      <p className="px-4 text-xs text-muted-foreground">
+        Streak days reset at 00:00 UTC ({localResetTime} locally).
+        {recoveryEligible && " One recovery is available for your single missed UTC day; using it starts a 30-day cooldown."}
+      </p>
+      {voteError && <p role="alert" className="px-4 py-1 text-sm text-destructive">Vote failed. Nothing was changed. {voteError}</p>}
 
       {/* Card Stack */}
       <div className="relative mx-auto flex-1 w-full max-w-md px-0 md:px-4">
@@ -206,6 +240,7 @@ export function PollFeed() {
         vote={currentVote}
         xpEarned={currentPoll?.xpReward || 0}
         streakCount={streak}
+        milestoneReached={milestoneReached}
         onComplete={handleFeedbackComplete}
       />
     </div>

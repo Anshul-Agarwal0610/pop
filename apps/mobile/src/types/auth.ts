@@ -7,6 +7,7 @@ export interface AuthUser {
   authProvider: 'local' | 'google' | string;
   xp: number;
   streak: number;
+  longestStreak: number;
   totalVotes: number;
   pollsCreated: number;
   lastVoteDate?: string | null;

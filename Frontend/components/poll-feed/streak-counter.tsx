@@ -6,10 +6,12 @@ import { cn } from "@/lib/utils"
 
 interface StreakCounterProps {
   streak: number
+  longestStreak: number
+  todayComplete: boolean
   totalXp: number
 }
 
-export function StreakCounter({ streak, totalXp }: StreakCounterProps) {
+export function StreakCounter({ streak, longestStreak, todayComplete, totalXp }: StreakCounterProps) {
   return (
     <div className="flex items-center gap-3">
       {/* Streak */}
@@ -37,8 +39,11 @@ export function StreakCounter({ streak, totalXp }: StreakCounterProps) {
             className={cn("h-4 w-4", streak > 0 && "fill-orange-500")}
           />
         </motion.div>
-        <span className="text-sm font-bold">{streak}</span>
+        <span className="text-sm font-bold">{streak} current · {longestStreak} best</span>
       </motion.div>
+      <span className="hidden text-xs text-muted-foreground sm:inline">
+        {todayComplete ? "Completed today" : "Vote today"} · resets 00:00 UTC
+      </span>
 
       {/* Total XP */}
       <motion.div

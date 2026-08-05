@@ -57,15 +57,22 @@ export interface ApiPoll {
 export interface CastVoteRequest {
   pollId: number
   optionId: number
+  useStreakRecovery?: boolean
 }
 
 export interface ApiVoteReward {
   xp: number
   level: number
   streak: number
+  longestStreak: number
   totalVotes: number
   xpAwarded: number
   streakAdvanced: boolean
+  todayComplete: boolean
+  recoveryEligible: boolean
+  recoveryUsed: boolean
+  nextRecoveryAt: string | null
+  milestoneReached: number | null
   lastVoteDate: string | null
   awardedBadges: ApiUserBadge[]
 }
@@ -94,7 +101,7 @@ export interface ApiChallenge {
 export interface ApiNotification {
   id: number
   userId: number
-  type: "VoteMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring"
+  type: "VoteMilestone" | "StreakMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring"
   title: string
   body: string
   pollId: number | null
@@ -449,6 +456,7 @@ export interface ApiUser {
   authProvider: string
   xp: number
   streak: number
+  longestStreak: number
   totalVotes: number
   pollsCreated: number
   lastVoteDate?: string | null
@@ -483,6 +491,18 @@ export interface ApiCategoryPreference {
   voteCount: number
 }
 
+export interface ApiStreakStatus {
+  streak: number
+  longestStreak: number
+  todayComplete: boolean
+  lastVoteDate: string | null
+  recoveryEligible: boolean
+  nextRecoveryAt: string | null
+  timeZone: "UTC"
+  dayBoundary: string
+  milestones: number[]
+}
+
 export const usersApi = {
   /** Leaderboard — top users by XP. */
   getLeaderboard: (count = 20) =>
@@ -491,6 +511,8 @@ export const usersApi = {
   /** Vote history for the current authenticated user. */
   getMyVotes: (count = 10) =>
     request<ApiVoteHistoryItem[]>(`/api/users/me/votes?count=${count}`),
+
+  getMyStreak: () => request<ApiStreakStatus>("/api/users/me/streak"),
 
   getCategoryPreferences: () =>
     request<ApiCategoryPreference[]>("/api/users/me/preferences/categories"),

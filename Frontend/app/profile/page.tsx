@@ -103,7 +103,8 @@ export default function ProfilePage() {
     { icon: BarChart3, label: "Polls Created", value: String(displayUser.pollsCreated ?? 0), color: "text-primary"     },
     { icon: Trophy,    label: "Total Votes",   value: String(displayUser.totalVotes ?? 0),    color: "text-amber-500"   },
     { icon: Target,    label: "Total XP",      value: `${displayUser.xp ?? 0}`,               color: "text-emerald-500" },
-    { icon: Flame,     label: "Day Streak",    value: String(displayUser.streak ?? 0),        color: "text-orange-500"  },
+    { icon: Flame,     label: "Current streak", value: String(displayUser.streak ?? 0),       color: "text-orange-500"  },
+    { icon: Award,     label: "Longest streak", value: String(displayUser.longestStreak ?? displayUser.streak ?? 0), color: "text-orange-500" },
   ]
 
   return (
@@ -190,7 +191,7 @@ export default function ProfilePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4"
+          className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5"
         >
           {stats.map((stat, index) => (
             <motion.div

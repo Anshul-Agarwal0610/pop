@@ -31,9 +31,15 @@ export interface ApiPoll {
 export interface VoteReward {
   xp: number;
   streak: number;
+  longestStreak: number;
   totalVotes: number;
   xpAwarded: number;
   streakAdvanced: boolean;
+  todayComplete: boolean;
+  recoveryEligible: boolean;
+  recoveryUsed: boolean;
+  nextRecoveryAt: string | null;
+  milestoneReached: number | null;
   lastVoteDate: string | null;
 }
 

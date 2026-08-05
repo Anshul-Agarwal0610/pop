@@ -22,6 +22,7 @@ function relativeTime(iso: string) {
 function notificationIcon(type: ApiNotification["type"]) {
   switch (type) {
     case "VoteMilestone":
+    case "StreakMilestone":
       return TrendingUp
     case "LevelUp":
       return Trophy
@@ -43,6 +44,7 @@ const preferenceLabels: Record<ApiNotification["type"], string> = {
   DailyReminder: "Daily reminders",
   ChallengeAvailable: "Daily challenges",
   StreakReminder: "Streak risk",
+  StreakMilestone: "Streak milestones",
   PollExpiring: "Expiring polls",
 }
 
@@ -86,15 +88,13 @@ export default function NotificationsPage() {
   }, [authLoading, isAuthenticated, loadNotifications, router])
 
   async function markRead(notification: ApiNotification) {
-    if (notification.isRead) return
-
-    setNotifications((current) =>
-      current.map((item) =>
-        item.id === notification.id ? { ...item, isRead: true } : item
-      )
-    )
-    setUnreadCount((count) => Math.max(0, count - 1))
-    await notificationsApi.markRead(notification.id).catch(() => loadNotifications())
+    if (!notification.isRead) {
+      setNotifications((current) => current.map((item) =>
+        item.id === notification.id ? { ...item, isRead: true } : item))
+      setUnreadCount((count) => Math.max(0, count - 1))
+      await notificationsApi.markRead(notification.id).catch(() => loadNotifications())
+    }
+    if (notification.pollId) router.push(`/polls/${notification.pollId}`)
   }
 
   async function markAllRead() {
