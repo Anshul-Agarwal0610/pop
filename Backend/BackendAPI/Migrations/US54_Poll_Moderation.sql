@@ -32,9 +32,11 @@ BEGIN
     ALTER TABLE dbo.Polls ADD LastReportedAt DATETIME2 NULL;
 END;
 
-UPDATE dbo.Polls
-SET ModerationStatus = 'Published'
-WHERE ModerationStatus IS NULL OR LTRIM(RTRIM(ModerationStatus)) = '';
+EXEC(N'
+    UPDATE dbo.Polls
+    SET ModerationStatus = ''Published''
+    WHERE ModerationStatus IS NULL OR LTRIM(RTRIM(ModerationStatus)) = '''';
+');
 
 IF OBJECT_ID('dbo.PollReports', 'U') IS NULL
 BEGIN
@@ -54,8 +56,10 @@ IF NOT EXISTS (
     WHERE name = 'IX_Polls_ModerationStatus' AND object_id = OBJECT_ID('dbo.Polls')
 )
 BEGIN
-    CREATE INDEX IX_Polls_ModerationStatus
-    ON dbo.Polls (ModerationStatus, IsActive, CreatedAt DESC);
+    EXEC(N'
+        CREATE INDEX IX_Polls_ModerationStatus
+        ON dbo.Polls (ModerationStatus, IsActive, CreatedAt DESC);
+    ');
 END;
 
 IF NOT EXISTS (

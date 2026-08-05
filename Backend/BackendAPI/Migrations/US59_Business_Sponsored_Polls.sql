@@ -40,6 +40,7 @@ IF COL_LENGTH('dbo.Polls', 'CampaignId') IS NULL
 BEGIN
     ALTER TABLE dbo.Polls ADD CampaignId BIGINT NULL;
 END;
+GO
 
 IF NOT EXISTS (
     SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Polls_BusinessAccounts'

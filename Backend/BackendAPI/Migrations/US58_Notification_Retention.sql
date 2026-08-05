@@ -2,6 +2,7 @@ IF COL_LENGTH('dbo.Notifications', 'DedupKey') IS NULL
 BEGIN
     ALTER TABLE dbo.Notifications ADD DedupKey NVARCHAR(160) NULL;
 END;
+GO
 
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes

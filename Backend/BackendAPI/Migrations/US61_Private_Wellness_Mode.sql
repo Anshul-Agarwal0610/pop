@@ -12,6 +12,7 @@ IF COL_LENGTH('dbo.Polls', 'PollMode') IS NULL
 BEGIN
     ALTER TABLE dbo.Polls ADD PollMode NVARCHAR(40) NOT NULL CONSTRAINT DF_Polls_PollMode DEFAULT 'Public';
 END;
+GO
 
 UPDATE dbo.Polls
 SET IsPrivate = 1,

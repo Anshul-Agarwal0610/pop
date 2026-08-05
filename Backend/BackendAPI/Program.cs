@@ -112,8 +112,17 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
     {
+        var configuredOrigins = builder.Configuration
+            .GetSection("Cors:AllowedOrigins")
+            .Get<string[]>() ?? Array.Empty<string>();
+
+        var allowedOrigins = configuredOrigins
+            .Concat(new[] { "http://localhost:3000", "https://localhost:3000" })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         policy
-            .WithOrigins("http://localhost:3000", "https://localhost:3000")
+            .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .WithExposedHeaders("X-Unread-Count");
