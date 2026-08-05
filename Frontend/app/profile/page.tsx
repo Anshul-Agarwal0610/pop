@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { motion } from "framer-motion"
 import {
   Trophy,
@@ -215,7 +216,7 @@ export default function ProfilePage() {
           transition={{ delay: 0.18 }}
           className="mb-6"
         >
-          <h2 className="mb-3 text-lg font-semibold text-foreground">Badges</h2>
+          <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-semibold text-foreground">Badges</h2><Button asChild size="sm" variant="ghost"><Link href="/achievements">View all achievements</Link></Button></div>
           {badges.length === 0 ? (
             <div className="rounded-2xl bg-card p-6 text-center ring-1 ring-border/50">
               <Award className="mx-auto h-8 w-8 text-muted-foreground" />

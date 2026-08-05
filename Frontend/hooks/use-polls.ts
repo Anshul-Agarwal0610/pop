@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { pollsApi, votesApi } from "@/lib/api"
+import type { ApiCastVoteResponse } from "@/lib/api"
+import { useAchievementCelebrations } from "@/components/achievements/celebration-provider"
 import { mapBackendPoll, type Poll } from "@/lib/poll-data"
 
 interface UsePollsResult {
   polls:       Poll[]
   loading:     boolean
   error:       string | null
-  castVote:    (pollId: string, optionId: number) => Promise<void>
+  castVote:    (pollId: string, optionId: number) => Promise<ApiCastVoteResponse | undefined>
   loadMore:    () => Promise<void>
   hasMore:     boolean
 }
@@ -16,6 +18,7 @@ interface UsePollsResult {
 const PAGE_SIZE = 20
 
 export function usePolls(category?: string): UsePollsResult {
+  const { enqueue } = useAchievementCelebrations()
   const [polls, setPolls]   = useState<Poll[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState<string | null>(null)
@@ -73,14 +76,16 @@ export function usePolls(category?: string): UsePollsResult {
         optionId,
       })
       const mapped = mapBackendPoll(result.poll)
+      enqueue(result.reward.awardedBadges)
       setPolls((prev) =>
         prev.map((p) => (p.id === pollId ? mapped : p))
       )
+      return result
     } catch (err) {
       // Non-fatal — vote still registers in the UI via VoteFeedback
       console.error("Vote failed:", err)
     }
-  }, [])
+  }, [enqueue])
 
   return { polls, loading, error, castVote, loadMore, hasMore }
 }

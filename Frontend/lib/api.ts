@@ -466,6 +466,27 @@ export interface ApiUserBadge {
   description: string
   icon: string
   awardedAt: string
+  rewardXp: number
+  rewardTitle: string | null
+}
+
+export type AchievementStatus = "earned" | "in-progress" | "locked"
+export interface ApiAchievement {
+  badgeId: number; userBadgeId: number | null; code: string; name: string; description: string
+  icon: string; category: "Voting" | "Streak" | "Challenge" | "Exploration"; status: AchievementStatus
+  requirement: string | null; rewardXp: number; rewardTitle: string | null; awardedAt: string | null
+  currentProgress: number | null; targetProgress: number | null; progressPercent: number | null; isSecret: boolean
+}
+export interface ApiAchievementCollection {
+  achievements: ApiAchievement[]; selectedTitle: string | null; selectedTitleBadgeId: number | null
+  earnedCount: number; totalCount: number
+}
+
+export const achievementsApi = {
+  getMine: () => request<ApiAchievementCollection>("/api/achievements/me"),
+  claimCelebrations: () => request<ApiUserBadge[]>("/api/achievements/me/celebrations/claim", { method: "POST" }),
+  selectTitle: (badgeId: number) => request<void>("/api/achievements/me/title", { method: "PUT", body: JSON.stringify({ badgeId }) }),
+  clearTitle: () => request<void>("/api/achievements/me/title", { method: "DELETE" }),
 }
 
 export interface ApiVoteHistoryItem {

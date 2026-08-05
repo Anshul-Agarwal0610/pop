@@ -17,6 +17,7 @@ namespace BackendAPI.Controllers
         private readonly INotificationsRepository _notificationsRepo;
         private readonly IChallengesRepository _challengesRepo;
         private readonly IBusinessRepository _businessRepo;
+        private readonly IAchievementsRepository _achievementsRepo;
 
         public VotesController(
             IVotesRepository votesRepo,
@@ -24,7 +25,8 @@ namespace BackendAPI.Controllers
             IPollsRepository pollsRepo,
             INotificationsRepository notificationsRepo,
             IChallengesRepository challengesRepo,
-            IBusinessRepository businessRepo)
+            IBusinessRepository businessRepo,
+            IAchievementsRepository achievementsRepo)
         {
             _votesRepo = votesRepo;
             _usersRepo = usersRepo;
@@ -32,6 +34,7 @@ namespace BackendAPI.Controllers
             _notificationsRepo = notificationsRepo;
             _challengesRepo = challengesRepo;
             _businessRepo = businessRepo;
+            _achievementsRepo = achievementsRepo;
         }
 
         // POST /api/votes  (US-15: requires authentication)
@@ -82,6 +85,10 @@ namespace BackendAPI.Controllers
                 GamificationRules.VoteXp(poll),
                 DateTime.UtcNow);
             var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
+            var awards = await _achievementsRepo.AwardEligibleBadgesAsync(userId, DateTime.UtcNow);
+            reward.AwardedBadges = awards.AwardedBadges;
+            reward.Xp += awards.BonusXpAwarded;
+            reward.XpAwarded += awards.BonusXpAwarded;
 
             if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)
             {

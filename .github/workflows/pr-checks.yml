@@ -46,7 +46,11 @@ jobs:
 
       - name: Run lint
         working-directory: Frontend
-        run: npm run lint || true
+        run: npm run lint
+
+      - name: Run tests
+        working-directory: Frontend
+        run: npm test
 
       - name: Run build
         working-directory: Frontend
@@ -74,3 +78,7 @@ jobs:
       - name: Build
         working-directory: Backend/BackendAPI
         run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        working-directory: Backend/BackendAPI.Tests
+        run: dotnet test --configuration Release

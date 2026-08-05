@@ -44,7 +44,7 @@ namespace BackendAPI.Repository
             );
 
             if (user != null)
-                user.Badges = (await _achievementsRepo.GetUserBadgesAsync(id)).ToList();
+                user.Badges = (await _achievementsRepo.GetBadgesForUsersAsync(new[] { id })).GetValueOrDefault(id) ?? [];
 
             return user;
         }
@@ -123,14 +123,6 @@ namespace BackendAPI.Repository
             );
 
             transaction.Commit();
-
-            var awards = await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
-            updated.AwardedBadges = awards.AwardedBadges;
-            if (awards.BonusXpAwarded > 0)
-            {
-                updated.Xp += awards.BonusXpAwarded;
-                updated.XpAwarded += awards.BonusXpAwarded;
-            }
 
             return updated;
         }

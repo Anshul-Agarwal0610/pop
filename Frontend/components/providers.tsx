@@ -4,6 +4,7 @@ import { GoogleOAuthProvider } from "@react-oauth/google"
 import { AuthProvider } from "@/contexts/auth-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
+import { AchievementCelebrationProvider } from "@/components/achievements/celebration-provider"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -17,7 +18,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <AchievementCelebrationProvider>{children}</AchievementCelebrationProvider>
           <Toaster />
         </ThemeProvider>
       </AuthProvider>

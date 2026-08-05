@@ -181,8 +181,6 @@ namespace BackendAPI.Repository
                 throw;
             }
 
-            await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
-
             return await GetActiveForUserAsync(userId, utcNow);
         }
     }
