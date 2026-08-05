@@ -244,10 +244,77 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new Error(`API ${res.status}: ${text}`)
+    let code: string | undefined
+    let message = text
+    try { const body = JSON.parse(text); code = body.code; message = body.message ?? text } catch {}
+    throw new ApiError(res.status, message, code)
   }
 
   return res.json() as Promise<T>
+}
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string, public code?: string) { super(message) }
+}
+
+export interface ApiGameMode {
+  mode: "OpinionSprint"
+  name: string
+  category: string
+  pollCount: number
+  timeLimitSeconds: number | null
+  completionXp: number
+  rules: string
+  available: boolean
+}
+
+export interface ApiCompletionSummary {
+  votes: number
+  voteXpEarned: number
+  completionXpEarned: number
+  totalXpEarned: number
+  challengeProgress: ApiChallenge[]
+  achievementsUnlocked: ApiUserBadge[]
+}
+
+export interface ApiGameSession {
+  id: number
+  mode: "OpinionSprint"
+  category: string
+  status: "Active" | "Completed" | "Expired" | "Abandoned"
+  pollCount: number
+  currentPosition: number
+  votesCast: number
+  remainingPolls: number
+  timeLimitSeconds: number | null
+  completionXp: number
+  startedAt: string
+  expiresAt: string | null
+  completedAt: string | null
+  serverNow: string
+  currentPoll: ApiPoll | null
+  summary: ApiCompletionSummary | null
+}
+
+export interface ApiGameVoteResult {
+  session: ApiGameSession
+  xpAwarded: number
+  challenges: ApiChallenge[]
+  achievementsUnlocked: ApiUserBadge[]
+}
+
+export const gameSessionsApi = {
+  modes: () => request<ApiGameMode[]>("/api/game-modes"),
+  active: async () => {
+    const res = await fetch(`${API_BASE_URL}/api/game-sessions/active`, { headers: { ...authHeaders() } })
+    if (res.status === 204) return null
+    if (!res.ok) throw new ApiError(res.status, await res.text())
+    return res.json() as Promise<ApiGameSession>
+  },
+  start: (category = "General", timed = true) => request<ApiGameSession>("/api/game-sessions", { method: "POST", body: JSON.stringify({ mode: "OpinionSprint", category, timed }) }),
+  get: (id: number | string) => request<ApiGameSession>(`/api/game-sessions/${id}`),
+  vote: (id: number, position: number, pollId: number, optionId: number) => request<ApiGameVoteResult>(`/api/game-sessions/${id}/votes`, { method: "POST", body: JSON.stringify({ position, pollId, optionId }) }),
+  complete: (id: number) => request<ApiGameSession>(`/api/game-sessions/${id}/complete`, { method: "POST" }),
 }
 
 // ── Poll endpoints ────────────────────────────────────────────────────────────
