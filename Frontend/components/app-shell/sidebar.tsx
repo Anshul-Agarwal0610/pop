@@ -120,7 +120,7 @@ export function Sidebar() {
                 onClick={() => setTheme("light")}
               >
                 <Sun className="h-4 w-4" />
-                <span className="sr-only">Light mode</span>
+                <span className="sr-only">Switch to light theme</span>
               </Button>
               <Button
                 variant={mounted && theme === "dark" ? "default" : "ghost"}
@@ -129,7 +129,7 @@ export function Sidebar() {
                 onClick={() => setTheme("dark")}
               >
                 <Moon className="h-4 w-4" />
-                <span className="sr-only">Dark mode</span>
+                <span className="sr-only">Switch to dark theme</span>
               </Button>
             </div>
           </div>
