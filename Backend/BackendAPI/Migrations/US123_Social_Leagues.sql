@@ -32,6 +32,10 @@ IF OBJECT_ID('XpEvents','U') IS NULL CREATE TABLE XpEvents(
  Id BIGINT IDENTITY PRIMARY KEY, UserId BIGINT NOT NULL REFERENCES Users(Id), Amount INT NOT NULL, SourceType VARCHAR(32) NOT NULL, SourceId BIGINT NOT NULL,
  OccurredAt DATETIME2 NOT NULL, IsSociallyEligible BIT NOT NULL, CONSTRAINT UQ_XpEvents_Source UNIQUE(UserId,SourceType,SourceId), CONSTRAINT CK_XpEvents_Amount CHECK(Amount>=0));
 
+IF COL_LENGTH('dbo.XpEvents','IsSociallyEligible') IS NULL
+    ALTER TABLE dbo.XpEvents ADD IsSociallyEligible BIT NOT NULL CONSTRAINT DF_XpEvents_SociallyEligible DEFAULT 1;
+GO
+
 IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_Relationship_UserState' AND object_id=OBJECT_ID('UserRelationships')) CREATE INDEX IX_Relationship_UserState ON UserRelationships(RequesterUserId,AddresseeUserId,State);
 IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_GroupMembers_UserState' AND object_id=OBJECT_ID('GroupMemberships')) CREATE INDEX IX_GroupMembers_UserState ON GroupMemberships(UserId,State,GroupId) INCLUDE(JoinedAt,LeftAt,Role);
 IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_GroupInvites_RateLimit' AND object_id=OBJECT_ID('GroupInvites')) CREATE INDEX IX_GroupInvites_RateLimit ON GroupInvites(InviterUserId,CreatedAt) INCLUDE(GroupId,InviteeUserId,State,ExpiresAt);
