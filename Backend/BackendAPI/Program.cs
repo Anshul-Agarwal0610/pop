@@ -75,6 +75,16 @@ builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
+builder.Services.AddOptions<PollGenerationOptions>().Bind(builder.Configuration.GetSection(PollGenerationOptions.Section))
+    .Validate(o => o.MaxAttemptsPerTopic > 0 && o.BaseRetryDelaySeconds > 0 && o.MaxRetryDelaySeconds >= o.BaseRetryDelaySeconds,
+        "Poll generation retry settings are invalid").ValidateOnStart();
+var llmTimeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("PollGen:HttpTimeoutSeconds", 30));
+foreach (var provider in new[] { "openai", "anthropic", "custom" })
+    builder.Services.AddHttpClient(provider, client => client.Timeout = llmTimeout);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IJitterSource, RandomJitterSource>();
+builder.Services.AddSingleton<IRetryDelayPolicy, RetryDelayPolicy>();
+builder.Services.AddSingleton<IProviderResilienceCoordinator, ProviderResilienceCoordinator>();
 builder.Services.Configure<AnalyticsOptions>(builder.Configuration.GetSection(AnalyticsOptions.Section));
 builder.Services.AddSingleton<IAnalyticsOutbox, AnalyticsOutbox>();
 builder.Services.AddSingleton<IFeatureFlagService, FeatureFlagService>();
@@ -172,7 +182,7 @@ using (var scope = app.Services.CreateScope())
     recurringJobs.AddOrUpdate<PollGenerationJob>(
         "generate-polls-from-topics",
         job => job.RunAsync(),
-        "5/35 * * * *");
+        "*/5 * * * *");
 
     recurringJobs.AddOrUpdate<RetentionNotificationJob>(
         "create-retention-notifications",

@@ -1,6 +1,7 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services.Llm;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace BackendAPI.Services
@@ -20,81 +21,70 @@ namespace BackendAPI.Services
     {
         private readonly IEnumerable<ILlmProvider> _providers;
         private readonly IPollsRepository _pollsRepo;
-        private readonly IConfiguration _config;
+        private readonly PollGenerationOptions _options;
+        private readonly IProviderResilienceCoordinator _resilience;
         private readonly ILogger<PollGenerationService> _logger;
 
         public PollGenerationService(
             IEnumerable<ILlmProvider> providers,
             IPollsRepository pollsRepo,
-            IConfiguration config,
+            IOptions<PollGenerationOptions> options,
+            IProviderResilienceCoordinator resilience,
             ILogger<PollGenerationService> logger)
         {
             _providers = providers;
             _pollsRepo = pollsRepo;
-            _config    = config;
+            _options = options.Value;
+            _resilience = resilience;
             _logger    = logger;
         }
 
-        public async Task<GeneratedPoll?> GenerateAsync(TrendingTopic topic)
+        public async Task<GenerationOutcome> GenerateAsync(TrendingTopic topic, CancellationToken ct = default)
         {
-            var providerName = _config["PollGen:Provider"]?.ToLowerInvariant() ?? "custom";
-
-            var provider = _providers.FirstOrDefault(p =>
-                p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
-
-            if (provider == null)
+            var prompt = BuildPrompt(topic);
+            LlmProviderResult? lastRetryable = null;
+            LlmProviderResult? lastTerminal = null;
+            foreach (var providerName in _options.ProviderChain.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                _logger.LogWarning(
-                    "[PollGen] Unknown provider '{Provider}'. Valid: openai, anthropic, custom",
-                    providerName);
-                return null;
+                var provider = _providers.FirstOrDefault(p => p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
+                if (provider == null) continue;
+                await using var permit = await _resilience.TryAcquireAsync(provider.ProviderName, ct);
+                if (permit == null) continue;
+                var response = await provider.CompleteAsync(prompt, ct);
+                if (!response.IsSuccess)
+                {
+                    _resilience.RecordFailure(provider.ProviderName, response);
+                    if (response.IsRetryable) { lastRetryable = response; continue; }
+                    if (response.FailureClass == LlmFailureClass.ContentPolicy)
+                        return new(GenerationOutcomeKind.TerminalContentDecision, FailureClass: response.FailureClass,
+                            Provider: provider.ProviderName, Reason: response.ErrorCode ?? response.FailureClass.ToString());
+                    lastTerminal = response;
+                    continue;
+                }
+                _resilience.RecordSuccess(provider.ProviderName);
+                var result = ParsePollJson(response.Payload!, topic.Category);
+
+                if (result == null)
+                    return new(GenerationOutcomeKind.InvalidOutput, FailureClass: LlmFailureClass.InvalidResponse,
+                        Provider: provider.ProviderName, Reason: "Malformed model output");
+
+                result.SourceTitle = topic.Title;
+                result.SourceUrl = topic.SourceUrl;
+                await ApplyQualityChecksAsync(result, topic);
+
+                if (result.QualityWarnings.Any(w => w.StartsWith("Rejected:", StringComparison.OrdinalIgnoreCase)))
+                    return new(GenerationOutcomeKind.TerminalContentDecision, FailureClass: LlmFailureClass.ContentPolicy,
+                        Provider: provider.ProviderName, Reason: string.Join(" | ", result.QualityWarnings));
+
+                return GenerationOutcome.Generated(result);
             }
-
-            _logger.LogInformation(
-                "[PollGen] Using provider '{Provider}' for topic '{Title}'",
-                providerName, topic.Title);
-
-            var prompt   = BuildPrompt(topic);
-            var rawJson  = await provider.CompleteAsync(prompt);
-
-            if (string.IsNullOrWhiteSpace(rawJson))
-            {
-                _logger.LogWarning(
-                    "[PollGen] Provider '{Provider}' returned empty response for '{Title}'",
-                    providerName, topic.Title);
-                return null;
-            }
-
-            var result = ParsePollJson(rawJson, topic.Category);
-
-            if (result == null)
-            {
-                _logger.LogWarning(
-                    "[PollGen] Could not parse response for topic {TopicId} '{Title}'. Provider={Provider}. Raw={Raw}",
-                    topic.Id, topic.Title, providerName, rawJson[..Math.Min(400, rawJson.Length)]);
-                return null;
-            }
-
-            result.SourceTitle = topic.Title;
-            result.SourceUrl = topic.SourceUrl;
-            await ApplyQualityChecksAsync(result, topic);
-
-            if (result.QualityWarnings.Any(warning => warning.StartsWith("Rejected:", StringComparison.OrdinalIgnoreCase)))
-            {
-                _logger.LogWarning(
-                    "[PollGen] Rejected generated poll for topic {TopicId} '{Title}'. Warnings={Warnings}. Question={Question}",
-                    topic.Id, topic.Title, string.Join(" | ", result.QualityWarnings), result.Question);
-                return null;
-            }
-
-            if (result.QualityWarnings.Count > 0)
-            {
-                _logger.LogInformation(
-                    "[PollGen] Generated poll for topic {TopicId} needs review. Warnings={Warnings}",
-                    topic.Id, string.Join(" | ", result.QualityWarnings));
-            }
-
-            return result;
+            if (lastRetryable != null)
+                return new(GenerationOutcomeKind.RetryableFailure, FailureClass: lastRetryable.FailureClass,
+                    Provider: lastRetryable.ProviderName, RetryAtUtc: lastRetryable.RetryAtUtc,
+                    Reason: lastRetryable.FailureClass.ToString());
+            return new(GenerationOutcomeKind.TerminalFailure,
+                FailureClass: lastTerminal?.FailureClass ?? LlmFailureClass.Configuration,
+                Provider: lastTerminal?.ProviderName, Reason: lastTerminal?.FailureClass.ToString() ?? "No configured provider");
         }
 
         // ── Prompt ────────────────────────────────────────────────────────────
