@@ -73,9 +73,8 @@ namespace BackendAPI.Services
             {
                 var videoId  = item.GetProperty("id").GetString() ?? "";
                 var snippet  = item.GetProperty("snippet");
-                var title    = snippet.GetProperty("title").GetString()?.Trim() ?? "";
-                var desc     = snippet.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
-                var category = "Entertainment";
+                var title    = TopicEnrichment.CleanText(snippet.GetProperty("title").GetString());
+                var desc     = TopicEnrichment.CleanText(snippet.TryGetProperty("description", out var d) ? d.GetString() : "");
 
                 if (desc.Length > 400) desc = desc[..400];
 
@@ -103,7 +102,7 @@ namespace BackendAPI.Services
                     SourceType   = "youtube",
                     SourceUrl    = $"https://www.youtube.com/watch?v={videoId}",
                     ThumbnailUrl = thumbnail,
-                    Category     = category
+                    Category     = TopicEnrichment.Classify(title, desc)
                 });
             }
 

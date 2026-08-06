@@ -31,7 +31,9 @@ namespace BackendAPI.Repository
                 await conn.ExecuteAsync(@"
                     IF NOT EXISTS (
                         SELECT 1 FROM TrendingTopics
-                        WHERE SourceUrl = @SourceUrl AND SourceUrl <> ''
+                        WHERE (SourceUrl = @SourceUrl AND SourceUrl <> '')
+                           OR (LOWER(LTRIM(RTRIM(Title))) = LOWER(LTRIM(RTRIM(@Title)))
+                               AND FetchedAt >= DATEADD(HOUR, -48, GETUTCDATE()))
                     )
                     BEGIN
                         INSERT INTO TrendingTopics
@@ -55,11 +57,23 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
 
+            await conn.ExecuteAsync(@"
+                UPDATE TrendingTopics
+                SET IsProcessed = 1, ProcessedAt = GETUTCDATE()
+                WHERE IsProcessed = 0 AND FetchedAt < DATEADD(HOUR, -72, GETUTCDATE());");
+
             return await conn.QueryAsync<TrendingTopic>(@"
+                WITH RankedTopics AS (
+                    SELECT *, ROW_NUMBER() OVER (
+                        PARTITION BY SourceType ORDER BY FetchedAt DESC
+                    ) AS SourceRank
+                    FROM TrendingTopics
+                    WHERE IsProcessed = 0
+                      AND FetchedAt >= DATEADD(HOUR, -72, GETUTCDATE())
+                )
                 SELECT TOP (@MaxCount) *
-                FROM TrendingTopics
-                WHERE IsProcessed = 0
-                ORDER BY FetchedAt DESC",
+                FROM RankedTopics
+                ORDER BY SourceRank, FetchedAt DESC",
                 new { MaxCount = maxCount });
         }
 

@@ -37,6 +37,14 @@ namespace BackendAPI.Services
 
         public async Task<GeneratedPoll?> GenerateAsync(TrendingTopic topic)
         {
+            if (_config.GetValue<bool>("PollGen:FallbackOnly"))
+            {
+                _logger.LogInformation("[PollGen] Fallback-only mode is enabled for topic '{Title}'", topic.Title);
+                var fallback = TopicEnrichment.CreateFallbackPoll(topic);
+                await ApplyQualityChecksAsync(fallback, topic);
+                return fallback;
+            }
+
             var providerName = _config["PollGen:Provider"]?.ToLowerInvariant() ?? "custom";
 
             var provider = _providers.FirstOrDefault(p =>
@@ -45,9 +53,11 @@ namespace BackendAPI.Services
             if (provider == null)
             {
                 _logger.LogWarning(
-                    "[PollGen] Unknown provider '{Provider}'. Valid: openai, anthropic, custom",
+                    "[PollGen] Unknown provider '{Provider}'. Valid: openai, anthropic, custom. Using deterministic fallback.",
                     providerName);
-                return null;
+                var fallback = TopicEnrichment.CreateFallbackPoll(topic);
+                await ApplyQualityChecksAsync(fallback, topic);
+                return fallback;
             }
 
             _logger.LogInformation(
@@ -60,9 +70,11 @@ namespace BackendAPI.Services
             if (string.IsNullOrWhiteSpace(rawJson))
             {
                 _logger.LogWarning(
-                    "[PollGen] Provider '{Provider}' returned empty response for '{Title}'",
+                    "[PollGen] Provider '{Provider}' returned empty response for '{Title}'. Using deterministic fallback.",
                     providerName, topic.Title);
-                return null;
+                var fallback = TopicEnrichment.CreateFallbackPoll(topic);
+                await ApplyQualityChecksAsync(fallback, topic);
+                return fallback;
             }
 
             var result = ParsePollJson(rawJson, topic.Category);
@@ -70,9 +82,9 @@ namespace BackendAPI.Services
             if (result == null)
             {
                 _logger.LogWarning(
-                    "[PollGen] Could not parse response for topic {TopicId} '{Title}'. Provider={Provider}. Raw={Raw}",
+                    "[PollGen] Could not parse response for topic {TopicId} '{Title}'. Provider={Provider}. Using deterministic fallback. Raw={Raw}",
                     topic.Id, topic.Title, providerName, rawJson[..Math.Min(400, rawJson.Length)]);
-                return null;
+                result = TopicEnrichment.CreateFallbackPoll(topic);
             }
 
             result.SourceTitle = topic.Title;
