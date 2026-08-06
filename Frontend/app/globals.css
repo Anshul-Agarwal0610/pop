@@ -157,7 +157,12 @@
   }
   body {
     @apply bg-background text-foreground;
+    min-width: 0;
   }
+
+  img, video, canvas, svg { max-width: 100%; }
+
+  main, main > div, .min-w-0 { overflow-wrap: anywhere; }
 }
 
 /* PWA-specific styles */
@@ -174,6 +179,11 @@
 html {
   scroll-behavior: smooth;
   -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
 /* Custom scrollbar */
@@ -217,3 +227,6 @@ html {
 body {
   overscroll-behavior-y: contain;
 }
+
+/* Content supplied by users and APIs must never widen a page. */
+.break-content { overflow-wrap: anywhere; word-break: break-word; }

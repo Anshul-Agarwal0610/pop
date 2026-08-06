@@ -12,10 +12,13 @@ import {
   type AuthUser,
   type AuthResponse,
   getStoredUser,
+  getToken,
+  getCurrentUser,
   saveSession,
   clearSession,
+  saveStoredUser,
 } from "@/lib/auth"
-import { usersApi } from "@/lib/api"
+import { usersApi, type ApiProgression } from "@/lib/api"
 import { getAnalyticsConsent, setAnalyticsConsent } from "@/lib/analytics/privacy"
 
 interface AuthContextValue {
@@ -24,6 +27,7 @@ interface AuthContextValue {
   isAuthenticated: boolean
   login:  (data: AuthResponse) => void
   logout: () => void
+  applyProgression: (progression: ApiProgression) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -32,10 +36,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]         = useState<AuthUser | null>(null)
   const [isLoading, setLoading] = useState(true)
 
-  // Hydrate from localStorage on mount
   useEffect(() => {
-    setUser(getStoredUser())
-    setLoading(false)
+    let active = true
+
+    async function hydrate() {
+      const storedUser = getStoredUser()
+      if (!getToken() || !storedUser) {
+        clearSession()
+        if (active) setLoading(false)
+        return
+      }
+
+      try {
+        const currentUser = await getCurrentUser()
+        if (active) setUser(currentUser)
+      } catch {
+        clearSession()
+        if (active) setUser(null)
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    hydrate()
+    return () => { active = false }
   }, [])
 
   const login = useCallback((data: AuthResponse) => {
@@ -46,6 +70,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     clearSession()
     setUser(null)
+  }, [])
+
+  const applyProgression = useCallback((progression: ApiProgression) => {
+    setUser((current) => {
+      if (!current) return current
+      const next = { ...current, xp: progression.totalXp, level: progression.level, progression }
+      saveStoredUser(next)
+      return next
+    })
   }, [])
 
   useEffect(() => {
@@ -60,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: !!user, login, logout }}
+      value={{ user, isLoading, isAuthenticated: !!user, login, logout, applyProgression }}
     >
       {children}
     </AuthContext.Provider>

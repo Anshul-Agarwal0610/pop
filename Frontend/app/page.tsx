@@ -20,6 +20,7 @@ import {
 import { motion } from "framer-motion"
 import { AppShell } from "@/components/app-shell"
 import { CategoryBadge } from "@/components/category-badge"
+import { ChallengeList } from "@/components/challenges/challenge-list"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { POLL_CATEGORIES } from "@/lib/categories"
@@ -119,6 +120,8 @@ export default function HomePage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-4 py-6">
+        {isAuthenticated && <div className="mb-6 flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-border/50"><div><p className="font-semibold">Achievement collection</p><p className="text-sm text-muted-foreground">See earned badges and goals in progress.</p></div><Button asChild variant="outline"><Link href="/achievements">View achievements</Link></Button></div>}
+
         <motion.div
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
@@ -131,6 +134,18 @@ export default function HomePage() {
             {isAuthenticated ? "Your live activity is ready." : "Sign in to track XP, streaks, and poll history."}
           </p>
         </motion.div>
+
+        {isAuthenticated && (
+          <div className="mb-6 rounded-2xl bg-card p-4 ring-1 ring-border/50">
+            <div className="flex justify-between text-sm">
+              <span className="font-semibold">Level {user?.progression.level}</span>
+              <span className="text-muted-foreground">{user?.progression.totalXp} / {user?.progression.nextLevelXp} XP</span>
+            </div>
+            <div aria-label="Progress to next level" aria-valuemax={100} aria-valuemin={0} aria-valuenow={user?.progression.progressPercent ?? 0} className="mt-2 h-2 overflow-hidden rounded-full bg-secondary" role="progressbar">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${user?.progression.progressPercent ?? 0}%` }} />
+            </div>
+          </div>
+        )}
 
         {isAuthenticated && (
           <motion.div
@@ -190,47 +205,12 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 20 }}
             transition={{ delay: 0.15 }}
           >
-            <div className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">Daily Challenges</h2>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2"><Target className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold text-foreground">Challenges</h2></div>
+              <Button asChild size="sm" variant="ghost"><Link href="/challenges">View all</Link></Button>
             </div>
-
-            {challenges.map((challenge) => {
-              const progress = Math.min(100, Math.round((challenge.currentVotes / challenge.requiredVotes) * 100))
-              const remaining = Math.max(0, challenge.requiredVotes - challenge.currentVotes)
-
-              return (
-                <div
-                  className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50"
-                  key={challenge.challengeId}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-foreground">{challenge.title}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {challenge.isCompleted
-                          ? `Completed. +${challenge.rewardXp} XP earned.`
-                          : `${remaining} more vote${remaining === 1 ? "" : "s"} for +${challenge.rewardXp} XP`}
-                      </p>
-                    </div>
-                    {challenge.rewardBadge && (
-                      <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
-                        {challenge.rewardBadge}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-secondary">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {challenge.currentVotes}/{challenge.requiredVotes} votes today
-                  </div>
-                </div>
-              )
-            })}
+            <ChallengeList challenges={challenges} />
           </motion.div>
         )}
 

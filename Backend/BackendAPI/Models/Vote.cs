@@ -13,13 +13,15 @@ namespace BackendAPI.Models
     {
         public long PollId { get; set; }
         public long OptionId { get; set; }
+        public bool UseStreakRecovery { get; set; }
         // UserId is NOT accepted from the client — set server-side from JWT (US-15)
     }
 
     public class CastVoteResponse
     {
         public Poll Poll { get; set; } = new();
-        public VoteRewardResult Reward { get; set; } = new();
+        public ProgressionReward Reward { get; set; } = new();
         public IEnumerable<UserChallenge> Challenges { get; set; } = Enumerable.Empty<UserChallenge>();
+        public IEnumerable<UserChallenge> CompletedChallenges { get; set; } = Enumerable.Empty<UserChallenge>();
     }
 }

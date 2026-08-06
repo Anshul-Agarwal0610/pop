@@ -67,7 +67,7 @@ export function SearchOverlay({ open, onOpenChange }: SearchOverlayProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-24 max-h-[calc(100vh-7rem)] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="sr-only">
           <DialogTitle>Search polls</DialogTitle>
           <DialogDescription>Search active polls by keyword.</DialogDescription>
@@ -86,7 +86,7 @@ export function SearchOverlay({ open, onOpenChange }: SearchOverlayProps) {
           </div>
         </div>
 
-        <div className="max-h-[calc(100vh-13rem)] overflow-y-auto p-3">
+        <div className="min-h-0 max-h-[calc(100dvh-7rem)] overflow-y-auto p-3">
           {!trimmedQuery && (
             <div className="py-12 text-center text-sm text-muted-foreground">
               Search by keyword to find active polls.

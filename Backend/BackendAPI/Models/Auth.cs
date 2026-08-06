@@ -41,11 +41,13 @@ namespace BackendAPI.Models
         public string AuthProvider { get; set; } = "local";
         public int Xp { get; set; }
         public int Streak { get; set; }
+        public int LongestStreak { get; set; }
         public int TotalVotes { get; set; }
         public int PollsCreated { get; set; }
         public DateTime? LastVoteDate { get; set; }
         public DateTime CreatedAt { get; set; }
-        public int Level => Xp / 1000 + 1;
+        public ProgressionSnapshot Progression => Services.GamificationRules.FromTotalXp(Xp);
+        public int Level => Progression.Level;
         public List<UserBadge> Badges { get; set; } = new();
     }
 }

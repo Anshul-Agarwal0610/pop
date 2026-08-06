@@ -1,4 +1,5 @@
 using BackendAPI.Analytics;
+using Xunit;
 namespace BackendAPI.Tests;
 public class AnalyticsContractTests
 {
