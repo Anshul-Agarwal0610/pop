@@ -20,6 +20,7 @@ import {
 import { motion } from "framer-motion"
 import { CategoryBadge } from "@/components/category-badge"
 import { ShareButton } from "@/components/share-button"
+import { PollTossButton } from "@/components/poll-toss/poll-toss-button"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { pollsApi, votesApi, type ApiPoll, type ApiPollOption } from "@/lib/api"
@@ -300,6 +301,8 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
               )}
             </div>
 
+            <div className="flex flex-col items-end gap-2 sm:flex-row">
+            <PollTossButton poll={poll} surface="detail" className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background" />
             <ShareButton
               category={poll.category}
               className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background"
@@ -307,6 +310,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
               text={pollShareText(poll)}
               title={poll.question}
             />
+            </div>
           </div>
 
           <div

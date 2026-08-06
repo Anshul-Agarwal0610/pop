@@ -749,3 +749,25 @@ export const authApi = {
   /** Fetch fresh profile data for the logged-in user. Requires auth token. */
   getMe: () => request<ApiUser>("/api/auth/me"),
 }
+
+export type PollTossStatus = "Pending" | "Accepted" | "Cancelled" | "Expired"
+export interface PollTossInvitation {
+  id: string
+  pollId: number
+  status: PollTossStatus
+  stateVersion: number
+  expiresAt: string
+  token?: string
+  inviteUrl?: string
+  roomCode?: string
+  poll?: Pick<ApiPoll, "id" | "question" | "category" | "thumbnailUrl">
+}
+
+export const pollTossApi = {
+  create: (pollId: number) => request<PollTossInvitation>("/api/poll-tosses", { method: "POST", body: JSON.stringify({ pollId }) }),
+  get: (id: string) => request<PollTossInvitation>(`/api/poll-tosses/${encodeURIComponent(id)}`),
+  preview: (token: string) => request<PollTossInvitation>(`/api/poll-tosses/invite/${encodeURIComponent(token)}`),
+  previewRoom: (code: string) => request<PollTossInvitation>(`/api/poll-tosses/room/${encodeURIComponent(code)}`),
+  accept: (token: string) => request<PollTossInvitation>(`/api/poll-tosses/invite/${encodeURIComponent(token)}/accept`, { method: "POST" }),
+  cancel: (id: string) => request<PollTossInvitation>(`/api/poll-tosses/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+}

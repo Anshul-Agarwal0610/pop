@@ -71,6 +71,7 @@ builder.Services.AddScoped<IRewardRepository,        RewardRepository>();
 builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
+builder.Services.AddScoped<IPollTossRepository,       PollTossRepository>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
