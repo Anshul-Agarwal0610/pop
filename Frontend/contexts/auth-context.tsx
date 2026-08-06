@@ -15,6 +15,8 @@ import {
   saveSession,
   clearSession,
 } from "@/lib/auth"
+import { usersApi } from "@/lib/api"
+import { getAnalyticsConsent, setAnalyticsConsent } from "@/lib/analytics/privacy"
 
 interface AuthContextValue {
   user: AuthUser | null
@@ -45,6 +47,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession()
     setUser(null)
   }, [])
+
+  useEffect(() => {
+    if (!user) return
+    usersApi.getAnalyticsPrivacy().then(({ consent }) => {
+      const local = getAnalyticsConsent()
+      if (consent === "denied" || local === "denied") setAnalyticsConsent("denied")
+      else if (consent === "granted" && local === "granted") setAnalyticsConsent("granted")
+      else setAnalyticsConsent("unknown")
+    }).catch(() => undefined)
+  }, [user?.id])
 
   return (
     <AuthContext.Provider

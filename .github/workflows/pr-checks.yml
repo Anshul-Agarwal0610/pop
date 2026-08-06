@@ -46,7 +46,11 @@ jobs:
 
       - name: Run lint
         working-directory: Frontend
-        run: npm run lint || true
+        run: npm run lint
+
+      - name: Run tests
+        working-directory: Frontend
+        run: npm test
 
       - name: Run build
         working-directory: Frontend
@@ -74,3 +78,24 @@ jobs:
       - name: Build
         working-directory: Backend/BackendAPI
         run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        working-directory: Backend/BackendAPI.Tests
+        run: dotnet test --configuration Release
+
+  mobile-checks:
+    name: Mobile typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm install
+        working-directory: apps/mobile
+      - run: npm run typecheck
+        working-directory: apps/mobile
+      - run: npm test
+        working-directory: apps/mobile

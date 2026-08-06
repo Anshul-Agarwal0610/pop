@@ -8,10 +8,12 @@ import {
   useState,
 } from 'react';
 
-import { authApi } from '../lib/api';
+import { authApi, usersApi } from '../lib/api';
+import { getAnalyticsConsent, setAnalyticsConsent } from '../lib/analytics/privacy';
 import { clearSession, getStoredUser, getToken, saveSession } from '../lib/session';
 import type { AuthUser, LoginPayload, RegisterPayload } from '../types/auth';
 import type { VoteReward } from '../types/poll';
+import { configureHttpAnalytics, identify, resetAnalytics } from '../lib/analytics/client';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -28,6 +30,10 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => { configureHttpAnalytics(process.env.EXPO_PUBLIC_ANALYTICS_CAPTURE_URL); return () => configureHttpAnalytics(); }, []);
+  useEffect(() => { if (!isLoading && user) void identify(user.id); }, [isLoading, user?.id]);
+  useEffect(() => { if (!isLoading && user) void usersApi.getAnalyticsPrivacy().then(async ({ consent }) => { const local = await getAnalyticsConsent(); await setAnalyticsConsent(consent === 'denied' || local === 'denied' ? 'denied' : consent === 'granted' && local === 'granted' ? 'granted' : 'unknown'); }); }, [isLoading, user?.id]);
 
   useEffect(() => {
     let isMounted = true;
@@ -67,17 +73,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const session = await authApi.login(payload);
     await saveSession(session);
     setUser(session.user);
+    void identify(session.user.id);
   }, []);
 
   const signUp = useCallback(async (payload: RegisterPayload) => {
     const session = await authApi.register(payload);
     await saveSession(session);
     setUser(session.user);
+    void identify(session.user.id);
   }, []);
 
   const signOut = useCallback(async () => {
     await clearSession();
     setUser(null);
+    void resetAnalytics();
   }, []);
 
   const applyVoteReward = useCallback((reward: VoteReward) => {

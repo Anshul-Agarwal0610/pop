@@ -2,16 +2,19 @@ using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using Dapper;
+using BackendAPI.Analytics;
 
 namespace BackendAPI.Repository
 {
     public class VotesRepository : IVotesRepository
     {
         private readonly DapperContext _context;
+        private readonly IAnalyticsOutbox _analytics;
 
-        public VotesRepository(DapperContext context)
+        public VotesRepository(DapperContext context, IAnalyticsOutbox analytics)
         {
             _context = context;
+            _analytics = analytics;
         }
 
         public async Task<bool> CastVoteAsync(CastVoteRequest request, long? userId)
@@ -56,6 +59,9 @@ namespace BackendAPI.Repository
                     new { request.PollId },
                     transaction
                 );
+
+                if (userId.HasValue && await conn.ExecuteScalarAsync<string>("SELECT AnalyticsConsent FROM Users WHERE Id=@UserId", new { UserId = userId.Value }, transaction) == "granted")
+                    await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.GameRoundCompleted, $"usr_{userId.Value}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["round_id"] = $"server-{userId.Value}-{request.PollId}", ["surface"] = "api", ["outcome"] = "voted", ["xp_awarded"] = 0 }, "round_id", "surface", "outcome", "xp_awarded"), DateTime.UtcNow, $"vote:{userId.Value}:{request.PollId}:round-completed"));
 
                 transaction.Commit();
                 return true;

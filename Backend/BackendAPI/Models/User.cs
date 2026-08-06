@@ -13,7 +13,12 @@ namespace BackendAPI.Models
         public DateTime CreatedAt { get; set; }
         public int Level => Xp / 1000 + 1;
         public List<UserBadge> Badges { get; set; } = new();
+        public string AnalyticsConsent { get; set; } = "unknown";
+        public DateTime? AnalyticsConsentUpdatedAt { get; set; }
     }
+
+    public sealed class AnalyticsPrivacyPreference { public string Consent { get; set; } = "unknown"; public DateTime? UpdatedAt { get; set; } }
+    public sealed class UpdateAnalyticsPrivacyRequest { public string Consent { get; set; } = "unknown"; }
 
     public class CreateUserRequest
     {

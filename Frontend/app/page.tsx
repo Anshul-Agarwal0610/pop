@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import {
   BarChart3,
@@ -25,6 +25,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { POLL_CATEGORIES } from "@/lib/categories"
 import { challengesApi, pollsApi, usersApi, type ApiChallenge, type ApiPoll } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { track } from "@/lib/analytics/client"
 
 function timeLeft(iso: string) {
   const diff = new Date(iso).getTime() - Date.now()
@@ -44,6 +45,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const [preferredCategories, setPreferredCategories] = useState<string[]>([])
   const [savingPreferences, setSavingPreferences] = useState(false)
+  const trackedHub = useRef(false)
 
   useEffect(() => {
     setLoading(true)
@@ -73,6 +75,12 @@ export default function HomePage() {
       .then(setChallenges)
       .catch(() => setChallenges([]))
   }, [isAuthenticated])
+
+  useEffect(() => {
+    if (authLoading || loading || trackedHub.current) return
+    trackedHub.current = true
+    track("gamification_hub_viewed", { surface: "home", challenge_count: challenges.length, level: user?.level ?? Math.floor((user?.xp ?? 0) / 1000) + 1 }, "home")
+  }, [authLoading, loading, challenges.length, user?.level, user?.xp])
 
   async function togglePreference(category: string) {
     const next = preferredCategories.includes(category)

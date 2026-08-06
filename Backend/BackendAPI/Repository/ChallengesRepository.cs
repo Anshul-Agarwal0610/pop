@@ -2,6 +2,7 @@ using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using Dapper;
+using BackendAPI.Analytics;
 
 namespace BackendAPI.Repository
 {
@@ -9,11 +10,13 @@ namespace BackendAPI.Repository
     {
         private readonly DapperContext _context;
         private readonly IAchievementsRepository _achievementsRepo;
+        private readonly IAnalyticsOutbox _analytics;
 
-        public ChallengesRepository(DapperContext context, IAchievementsRepository achievementsRepo)
+        public ChallengesRepository(DapperContext context, IAchievementsRepository achievementsRepo, IAnalyticsOutbox analytics)
         {
             _context = context;
             _achievementsRepo = achievementsRepo;
+            _analytics = analytics;
         }
 
         public async Task EnsureDailyChallengeAsync(DateTime utcNow)
@@ -97,6 +100,7 @@ namespace BackendAPI.Repository
 
                 foreach (var challenge in challenges)
                 {
+                    var previousProgress = await conn.ExecuteScalarAsync<int?>("SELECT CurrentVotes FROM UserChallengeProgress WHERE UserId=@UserId AND ChallengeId=@ChallengeId", new { UserId = userId, ChallengeId = challenge.Id }, transaction) ?? 0;
                     await conn.ExecuteAsync(
                         @"IF NOT EXISTS (
                               SELECT 1 FROM UserChallengeProgress
@@ -170,6 +174,13 @@ namespace BackendAPI.Repository
                               WHERE UserId = @UserId AND ChallengeId = @ChallengeId",
                             new { UserId = userId, ChallengeId = challenge.Id },
                             transaction);
+                    }
+                    var consent = await conn.ExecuteScalarAsync<string>("SELECT AnalyticsConsent FROM Users WHERE Id=@UserId", new { UserId = userId }, transaction);
+                    if (consent == "granted" && progress.CurrentVotes > previousProgress)
+                    {
+                        var eventName = previousProgress == 0 ? AnalyticsEventNames.ChallengeStarted : AnalyticsEventNames.ChallengeProgressed;
+                        await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), eventName, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["challenge_id"] = challenge.Id.ToString(), [previousProgress == 0 ? "challenge_type" : "progress"] = previousProgress == 0 ? (object)(challenge.Category ?? "general") : progress.CurrentVotes, ["required_actions"] = challenge.RequiredVotes }, "challenge_id", previousProgress == 0 ? "challenge_type" : "progress", "required_actions"), utcNow, $"challenge:{userId}:{challenge.Id}:progress:{progress.CurrentVotes}"));
+                        if (progress.IsCompleted) await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.ChallengeCompleted, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["challenge_id"] = challenge.Id.ToString(), ["reward_xp"] = challenge.RewardXp, ["badge_granted"] = challenge.RewardBadge != null }, "challenge_id", "reward_xp", "badge_granted"), utcNow, $"challenge:{userId}:{challenge.Id}:completed"));
                     }
                 }
 

@@ -2,16 +2,19 @@ using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using Dapper;
+using BackendAPI.Analytics;
 
 namespace BackendAPI.Repository
 {
     public class AchievementsRepository : IAchievementsRepository
     {
         private readonly DapperContext _context;
+        private readonly IAnalyticsOutbox _analytics;
 
-        public AchievementsRepository(DapperContext context)
+        public AchievementsRepository(DapperContext context, IAnalyticsOutbox analytics)
         {
             _context = context;
+            _analytics = analytics;
         }
 
         public async Task<IEnumerable<UserBadge>> GetUserBadgesAsync(long userId)
@@ -113,6 +116,8 @@ namespace BackendAPI.Repository
                         Icon = badge.Icon,
                         AwardedAt = utcNow
                     });
+                    var consent = await conn.ExecuteScalarAsync<string>("SELECT AnalyticsConsent FROM Users WHERE Id=@UserId", new { UserId = userId }, transaction);
+                    if (consent == "granted") await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.AchievementUnlocked, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["achievement_code"] = badge.Code, ["reward_xp"] = badge.RewardXp }, "achievement_code", "reward_xp"), utcNow, $"achievement:{userId}:{badge.Id}"));
                 }
 
                 if (bonusXp > 0)

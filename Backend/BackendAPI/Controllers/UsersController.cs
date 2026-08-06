@@ -93,6 +93,24 @@ namespace BackendAPI.Controllers
         }
 
         // POST /api/users
+        [HttpGet("me/privacy")]
+        [Authorize]
+        public async Task<IActionResult> GetMyPrivacy()
+        {
+            var userId = CurrentUserId(); if (userId == null) return Unauthorized();
+            return Ok(await _usersRepo.GetAnalyticsPrivacyAsync(userId.Value));
+        }
+
+        [HttpPut("me/privacy")]
+        [Authorize]
+        public async Task<IActionResult> UpdateMyPrivacy([FromBody] UpdateAnalyticsPrivacyRequest request)
+        {
+            var userId = CurrentUserId(); if (userId == null) return Unauthorized();
+            try { return Ok(await _usersRepo.UpdateAnalyticsPrivacyAsync(userId.Value, request.Consent)); }
+            catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+        }
+
+        // POST /api/users
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest request)
         {

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
+using BackendAPI.Analytics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -67,6 +68,10 @@ builder.Services.AddScoped<IAchievementsRepository,  AchievementsRepository>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
+builder.Services.Configure<AnalyticsOptions>(builder.Configuration.GetSection(AnalyticsOptions.Section));
+builder.Services.AddSingleton<IAnalyticsOutbox, AnalyticsOutbox>();
+builder.Services.AddSingleton<IFeatureFlagService, FeatureFlagService>();
+builder.Services.AddHostedService<AnalyticsDispatcher>();
 builder.Services.AddHttpClient<IPushNotificationService, ExpoPushNotificationService>();
 builder.Services.AddScoped<IRssIngestionService,     RssIngestionService>();
 builder.Services.AddScoped<IYouTubeIngestionService, YouTubeIngestionService>();

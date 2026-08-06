@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { RefreshCw, Sparkles, AlertCircle, Loader2 } from "lucide-react"
 import { FEED_CATEGORIES, normalizeCategoryName } from "@/lib/categories"
@@ -12,6 +12,7 @@ import { ProgressIndicator } from "./progress-indicator"
 import { Button } from "@/components/ui/button"
 import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
+import { track } from "@/lib/analytics/client"
 
 export function PollFeed() {
   const [selectedCategory, setSelectedCategory] = useState("All")
@@ -22,9 +23,17 @@ export function PollFeed() {
   const [totalXp, setTotalXp]             = useState(1250)
   const [currentVote, setCurrentVote]     = useState<"yes" | "no" | "option" | null>(null)
   const [sessionXp, setSessionXp]         = useState(0)
+  const roundIds = useRef(new Map<number, string>())
 
   const currentPoll: Poll | undefined = polls[currentIndex]
   const hasMorePolls = currentIndex < polls.length
+
+  useEffect(() => {
+    if (!currentPoll) return
+    let roundId = roundIds.current.get(currentPoll.id)
+    if (!roundId) { roundId = crypto.randomUUID(); roundIds.current.set(currentPoll.id, roundId) }
+    track("game_round_started", { round_id: roundId, surface: "feed", category: currentPoll.category }, `feed:${currentPoll.id}`)
+  }, [currentPoll])
 
   useEffect(() => {
     const saved = window.localStorage.getItem("poll-feed-category")
@@ -57,6 +66,8 @@ export function PollFeed() {
       setSessionXp((xp) => xp + currentPoll.xpReward)
 
       await castVote(currentPoll.id, optionId)
+      const roundId = roundIds.current.get(currentPoll.id)
+      if (roundId) track("game_round_completed", { round_id: roundId, surface: "feed", outcome: "voted", xp_awarded: currentPoll.xpReward }, `feed:${currentPoll.id}:completed`)
     },
     [currentPoll, currentVote, castVote]
   )

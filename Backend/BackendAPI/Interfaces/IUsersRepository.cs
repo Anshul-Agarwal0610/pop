@@ -15,5 +15,7 @@ namespace BackendAPI.Interfaces
         Task<IEnumerable<UserCategoryPreference>> GetCategoryPreferencesAsync(long userId);
         Task<IEnumerable<UserCategoryPreference>> ReplaceCategoryPreferencesAsync(long userId, IEnumerable<string> categories);
         Task ResetCategoryPreferencesAsync(long userId);
+        Task<AnalyticsPrivacyPreference> GetAnalyticsPrivacyAsync(long userId);
+        Task<AnalyticsPrivacyPreference> UpdateAnalyticsPrivacyAsync(long userId, string consent);
     }
 }
