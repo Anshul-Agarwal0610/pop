@@ -745,6 +745,42 @@ export const socialApi = {
   groupLeaderboard: (id: number, cursor?: string) => request<WeeklyLeaderboard>(`/api/social/groups/${id}/leaderboard?${qs({ cursor })}`),
 }
 
+export interface MultiplayerPrivacySettings {
+  discloseIdentity: boolean
+  discloseIndividualVote: boolean
+  shareCoarseRegion: boolean
+  allowPublicResultCard: boolean
+}
+export interface MultiplayerNotificationSettings {
+  invitations: boolean
+  sessionActivity: boolean
+  reminders: boolean
+  results: boolean
+  quietHoursStart: string | null
+  quietHoursEnd: string | null
+  timeZoneId: string
+  allowCritical: boolean
+}
+export type SafetyReason = "Harassment" | "HateSpeech" | "Threats" | "SexualContent" | "Spam" | "Cheating" | "Impersonation" | "Other"
+export interface CreateSafetyReport {
+  targetType: "Session" | "Poll" | "Participant"
+  sessionId: string
+  participantId?: string
+  pollId?: number
+  reason: SafetyReason
+  comment?: string
+}
+
+export const multiplayerTrustApi = {
+  blockAccount: (targetUserId: number) => socialApi.block(targetUserId),
+  report: (report: CreateSafetyReport) => request<{ receiptId: string; status: string; createdAt: string }>("/api/multiplayer/reports", { method: "POST", body: JSON.stringify(report) }),
+  leave: (sessionId: string, reconnectCapability?: string) => request<void>(`/api/multiplayer/live-sessions/${encodeURIComponent(sessionId)}/participants/me`, { method: "DELETE", headers: reconnectCapability ? { "X-Reconnect-Capability": reconnectCapability } : undefined }),
+  getPrivacy: () => request<MultiplayerPrivacySettings>("/api/multiplayer/privacy"),
+  updatePrivacy: (settings: MultiplayerPrivacySettings) => request<void>("/api/multiplayer/privacy", { method: "PUT", body: JSON.stringify(settings) }),
+  getNotifications: () => request<MultiplayerNotificationSettings>("/api/multiplayer/notifications"),
+  updateNotifications: (settings: MultiplayerNotificationSettings) => request<void>("/api/multiplayer/notifications", { method: "PUT", body: JSON.stringify(settings) }),
+}
+
 // ── Auth endpoints ────────────────────────────────────────────────────────────
 
 export const authApi = {
