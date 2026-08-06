@@ -1,0 +1,13 @@
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+group = 'com.pollify.nearby'
+version = '1.0.0'
+android { namespace 'com.pollify.nearby'; compileSdk 35
+  defaultConfig { minSdk 23; targetSdk 35; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+  testOptions { unitTests.returnDefaultValues = true }
+}
+dependencies {
+  implementation project(':expo-modules-core')
+  implementation 'com.google.android.gms:play-services-nearby:19.3.0'
+  testImplementation 'junit:junit:4.13.2'
+}

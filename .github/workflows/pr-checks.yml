@@ -97,3 +97,24 @@ jobs:
         working-directory: apps/mobile
       - run: npm test
         working-directory: apps/mobile
+
+  nearby-native-tests:
+    name: Nearby Android native tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm install
+        working-directory: apps/mobile
+      - run: npx expo prebuild --platform android --no-install
+        working-directory: apps/mobile
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: ./gradlew :pollify-nearby:testDebugUnitTest
+        working-directory: apps/mobile/android

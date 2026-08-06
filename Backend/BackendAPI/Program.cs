@@ -71,7 +71,10 @@ builder.Services.AddScoped<IRewardRepository,        RewardRepository>();
 builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
+builder.Services.AddScoped<IPollTossInvitationRepository, PollTossInvitationRepository>();
+builder.Services.AddScoped<PollTossService>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
+builder.Services.Configure<NearbyPollTossOptions>(builder.Configuration.GetSection(NearbyPollTossOptions.Section));
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
