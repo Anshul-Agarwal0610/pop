@@ -291,6 +291,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, message, code)
   }
 
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
 
@@ -706,6 +707,38 @@ export const usersApi = {
   getMyProgression: () => request<ApiProgression>("/api/users/me/progression"),
   getWeeklyLeaderboard: (count = 5) =>
     request<ApiWeeklyLeaderboardResponse>(`/api/users/leaderboard/weekly?count=${count}`),
+}
+
+export interface SocialUser { id: number; username: string; displayName: string; avatarUrl?: string | null }
+export interface Paged<T> { items: T[]; nextCursor?: string | null }
+export interface FriendConnection { id: number; user: SocialUser; state: "Pending" | "Accepted" | "Declined" | "Removed"; incoming: boolean; updatedAt: string }
+export interface SocialGroup { id: number; name: string; ownerUserId: number; moderationStatus: string; memberCount: number; role: "Owner" | "Member"; createdAt: string }
+export interface WeeklyEntry { rank: number; user: SocialUser; xp: number; activityCount: number }
+export interface WeeklyLeaderboard { weekStartUtc: string; weekEndUtc: string; items: WeeklyEntry[]; nextCursor?: string | null }
+
+const qs = (values: Record<string, string | number | undefined>) => {
+  const q = new URLSearchParams()
+  Object.entries(values).forEach(([key, value]) => value !== undefined && q.set(key, String(value)))
+  return q.toString()
+}
+
+export const socialApi = {
+  searchUsers: (query: string, cursor?: string) => request<Paged<SocialUser>>(`/api/social/users?${qs({ query, cursor })}`),
+  friends: (state?: FriendConnection["state"], cursor?: string) => request<Paged<FriendConnection>>(`/api/social/friends?${qs({ state, cursor })}`),
+  sendFriendRequest: (targetUserId: number) => request<{ id: number }>("/api/social/friends/requests", { method: "POST", body: JSON.stringify({ targetUserId }) }),
+  acceptFriendRequest: (id: number) => request<void>(`/api/social/friends/requests/${id}/accept`, { method: "POST" }),
+  declineFriendRequest: (id: number) => request<void>(`/api/social/friends/requests/${id}/decline`, { method: "POST" }),
+  removeFriend: (id: number) => request<void>(`/api/social/friends/${id}`, { method: "DELETE" }),
+  block: (targetUserId: number) => request<void>("/api/social/blocks", { method: "POST", body: JSON.stringify({ targetUserId }) }),
+  unblock: (id: number) => request<void>(`/api/social/blocks/${id}`, { method: "DELETE" }),
+  friendsLeaderboard: (cursor?: string) => request<WeeklyLeaderboard>(`/api/social/leaderboards/friends?${qs({ cursor })}`),
+  groups: (cursor?: string) => request<Paged<SocialGroup>>(`/api/social/groups?${qs({ cursor })}`),
+  createGroup: (name: string) => request<SocialGroup>("/api/social/groups", { method: "POST", body: JSON.stringify({ name }) }),
+  inviteToGroup: (groupId: number, targetUserId: number) => request<{ token: string }>(`/api/social/groups/${groupId}/invites`, { method: "POST", body: JSON.stringify({ targetUserId }) }),
+  acceptInvite: (token: string) => request<void>(`/api/social/group-invites/${encodeURIComponent(token)}/accept`, { method: "POST" }),
+  declineInvite: (token: string) => request<void>(`/api/social/group-invites/${encodeURIComponent(token)}/decline`, { method: "POST" }),
+  leaveGroup: (id: number) => request<void>(`/api/social/groups/${id}/membership`, { method: "DELETE" }),
+  groupLeaderboard: (id: number, cursor?: string) => request<WeeklyLeaderboard>(`/api/social/groups/${id}/leaderboard?${qs({ cursor })}`),
 }
 
 // ── Auth endpoints ────────────────────────────────────────────────────────────

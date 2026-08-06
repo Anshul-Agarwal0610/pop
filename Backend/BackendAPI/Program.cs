@@ -17,6 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ── Controllers ───────────────────────────────────────────────────────────
 builder.Services.AddControllers()
+    .AddMvcOptions(options => options.Filters.Add<SocialExceptionFilter>())
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
@@ -64,6 +65,7 @@ builder.Services.AddScoped<IChallengesRepository,    ChallengesRepository>();
 builder.Services.AddScoped<IBusinessRepository,      BusinessRepository>();
 builder.Services.AddScoped<IWellnessRepository,      WellnessRepository>();
 builder.Services.AddScoped<IAchievementsRepository,  AchievementsRepository>();
+builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
