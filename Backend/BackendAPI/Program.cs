@@ -13,6 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
 using BackendAPI.Analytics;
+using BackendAPI.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +48,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience            = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var token = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(token) && context.HttpContext.Request.Path.StartsWithSegments("/hubs/live-sessions"))
+                    context.Token = token;
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization(options =>
@@ -71,7 +82,11 @@ builder.Services.AddScoped<IRewardRepository,        RewardRepository>();
 builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
+builder.Services.AddScoped<ILiveSessionsRepository,  LiveSessionsRepository>();
+builder.Services.AddSingleton<ILiveSessionNotifier,  SignalRLiveSessionNotifier>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
+builder.Services.AddSignalR().AddJsonProtocol(options =>
+    options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
@@ -128,6 +143,7 @@ builder.Services.AddCors(options =>
             .WithOrigins("http://localhost:3000", "https://localhost:3000")
             .AllowAnyHeader()
             .AllowAnyMethod()
+            .AllowCredentials()
             .WithExposedHeaders("X-Unread-Count");
     });
 });
@@ -154,6 +170,7 @@ app.UseCors("FrontendPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<LiveSessionHub>("/hubs/live-sessions");
 
 // ── Register recurring jobs (US-06, US-08) ───────────────────────────────
 // Jobs are registered after the app is built so IRecurringJobManager is available.
@@ -181,3 +198,5 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+public partial class Program;
