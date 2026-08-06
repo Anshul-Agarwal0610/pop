@@ -119,7 +119,7 @@ namespace BackendAPI.Services
                 Respond with ONLY valid JSON — no markdown, no explanation:
                 {
                   "question": "A thought-provoking question people will want to answer",
-                  "options": ["Option A", "Option B", "Option C"],
+                  "options": ["Up", "Against"],
                   "category": "{{topic.Category}}"
                 }
 
@@ -127,8 +127,7 @@ namespace BackendAPI.Services
                 - Question must be clear, specific, neutral, and 30-120 characters
                 - Question must be answerable by ordinary readers without niche expertise
                 - Do not use vague questions like "What do you think about this?"
-                - 2 to 4 options, mutually exclusive, short (under 40 chars each)
-                - Options must not overlap in meaning and must not be duplicates
+                - Options must be exactly ["Up", "Against"] in that order; do not rename them
                 - Preserve the source topic meaning; do not invent facts beyond the summary
                 - Category must be one of the valid categories
                 - JSON only — no other text
@@ -174,17 +173,16 @@ namespace BackendAPI.Services
                 if (string.IsNullOrWhiteSpace(question)) return null;
 
                 var options = new List<string>();
-                if (root.TryGetProperty("options", out var opts))
+                if (root.TryGetProperty("options", out var opts) && opts.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var opt in opts.EnumerateArray())
                     {
-                        var text = opt.GetString()?.Trim();
-                        if (!string.IsNullOrWhiteSpace(text))
-                            options.Add(text);
+                        if (opt.ValueKind != JsonValueKind.String) return null;
+                        options.Add(opt.GetString()!);
                     }
                 }
 
-                if (options.Count < 2) return null;
+                if (!GeneratedPollContract.TryValidate(options, out _)) return null;
 
                 var resolvedCategory = string.IsNullOrWhiteSpace(category) ? fallbackCategory : category;
 
@@ -217,13 +215,8 @@ namespace BackendAPI.Services
                 poll.QualityWarnings.Add("Rejected: category is not in the allowed catalog.");
             poll.Category = CategoryCatalog.NormalizeName(generatedCategory);
 
-            poll.Options = poll.Options
-                .Select(option => option.Trim())
-                .Where(option => !string.IsNullOrWhiteSpace(option))
-                .ToList();
-
-            if (poll.Options.Count is < 2 or > 4)
-                poll.QualityWarnings.Add("Rejected: poll must have 2 to 4 options.");
+            if (!GeneratedPollContract.TryValidate(poll.Options, out var contractReason))
+                poll.QualityWarnings.Add($"Rejected: generated poll {contractReason}.");
 
             if (poll.Options.GroupBy(NormalizeText).Any(group => group.Count() > 1))
                 poll.QualityWarnings.Add("Rejected: options contain duplicates.");

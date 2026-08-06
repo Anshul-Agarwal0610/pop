@@ -1,5 +1,6 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
+using BackendAPI.Services;
 
 namespace BackendAPI.Jobs
 {
@@ -70,13 +71,19 @@ namespace BackendAPI.Jobs
 
                 try
                 {
+                    if (!GeneratedPollContract.TryValidate(generated.Options, out var contractReason))
+                    {
+                        _logger.LogWarning("[PollGenerationJob] Quarantined topic {TopicId}: {Reason}", topic.Id, contractReason);
+                        skipped++;
+                        continue;
+                    }
                     var request = new CreatePollRequest
                     {
                         Question = generated.Question,
                         Description = topic.Summary,
                         Category = generated.Category,
                         ExpiresAt = DateTime.UtcNow.Add(DefaultExpiry),
-                        Options = generated.Options,
+                        Options = GeneratedPollContract.CanonicalOptions.ToList(),
                         SourceType = topic.SourceType,
                         SourceUrl = topic.SourceUrl,
                         ThumbnailUrl = topic.ThumbnailUrl,

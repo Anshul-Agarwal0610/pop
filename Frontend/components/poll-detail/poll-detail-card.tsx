@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils"
 import { VoteFeedback } from "@/components/poll-feed/vote-feedback"
 import type { ApiVoteReward } from "@/lib/api"
 import { track } from "@/lib/analytics/client"
+import { canonicalGeneratedOptions, pollOptionLabel } from "@/lib/poll-sides"
 
 interface PollDetailCardProps {
   pollId: string
@@ -60,9 +61,11 @@ function sourceStyle(sourceType: string | null) {
 function ResultBar({
   isSelected,
   option,
+  generated,
 }: {
   isSelected: boolean
   option: ApiPollOption
+  generated: boolean
 }) {
   const percentage = Math.round(option.votePercentage ?? 0)
 
@@ -76,7 +79,7 @@ function ResultBar({
           )}
         >
           {isSelected && <CheckCircle2 className="h-4 w-4 flex-shrink-0" />}
-          <span className="truncate">{option.text}</span>
+          <span className="truncate">{pollOptionLabel(option, generated)}</span>
         </span>
         <span className="text-muted-foreground">{percentage}%</span>
       </div>
@@ -247,6 +250,10 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   const selectedOption = poll.options.find((option) => option.id === poll.userVotedOptionId)
   const leadingOption = [...poll.options].sort((a, b) => (b.votePercentage ?? 0) - (a.votePercentage ?? 0))[0]
   const resultOption = selectedOption ?? leadingOption
+  const generatedOptions = poll.isAIGenerated ? canonicalGeneratedOptions(poll.options) : null
+  const votingOptions = poll.isAIGenerated
+    ? generatedOptions ? [generatedOptions.Up, generatedOptions.Against] : []
+    : poll.options
 
   return (
     <>
@@ -389,6 +396,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
                   isSelected={poll.userVotedOptionId === option.id}
                   key={option.id}
                   option={option}
+                  generated={poll.isAIGenerated}
                 />
               ))}
               <p className="text-center text-sm text-muted-foreground">
@@ -407,7 +415,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
-              {poll.options.slice(0, 2).map((option, index) => (
+              {votingOptions.map((option, index) => (
                 <Button
                   className={cn(
                     "h-14 rounded-2xl text-base font-black",
@@ -422,10 +430,15 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
                   {votingOptionId === option.id ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    option.text
+                    pollOptionLabel(option, poll.isAIGenerated)
                   )}
                 </Button>
               ))}
+              {poll.isAIGenerated && !generatedOptions && (
+                <p className="text-center text-sm text-destructive sm:col-span-2" role="alert">
+                  This poll has invalid voting choices and cannot accept votes.
+                </p>
+              )}
             </div>
           )}
 
