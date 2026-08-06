@@ -53,6 +53,16 @@ namespace BackendAPI.Controllers
             return Ok(history);
         }
 
+        [HttpGet("me/streak")]
+        [Authorize]
+        public async Task<IActionResult> GetMyStreak()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            var status = await _usersRepo.GetStreakStatusAsync(userId.Value, DateTime.UtcNow);
+            return status == null ? NotFound() : Ok(status);
+        }
+
         [HttpGet("me/progression")]
         [Authorize]
         public async Task<IActionResult> GetMyProgression()

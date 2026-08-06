@@ -5,12 +5,12 @@ import { pollsApi, votesApi, type ApiCastVoteResponse } from "@/lib/api"
 import { mapBackendPoll, type Poll } from "@/lib/poll-data"
 
 interface UsePollsResult {
-  polls: Poll[]
-  loading: boolean
-  error: string | null
-  castVote: (pollId: string, optionId: number) => Promise<ApiCastVoteResponse>
-  loadMore: () => Promise<void>
-  hasMore: boolean
+  polls:       Poll[]
+  loading:     boolean
+  error:       string | null
+  castVote:    (pollId: string, optionId: number, useStreakRecovery?: boolean) => Promise<ApiCastVoteResponse>
+  loadMore:    () => Promise<void>
+  hasMore:     boolean
 }
 
 const PAGE_SIZE = 20
@@ -44,12 +44,23 @@ export function usePolls(category?: string): UsePollsResult {
     } catch (err) { setError((err as Error).message) }
   }, [category, polls])
 
-  const castVote = useCallback(async (pollId: string, optionId: number) => {
-    const result = await votesApi.cast({ pollId: Number(pollId), optionId })
-    const mapped = mapBackendPoll(result.poll)
-    setPolls(prev => prev.map(p => p.id === pollId ? mapped : p))
-    window.dispatchEvent(new CustomEvent("challenge-progress-updated", { detail: result.challenges }))
-    return result
+  // Cast a vote — optimistically update percentages
+  const castVote = useCallback(async (pollId: string, optionId: number, useStreakRecovery = false) => {
+    try {
+      const result = await votesApi.cast({
+        pollId:   Number(pollId),
+        optionId, useStreakRecovery,
+      })
+      const mapped = mapBackendPoll(result.poll)
+      setPolls((prev) =>
+        prev.map((p) => (p.id === pollId ? mapped : p))
+      )
+      window.dispatchEvent(new CustomEvent("challenge-progress-updated", { detail: result.challenges }))
+      return result
+    } catch (err) {
+      // Non-fatal — vote still registers in the UI via VoteFeedback
+      throw err
+    }
   }, [])
 
   return { polls, loading, error, castVote, loadMore, hasMore }

@@ -13,6 +13,7 @@ namespace BackendAPI.Models
     {
         public long PollId { get; set; }
         public long OptionId { get; set; }
+        public bool UseStreakRecovery { get; set; }
         // UserId is NOT accepted from the client — set server-side from JWT (US-15)
     }
 

@@ -9,6 +9,7 @@ interface VoteFeedbackProps {
   vote: "yes" | "no" | "option" | null
   xpEarned: number
   streakCount: number
+  milestoneReached?: number | null
   onComplete: () => void
 }
 
@@ -16,6 +17,7 @@ export function VoteFeedback({
   vote,
   xpEarned,
   streakCount,
+  milestoneReached,
   onComplete,
 }: VoteFeedbackProps) {
   const [showStreak, setShowStreak] = useState(false)
@@ -96,7 +98,7 @@ export function VoteFeedback({
 
           {/* Streak Counter */}
           <AnimatePresence>
-            {showStreak && streakCount > 1 && (
+            {showStreak && milestoneReached && (
               <motion.div
                 className="absolute mt-80 flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-primary-foreground shadow-lg"
                 initial={{ scale: 0, y: 20 }}
@@ -109,7 +111,7 @@ export function VoteFeedback({
                 ) : (
                   <TrendingUp className="h-5 w-5" />
                 )}
-                <span className="text-lg font-bold">{streakCount}x Streak!</span>
+                <span className="text-lg font-bold">{milestoneReached}-day milestone!</span>
               </motion.div>
             )}
           </AnimatePresence>

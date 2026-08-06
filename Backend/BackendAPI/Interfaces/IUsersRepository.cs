@@ -10,6 +10,7 @@ namespace BackendAPI.Interfaces
         Task<long> CreateAsync(CreateUserRequest request);
         Task IncrementPollsCreatedAsync(long userId);
         Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, int xpToAdd, DateTime utcNow);
+        Task<StreakStatus?> GetStreakStatusAsync(long userId, DateTime utcNow);
         /// <summary>US-22: Returns the user's vote history with poll details.</summary>
         Task<IEnumerable<VoteHistoryItem>> GetVoteHistoryAsync(long userId, int count = 20);
         Task<IEnumerable<UserCategoryPreference>> GetCategoryPreferencesAsync(long userId);

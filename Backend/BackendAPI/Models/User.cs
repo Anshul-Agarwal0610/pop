@@ -7,6 +7,7 @@ namespace BackendAPI.Models
         public string DisplayName { get; set; } = string.Empty;
         public int Xp { get; set; }
         public int Streak { get; set; }
+        public int LongestStreak { get; set; }
         public int TotalVotes { get; set; }
         public int PollsCreated { get; set; }
         public DateTime? LastVoteDate { get; set; }
@@ -36,12 +37,31 @@ namespace BackendAPI.Models
     {
         public int Xp { get; set; }
         public int Streak { get; set; }
+        public int LongestStreak { get; set; }
         public int TotalVotes { get; set; }
         public int XpAwarded { get; set; }
         public bool StreakAdvanced { get; set; }
+        public bool TodayComplete { get; set; }
+        public bool RecoveryEligible { get; set; }
+        public bool RecoveryUsed { get; set; }
+        public DateTime? NextRecoveryAt { get; set; }
+        public int? MilestoneReached { get; set; }
         public DateTime? LastVoteDate { get; set; }
         public int Level => Xp / 1000 + 1;
         public IEnumerable<UserBadge> AwardedBadges { get; set; } = Enumerable.Empty<UserBadge>();
+    }
+
+    public class StreakStatus
+    {
+        public int Streak { get; set; }
+        public int LongestStreak { get; set; }
+        public bool TodayComplete { get; set; }
+        public DateTime? LastVoteDate { get; set; }
+        public bool RecoveryEligible { get; set; }
+        public DateTime? NextRecoveryAt { get; set; }
+        public string TimeZone { get; set; } = "UTC";
+        public string DayBoundary { get; set; } = "00:00 UTC";
+        public int[] Milestones { get; set; } = Services.GamificationRules.StreakMilestones;
     }
 
     public class UserCategoryPreference
