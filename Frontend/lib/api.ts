@@ -297,6 +297,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function capabilityRequest<T>(path: string, credential?: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers: {
+    "Content-Type": "application/json", ...(credential ? { "X-Room-Token": credential } : {}), ...init?.headers,
+  } })
+  if (!res.ok) { const body = await res.json().catch(() => ({})); throw new ApiError(res.status, body.message ?? res.statusText, body.code) }
+  return res.json() as Promise<T>
+}
+
+export type LiveRoomStatus = "Lobby" | "Active" | "Paused" | "Ended" | "Expired"
+export type LiveRoomMode = "PredictMajority" | "ConsensusChallenge"
+export interface LiveRound { position:number; proposition:string; status:"Pending"|"Open"|"Paused"|"Closed"|"Revealed"; submitted:number; eligible:number; up?:number; against?:number }
+export interface LiveParticipant { id:string; displayName:string; score:number; connected:boolean; eligible:boolean }
+export interface HostRoomSnapshot { id:string; code:string; status:LiveRoomStatus; mode:LiveRoomMode; version:number; participants:LiveParticipant[]; round:LiveRound|null; displayToken:string }
+export interface ParticipantRoomSnapshot { roomId:string; participantId:string; status:LiveRoomStatus; mode:LiveRoomMode; version:number; score:number; eligible:boolean; hasVoted:boolean; round:LiveRound|null }
+export interface DisplayRoomSnapshot { roomId:string; code:string; status:LiveRoomStatus; mode:LiveRoomMode; version:number; participantCount:number; scoreboard:LiveParticipant[]; round:LiveRound|null }
+export interface PollPack { id:number; ownerId:number; name:string; description:string; visibility:"Private"|"Public"; moderationStatus:"Draft"|"PendingReview"|"Published"|"Rejected"; items:{id:number;position:number;proposition:string;choices:["Up","Against"]}[] }
+export interface JoinRoomResponse { roomId:string; participantId:string; reconnectToken:string; snapshot:ParticipantRoomSnapshot }
+
+export const pollPacksApi = {
+  published: () => capabilityRequest<PollPack[]>("/api/poll-packs"),
+  mine: () => request<PollPack[]>("/api/poll-packs/mine"),
+  create: (name:string,description:string,propositions:string[]) => request<PollPack>("/api/poll-packs",{method:"POST",body:JSON.stringify({name,description,visibility:"Private",propositions})}),
+  update: (id:number,name:string,description:string,propositions:string[]) => request<PollPack>(`/api/poll-packs/${id}`,{method:"PUT",body:JSON.stringify({name,description,visibility:"Private",propositions})}),
+  submit: (id:number) => request<PollPack>(`/api/poll-packs/${id}/submit`,{method:"POST"}),
+}
+export const liveRoomsApi = {
+  create:(packId:number,mode:LiveRoomMode,participantLimit=50)=>request<HostRoomSnapshot>("/api/live-rooms",{method:"POST",body:JSON.stringify({packId,mode,participantLimit})}),
+  host:(id:string)=>request<HostRoomSnapshot>(`/api/live-rooms/${id}/host`),
+  command:(id:string,command:string)=>request<HostRoomSnapshot>(`/api/live-rooms/${id}/${command}`,{method:"POST"}),
+  remove:(id:string,participantId:string)=>request<HostRoomSnapshot>(`/api/live-rooms/${id}/participants/${participantId}`,{method:"DELETE"}),
+  join:(code:string,displayName:string,reconnectToken?:string)=>capabilityRequest<JoinRoomResponse>("/api/live-rooms/join",undefined,{method:"POST",body:JSON.stringify({code,displayName,reconnectToken})}),
+  participant:(id:string,token:string)=>capabilityRequest<ParticipantRoomSnapshot>(`/api/live-rooms/${id}/participant`,token),
+  vote:(id:string,token:string,choice:"Up"|"Against",predictedMajority?:"Up"|"Against")=>capabilityRequest<ParticipantRoomSnapshot>(`/api/live-rooms/${id}/votes`,token,{method:"POST",body:JSON.stringify({choice,predictedMajority})}),
+  display:(id:string,capability:string)=>capabilityRequest<DisplayRoomSnapshot>(`/api/live-rooms/${id}/display?capability=${encodeURIComponent(capability)}`),
+}
+
 export interface ApiGameMode {
   mode: "OpinionSprint"
   name: string

@@ -1,0 +1,2 @@
+import { AppShell } from "@/components/app-shell";import { RoomCreateForm } from "@/components/live-room/room-create-form"
+export default function LivePage(){return <AppShell><div className="mx-auto max-w-2xl p-6"><h1 className="mb-2 text-3xl font-bold">PoP Live Rooms</h1><p className="mb-8 text-muted-foreground">Choose a curated binary poll pack and host a game on everyone’s phones.</p><RoomCreateForm/></div></AppShell>}

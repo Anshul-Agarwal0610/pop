@@ -1,0 +1,2 @@
+import type { LiveParticipant } from "@/lib/api";import { Button } from "@/components/ui/button"
+export function ParticipantRoster({participants,onRemove}:{participants:LiveParticipant[];onRemove:(id:string)=>void}){return <ul aria-label="Participants">{participants.map(p=><li key={p.id} className="flex items-center justify-between border-b py-2"><span>{p.displayName} · {p.score}</span><Button variant="ghost" onClick={()=>onRemove(p.id)}>Remove</Button></li>)}</ul>}

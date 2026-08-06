@@ -13,6 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
 using BackendAPI.Analytics;
+using BackendAPI.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -72,6 +73,9 @@ builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
+builder.Services.AddSingleton<IPollPacksRepository, PollPacksRepository>();
+builder.Services.AddSingleton<ILiveRoomsRepository, LiveRoomsRepository>();
+builder.Services.AddSignalR();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
@@ -96,6 +100,7 @@ builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
 builder.Services.AddScoped<IngestionJob>();
 builder.Services.AddScoped<PollGenerationJob>();
 builder.Services.AddScoped<RetentionNotificationJob>();
+builder.Services.AddSingleton<LiveRoomExpirationJob>();
 
 // ── Hangfire Dashboard Auth (US-11) ───────────────────────────────────────
 builder.Services.AddSingleton<HangfireDashboardAuthFilter>();
@@ -128,6 +133,7 @@ builder.Services.AddCors(options =>
             .WithOrigins("http://localhost:3000", "https://localhost:3000")
             .AllowAnyHeader()
             .AllowAnyMethod()
+            .AllowCredentials()
             .WithExposedHeaders("X-Unread-Count");
     });
 });
@@ -154,6 +160,7 @@ app.UseCors("FrontendPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<LiveRoomHub>("/hubs/live-rooms");
 
 // ── Register recurring jobs (US-06, US-08) ───────────────────────────────
 // Jobs are registered after the app is built so IRecurringJobManager is available.
@@ -183,6 +190,8 @@ using (var scope = app.Services.CreateScope())
         "create-retention-notifications",
         job => job.RunAsync(),
         "0 * * * *");
+
+    recurringJobs.AddOrUpdate<LiveRoomExpirationJob>("expire-live-rooms", job => job.RunAsync(), "*/5 * * * *");
 }
 
 app.Run();

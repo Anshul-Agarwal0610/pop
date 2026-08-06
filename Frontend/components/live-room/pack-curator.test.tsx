@@ -1,0 +1,2 @@
+import { fireEvent,render,screen } from "@testing-library/react";import { describe,expect,it,vi } from "vitest";import { PackCurator } from "./pack-curator"
+describe("PackCurator",()=>{it("enforces nonblank propositions and fixed choices",()=>{render(<PackCurator onSave={vi.fn()}/>);expect(screen.getByText(/Up \/ Against/)).toBeInTheDocument();expect(screen.getByText("Save draft")).toBeDisabled();fireEvent.change(screen.getByLabelText("Proposition 1"),{target:{value:"Valid proposition"}});expect(screen.getByText("Save draft")).toBeEnabled()})})
