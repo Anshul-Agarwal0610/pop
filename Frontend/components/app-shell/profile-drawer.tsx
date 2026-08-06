@@ -16,6 +16,8 @@ import { useTheme } from "next-themes"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
 
 interface ProfileDrawerProps {
   isOpen: boolean
@@ -35,6 +37,8 @@ const menuItems = [
 
 export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
   const { theme, setTheme } = useTheme()
+  const { user, logout } = useAuth()
+  const router = useRouter()
 
   return (
     <AnimatePresence>
@@ -91,9 +95,9 @@ export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
                     className="relative"
                   >
                     <Avatar className="h-24 w-24 ring-4 ring-primary/20 ring-offset-4 ring-offset-background">
-                      <AvatarImage src="https://api.dicebear.com/9.x/notionists/svg?seed=pollify" alt="User avatar" />
+                      <AvatarImage src={user?.avatarUrl} alt="User avatar" />
                       <AvatarFallback className="bg-primary text-2xl text-primary-foreground">
-                        JD
+                        {(user?.displayName ?? user?.username ?? "U").slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <motion.div
@@ -105,26 +109,31 @@ export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
                         ease: "easeInOut",
                       }}
                     >
-                      12
+                      {user?.progression.level ?? 1}
                     </motion.div>
                   </motion.div>
 
-                  <h3 className="mt-4 text-xl font-bold">Jane Doe</h3>
-                  <p className="text-sm text-muted-foreground">@janedoe</p>
+                  <h3 className="mt-4 text-xl font-bold">{user?.displayName ?? "Guest"}</h3>
+                  <p className="text-sm text-muted-foreground">@{user?.username ?? "guest"}</p>
 
                   {/* Level progress */}
                   <div className="mt-4 w-full max-w-xs">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Level 12</span>
+                      <span className="text-muted-foreground">Level {user?.progression.level ?? 1}</span>
                       <span className="font-medium text-primary">
-                        2,450 / 3,000 XP
+                        {user?.progression.totalXp ?? 0} / {user?.progression.nextLevelXp ?? 1000} XP
                       </span>
                     </div>
                     <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
                       <motion.div
                         className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
                         initial={{ width: 0 }}
-                        animate={{ width: "82%" }}
+                        animate={{ width: `${user?.progression.progressPercent ?? 0}%` }}
+                        aria-label="Progress to next level"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={user?.progression.progressPercent ?? 0}
                         transition={{ delay: 0.3, duration: 0.8, ease: "easeOut" }}
                       />
                     </div>
@@ -213,6 +222,16 @@ export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
                           ? "text-destructive hover:bg-destructive/10"
                           : "text-foreground hover:bg-secondary"
                       )}
+                      onClick={() => {
+                        if (item.danger) {
+                          logout()
+                          onClose()
+                          router.replace("/")
+                        } else {
+                          router.push(item.href)
+                          onClose()
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-3">
                         <item.icon className="h-5 w-5" />

@@ -10,8 +10,8 @@ public sealed record FriendConnection(long Id, SocialUserSummary User, Relations
 public sealed record SocialGroup(long Id, string Name, long OwnerUserId, string ModerationStatus, int MemberCount, GroupRole Role, DateTime CreatedAt);
 public sealed record GroupMember(SocialUserSummary User, GroupRole Role, DateTime JoinedAt);
 public sealed record GroupInviteSummary(string Token, long GroupId, string GroupName, SocialUserSummary Inviter, DateTime ExpiresAt);
-public sealed record WeeklyLeaderboardEntry(int Rank, SocialUserSummary User, int Xp, int ActivityCount);
-public sealed record WeeklyLeaderboard(DateTime WeekStartUtc, DateTime WeekEndUtc, IReadOnlyList<WeeklyLeaderboardEntry> Items, string? NextCursor);
+public sealed record SocialWeeklyLeaderboardEntry(int Rank, SocialUserSummary User, int Xp, int ActivityCount);
+public sealed record WeeklyLeaderboard(DateTime WeekStartUtc, DateTime WeekEndUtc, IReadOnlyList<SocialWeeklyLeaderboardEntry> Items, string? NextCursor);
 
 public sealed class SendFriendRequest { public long TargetUserId { get; set; } }
 public sealed class BlockUserRequest { public long TargetUserId { get; set; } }

@@ -1,3 +1,13 @@
 import { defineConfig } from "vitest/config"
-import { fileURLToPath, URL } from "node:url"
-export default defineConfig({ test: { environment: "node" }, resolve: { alias: { "@": fileURLToPath(new URL("./", import.meta.url)) } } })
+import path from "node:path"
+
+export default defineConfig({
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./vitest.setup.ts"],
+    exclude: ["tests/responsive.spec.ts", "node_modules/**", ".next/**"],
+  },
+  resolve: {
+    alias: { "@": path.resolve(__dirname, ".") },
+  },
+})
