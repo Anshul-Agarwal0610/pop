@@ -5,9 +5,53 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Moon, Sun, Sparkles } from "lucide-react"
 import { useTheme } from "next-themes"
-import { isNavigationItemActive, sidebarBottomNavigation, sidebarPrimaryNavigation } from "@/lib/navigation"
+import { isNavigationItemActive, sidebarBottomNavigation, sidebarPrimaryNavigation, type NavigationItem } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+
+function SidebarNavItem({ item, isActive, index = 0 }: { item: NavigationItem; isActive: boolean; index?: number }) {
+  const Icon = item.icon
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.05 }}
+    >
+      <Link
+        href={item.href}
+        className={cn(
+          "group relative flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition-all",
+          isActive
+            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+            : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+        )}
+      >
+        {!isActive && (
+          <motion.div
+            className="absolute inset-0 rounded-xl bg-secondary opacity-0 group-hover:opacity-100"
+            layoutId={`sidebar-hover-${item.href}`}
+            transition={{ duration: 0.2 }}
+          />
+        )}
+        <Icon
+          className={cn(
+            "relative z-10 h-5 w-5 transition-transform group-hover:scale-110",
+            isActive && "stroke-[2.5px]"
+          )}
+        />
+        <span className="relative z-10">{item.label}</span>
+        {isActive && (
+          <motion.div
+            layoutId="sidebarActiveIndicator"
+            className="absolute right-3 h-2 w-2 rounded-full bg-primary-foreground"
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          />
+        )}
+      </Link>
+    </motion.div>
+  )
+}
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -20,56 +64,7 @@ export function Sidebar() {
         <nav className="flex-1 space-y-1">
           {sidebarPrimaryNavigation.map((item, index) => {
             const isActive = isNavigationItemActive(pathname, item.href)
-            const Icon = item.icon
-
-            return (
-              <motion.div
-                key={item.href}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "group relative flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition-all",
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  )}
-                >
-                  {/* Hover effect */}
-                  {!isActive && (
-                    <motion.div
-                      className="absolute inset-0 rounded-xl bg-secondary opacity-0 group-hover:opacity-100"
-                      layoutId={`sidebar-hover-${item.href}`}
-                      transition={{ duration: 0.2 }}
-                    />
-                  )}
-
-                  <Icon
-                    className={cn(
-                      "relative z-10 h-5 w-5 transition-transform group-hover:scale-110",
-                      isActive && "stroke-[2.5px]"
-                    )}
-                  />
-                  <span className="relative z-10">{item.label}</span>
-
-                  {/* Active indicator dot */}
-                  {isActive && (
-                    <motion.div
-                      layoutId="sidebarActiveIndicator"
-                      className="absolute right-3 h-2 w-2 rounded-full bg-primary-foreground"
-                      transition={{
-                        type: "spring",
-                        stiffness: 500,
-                        damping: 30,
-                      }}
-                    />
-                  )}
-                </Link>
-              </motion.div>
-            )
+            return <SidebarNavItem key={item.href} item={item} isActive={isActive} index={index} />
           })}
         </nav>
 
@@ -78,23 +73,7 @@ export function Sidebar() {
           <nav aria-label="Game navigation" className="space-y-1">
             {sidebarBottomNavigation.map((item) => {
               const isActive = isNavigationItemActive(pathname, item.href)
-              const Icon = item.icon
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition-all",
-                    isActive
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  )}
-                >
-                  <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5px]")} />
-                  <span>{item.label}</span>
-                </Link>
-              )
+              return <SidebarNavItem key={item.href} item={item} isActive={isActive} />
             })}
           </nav>
 
