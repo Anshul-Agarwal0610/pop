@@ -72,6 +72,7 @@ namespace BackendAPI.Models
         public bool IsAIGenerated { get; set; }
         public bool IsPrivate { get; set; }
         public bool IsWellness { get; set; }
+        public string? PollMode { get; set; }
         public string? ModerationReason { get; set; }
     }
 
@@ -79,6 +80,7 @@ namespace BackendAPI.Models
     {
         public const string Public = "Public";
         public const string Wellness = "Wellness";
+        public const string Relay = "Relay";
     }
 
     // ── TrendingTopics staging table model (US-01) ───────────────────────────

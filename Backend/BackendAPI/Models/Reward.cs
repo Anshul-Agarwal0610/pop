@@ -4,6 +4,8 @@ public static class RewardRuleCodes
 {
     public const string VoteStandard = "vote.standard";
     public const string VoteTrending = "vote.trending";
+    public const string RelayCompleted = "relay.completed";
+    public const string RelayMilestone = "relay.milestone";
 }
 
 public sealed class RewardRule

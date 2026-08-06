@@ -9,7 +9,9 @@ namespace BackendAPI.Models
         ChallengeAvailable,
         StreakReminder,
         StreakMilestone,
-        PollExpiring
+        PollExpiring,
+        RelayHandoff,
+        RelayOutcome
     }
 
     public class Notification

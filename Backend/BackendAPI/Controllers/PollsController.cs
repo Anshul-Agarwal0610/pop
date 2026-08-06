@@ -132,6 +132,12 @@ namespace BackendAPI.Controllers
             if (request.Options.Count < 2)
                 return BadRequest(new { message = "A poll must have at least 2 options." });
 
+            if (request.PollMode?.Equals(PollModes.Relay, StringComparison.OrdinalIgnoreCase) == true &&
+                (request.Options.Count != 2 ||
+                 !request.Options.Any(x => x.Equals("Up", StringComparison.OrdinalIgnoreCase)) ||
+                 !request.Options.Any(x => x.Equals("Against", StringComparison.OrdinalIgnoreCase))))
+                return BadRequest(new { code = RelayErrorCodes.Invalid, message = "Relay polls require exactly the Up and Against options." });
+
             if (request.ExpiresAt <= DateTime.UtcNow)
                 return BadRequest(new { message = "ExpiresAt must be in the future." });
 

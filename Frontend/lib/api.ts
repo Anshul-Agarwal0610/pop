@@ -37,7 +37,7 @@ export interface ApiPoll {
   campaignName: string | null
   isPrivate: boolean
   isWellness: boolean
-  pollMode: "Public" | "Wellness"
+  pollMode: "Public" | "Wellness" | "Relay"
   moderationStatus: "Draft" | "PendingReview" | "Published" | "Rejected" | "Flagged"
   moderationReason: string | null
   moderatedByUserId: number | null
@@ -131,7 +131,7 @@ export interface ApiChallenge {
 export interface ApiNotification {
   id: number
   userId: number
-  type: "VoteMilestone" | "StreakMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring"
+  type: "VoteMilestone" | "StreakMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring" | "RelayHandoff" | "RelayOutcome"
   title: string
   body: string
   pollId: number | null
@@ -162,6 +162,7 @@ export interface CreatePollPayload {
   isAIGenerated?: boolean
   isPrivate?: boolean
   isWellness?: boolean
+  pollMode?: "Public" | "Relay"
 }
 
 export interface ApiWellnessResponse {
@@ -475,6 +476,37 @@ export const votesApi = {
       method: "POST",
       body: JSON.stringify(req),
     }),
+}
+
+export interface ApiRelayHandoff {
+  chainId: number; pollId: number; question: string; options: ApiPollOption[]
+  status: "Pending" | "Accepted" | "Completed" | "Expired"
+  chainLength: number; nextMilestone: number | null; expiresAt: string; serverNow: string
+  canAccept: boolean; isAcceptedByCurrentUser: boolean
+}
+export interface ApiRelayComplete {
+  chainId: number; status: "Active" | "Completed"; chainLength: number
+  nextMilestone: number | null; handoffToken: string | null; expiresAt: string | null
+  rewardCapped: boolean; serverNow: string
+}
+export interface ApiRelayProgress {
+  chainId: number; pollId: number; status: string; chainLength: number; maxLength: number
+  nextMilestone: number | null; currentDeadline: string | null; serverNow: string; receiveFinalOutcome: boolean
+}
+export interface ApiRelayOutcome {
+  chainId: number; totalVotes: number; finalizedAt: string
+  options: Array<{ optionId: number; text: string; voteCount: number; votePercentage: number }>
+}
+export const relaysApi = {
+  start: (pollId: number, handoffTtlMinutes = 1440, maxLength = 10, transferMethod = "Link") =>
+    request<{ chainId: number; handoffToken: string; expiresAt: string; serverNow: string }>("/api/relays", { method: "POST", body: JSON.stringify({ pollId, handoffTtlMinutes, maxLength, transferMethod }) }),
+  handoff: (token: string) => request<ApiRelayHandoff>(`/api/relays/handoffs/${encodeURIComponent(token)}`),
+  accept: (token: string) => request<void>(`/api/relays/handoffs/${encodeURIComponent(token)}/accept`, { method: "POST" }),
+  complete: (token: string, optionId: number, receiveFinalOutcome: boolean, endChain = false, nextTransferMethod = "Link") =>
+    request<ApiRelayComplete>(`/api/relays/handoffs/${encodeURIComponent(token)}/complete`, { method: "POST", body: JSON.stringify({ optionId, receiveFinalOutcome, endChain, nextTransferMethod, idempotencyKey: crypto.randomUUID() }) }),
+  progress: (chainId: number) => request<ApiRelayProgress>(`/api/relays/${chainId}`),
+  setConsent: (chainId: number, receiveFinalOutcome: boolean) => request<void>(`/api/relays/${chainId}/outcome-consent`, { method: "PUT", body: JSON.stringify({ receiveFinalOutcome }) }),
+  outcome: (chainId: number) => request<ApiRelayOutcome>(`/api/relays/${chainId}/outcome`),
 }
 
 export const notificationsApi = {
