@@ -13,8 +13,10 @@ import { Button } from "@/components/ui/button"
 import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
 
-export function PollFeed() {
-  const [selectedCategory, setSelectedCategory] = useState("All")
+export function PollFeed({ initialCategory }: { initialCategory?: string | null }) {
+  const normalizedInitial = initialCategory ? normalizeCategoryName(initialCategory) : "All"
+  const validInitial = FEED_CATEGORIES.includes(normalizedInitial as (typeof FEED_CATEGORIES)[number]) ? normalizedInitial : "All"
+  const [selectedCategory, setSelectedCategory] = useState(validInitial)
   const feedCategory = selectedCategory === "All" ? undefined : selectedCategory
   const { polls, loading, error, castVote, loadMore, hasMore } = usePolls(feedCategory)
   const [currentIndex, setCurrentIndex]   = useState(0)
@@ -27,6 +29,7 @@ export function PollFeed() {
   const hasMorePolls = currentIndex < polls.length
 
   useEffect(() => {
+    if (initialCategory) return
     const saved = window.localStorage.getItem("poll-feed-category")
     if (!saved) return
     if (saved === "All") {
@@ -38,7 +41,7 @@ export function PollFeed() {
     if (FEED_CATEGORIES.includes(normalized as (typeof FEED_CATEGORIES)[number])) {
       setSelectedCategory(normalized)
     }
-  }, [])
+  }, [initialCategory])
 
   const handleCategorySelect = useCallback((category: string) => {
     setSelectedCategory(category)

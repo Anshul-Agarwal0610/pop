@@ -138,6 +138,47 @@ namespace BackendAPI.Repository
             }
         }
 
+        public async Task<AchievementOverview> GetOverviewAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            var user = await conn.QuerySingleAsync<User>(
+                "SELECT Id, Streak, TotalVotes, PollsCreated FROM Users WHERE Id = @UserId",
+                new { UserId = userId });
+            var completedChallenges = await conn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(1) FROM UserChallengeProgress WHERE UserId = @UserId AND IsCompleted = 1",
+                new { UserId = userId });
+            var recent = (await conn.QueryAsync<UserBadge>(
+                BadgeSelectSql + " WHERE ub.UserId = @UserId ORDER BY ub.AwardedAt DESC",
+                new { UserId = userId })).Take(3).ToList();
+            var unearned = (await conn.QueryAsync<AchievementBadge>(
+                @"SELECT b.* FROM AchievementBadges b
+                  WHERE NOT EXISTS (SELECT 1 FROM UserBadges ub WHERE ub.UserId = @UserId AND ub.BadgeId = b.Id)",
+                new { UserId = userId })).ToList();
+
+            int CurrentValue(string rule) => rule switch
+            {
+                AchievementRuleType.VoteCount => user.TotalVotes,
+                AchievementRuleType.Streak => user.Streak,
+                AchievementRuleType.PollCreation => user.PollsCreated,
+                AchievementRuleType.ChallengeCompletion => completedChallenges,
+                _ => 0
+            };
+
+            var next = unearned.Select(b =>
+            {
+                var current = CurrentValue(b.RuleType);
+                return new AchievementProgress
+                {
+                    BadgeId = b.Id, Code = b.Code, Name = b.Name, Description = b.Description,
+                    Icon = b.Icon, RuleType = b.RuleType, CurrentValue = current, Threshold = b.Threshold,
+                    ProgressPercent = b.Threshold <= 0 ? 100 : Math.Min(100, current * 100d / b.Threshold),
+                    RewardXp = b.RewardXp
+                };
+            }).OrderByDescending(b => b.ProgressPercent).ThenBy(b => b.Threshold - b.CurrentValue).Take(3).ToList();
+
+            return new AchievementOverview { RecentlyEarned = recent, NextAchievable = next, AllEarned = unearned.Count == 0 };
+        }
+
         private const string BadgeSelectSql =
             @"SELECT
                   ub.Id,
