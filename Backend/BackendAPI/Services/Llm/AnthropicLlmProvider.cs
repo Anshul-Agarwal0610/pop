@@ -32,17 +32,17 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
+        public async Task<LlmCompletionResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var apiKey = _config["PollGen:Anthropic:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 _logger.LogWarning("[Anthropic] PollGen:Anthropic:ApiKey not configured");
-                return null;
+                return LlmCompletionResult.Misconfigured(ProviderName);
             }
 
             var model = _config["PollGen:Anthropic:Model"];
-            if (string.IsNullOrWhiteSpace(model)) return null;
+            if (string.IsNullOrWhiteSpace(model)) return LlmCompletionResult.Misconfigured(ProviderName);
 
             var client = _http.CreateClient();
             client.DefaultRequestHeaders.Add("x-api-key", apiKey);
@@ -69,24 +69,27 @@ namespace BackendAPI.Services.Llm
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    var err = await response.Content.ReadAsStringAsync(ct);
-                    _logger.LogWarning("[Anthropic] HTTP {Status}: {Error}", (int)response.StatusCode, err);
-                    return null;
+                    var status=(int)response.StatusCode;
+                    _logger.LogWarning("[Anthropic] HTTP {Status}", status);
+                    return new(ProviderName, model, false, null, status, status==429?"rate_limited":"http_error", status==429 || status>=500, status==429, RetryAfter: response.Headers.RetryAfter?.Date);
                 }
 
                 var json = await response.Content.ReadAsStringAsync(ct);
                 using var doc = JsonDocument.Parse(json);
 
                 // Extract text from content[0].text
-                return doc.RootElement
+                var text = doc.RootElement
                     .GetProperty("content")[0]
                     .GetProperty("text")
                     .GetString();
+                long? input=null, output=null;
+                if (doc.RootElement.TryGetProperty("usage", out var usage)) { if (usage.TryGetProperty("input_tokens", out var i)) input=i.GetInt64(); if (usage.TryGetProperty("output_tokens", out var o)) output=o.GetInt64(); }
+                return new(ProviderName, model, true, text, (int)response.StatusCode, null, false, false, input, output);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[Anthropic] Request failed");
-                return null;
+                return new(ProviderName, model, false, null, null, ex is OperationCanceledException ? "timeout" : "transport_error", true, false);
             }
         }
     }

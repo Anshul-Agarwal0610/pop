@@ -37,17 +37,17 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
+        public async Task<LlmCompletionResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var apiKey = _config["PollGen:OpenAI:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 _logger.LogWarning("[OpenAI] PollGen:OpenAI:ApiKey not configured");
-                return null;
+                return LlmCompletionResult.Misconfigured(ProviderName);
             }
 
             var model = _config["PollGen:OpenAI:Model"];
-            if (string.IsNullOrWhiteSpace(model)) return null;
+            if (string.IsNullOrWhiteSpace(model)) return LlmCompletionResult.Misconfigured(ProviderName);
             var baseUrl  = _config["PollGen:OpenAI:BaseUrl"];
             var endpoint = string.IsNullOrWhiteSpace(baseUrl)
                 ? DefaultEndpoint
@@ -78,25 +78,28 @@ namespace BackendAPI.Services.Llm
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    var err = await response.Content.ReadAsStringAsync(ct);
-                    _logger.LogWarning("[OpenAI] HTTP {Status}: {Error}", (int)response.StatusCode, err);
-                    return null;
+                    var status=(int)response.StatusCode;
+                    _logger.LogWarning("[OpenAI] HTTP {Status}", status);
+                    return new(ProviderName, model, false, null, status, status==429?"rate_limited":"http_error", status==429 || status>=500, status==429, RetryAfter: response.Headers.RetryAfter?.Date);
                 }
 
                 var json = await response.Content.ReadAsStringAsync(ct);
                 using var doc = JsonDocument.Parse(json);
 
                 // Extract content from choices[0].message.content
-                return doc.RootElement
+                var text = doc.RootElement
                     .GetProperty("choices")[0]
                     .GetProperty("message")
                     .GetProperty("content")
                     .GetString();
+                long? input=null, output=null;
+                if (doc.RootElement.TryGetProperty("usage", out var usage)) { if (usage.TryGetProperty("prompt_tokens", out var i)) input=i.GetInt64(); if (usage.TryGetProperty("completion_tokens", out var o)) output=o.GetInt64(); }
+                return new(ProviderName, model, true, text, (int)response.StatusCode, null, false, false, input, output);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[OpenAI] Request failed");
-                return null;
+                return new(ProviderName, model, false, null, null, ex is OperationCanceledException ? "timeout" : "transport_error", true, false);
             }
         }
     }

@@ -63,6 +63,18 @@ public class PollGenerationServiceTests
         Assert.Null(await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Celebrity news", Category = "Entertainment" }));
     }
 
+    [Fact]
+    public async Task Retryable_primary_failure_fails_over_to_next_provider()
+    {
+        var first=new OutcomeProvider("first",new("first","m",false,null,429,"rate_limited",true,true));
+        var second=new OutcomeProvider("second",new("second","m",true,Valid,200,null,false,false));
+        var config=new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["PollGeneration:Providers:0"]="first",["PollGeneration:Providers:1"]="second" }).Build();
+        var service=new PollGenerationService(new ILlmProvider[]{first,second},new FakePollsRepository(),config,NullLogger<PollGenerationService>.Instance);
+        var outcome=await service.GenerateWithOutcomeAsync(new TrendingTopic{Title="Law",Summary="Parliament considers privacy law",Category="Technology"});
+        Assert.Equal(PollGenerationOutcomeKind.Converted,outcome.Kind);
+        Assert.Equal(1,first.Calls); Assert.Equal(1,second.Calls);
+    }
+
     private static PollGenerationService Create(FakeProvider provider)
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["PollGen:Provider"] = "fake" }).Build();
@@ -73,7 +85,12 @@ public class PollGenerationServiceTests
     {
         public string ProviderName => "fake";
         public LlmGenerationRequest? Request { get; private set; }
-        public Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) { Request = request; return Task.FromResult<string?>(response); }
+        public Task<LlmCompletionResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) { Request = request; return Task.FromResult(new LlmCompletionResult(ProviderName,"fake-model",true,response,200,null,false,false,10,20)); }
+    }
+    private sealed class OutcomeProvider(string name,LlmCompletionResult outcome):ILlmProvider
+    {
+        public string ProviderName=>name; public int Calls {get;private set;}
+        public Task<LlmCompletionResult> CompleteAsync(LlmGenerationRequest request,CancellationToken ct=default){Calls++;return Task.FromResult(outcome);}
     }
 
     private sealed class FakePollsRepository : IPollsRepository

@@ -138,5 +138,14 @@ namespace BackendAPI.Models
         public DateTime FetchedAt { get; set; }
         public bool IsProcessed { get; set; }
         public DateTime? ProcessedAt { get; set; }
+        public string ProcessingStatus { get; set; } = TopicProcessingStatus.Queued;
+        public int AttemptCount { get; set; }
+        public DateTime? NextAttemptAt { get; set; }
+        public DateTime? LastAttemptAt { get; set; }
+        public string? LastFailureCode { get; set; }
+        public string? CorrelationId { get; set; }
+        public long? GeneratedPollId { get; set; }
+        public Guid? LeaseId { get; set; }
+        public DateTime? LeaseExpiresAt { get; set; }
     }
 }

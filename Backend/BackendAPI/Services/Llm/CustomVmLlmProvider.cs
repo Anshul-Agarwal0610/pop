@@ -33,16 +33,17 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
+        public async Task<LlmCompletionResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var baseUrl = _config["PollGen:Custom:BaseUrl"];
             if (string.IsNullOrWhiteSpace(baseUrl))
             {
                 _logger.LogWarning("[CustomVM] PollGen:Custom:BaseUrl not configured");
-                return null;
+                return LlmCompletionResult.Misconfigured(ProviderName);
             }
 
             var client = _http.CreateClient();
+            const string model = "custom";
 
             var apiKey = _config["PollGen:Custom:ApiKey"];
             if (!string.IsNullOrWhiteSpace(apiKey))
@@ -61,16 +62,17 @@ namespace BackendAPI.Services.Llm
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogWarning("[CustomVM] HTTP {Status}", (int)response.StatusCode);
-                    return null;
+                    var status=(int)response.StatusCode;
+                    return new(ProviderName, model, false, null, status, status==429?"rate_limited":"http_error", status==429 || status>=500, status==429, RetryAfter: response.Headers.RetryAfter?.Date);
                 }
 
                 // Custom VM is expected to return the JSON poll directly
-                return await response.Content.ReadAsStringAsync(ct);
+                return new(ProviderName, model, true, await response.Content.ReadAsStringAsync(ct), (int)response.StatusCode, null, false, false);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[CustomVM] Request failed");
-                return null;
+                return new(ProviderName, model, false, null, null, ex is OperationCanceledException ? "timeout" : "transport_error", true, false);
             }
         }
     }

@@ -3,7 +3,14 @@ using System.Text.Json.Serialization;
 
 namespace BackendAPI.Interfaces;
 
-public interface IPollGenerationService { Task<PropositionGenerationResult?> GenerateAsync(TrendingTopic topic); }
+public interface IPollGenerationService
+{
+    Task<PropositionGenerationResult?> GenerateAsync(TrendingTopic topic);
+    Task<PollGenerationOutcome> GenerateWithOutcomeAsync(TrendingTopic topic, CancellationToken cancellationToken = default);
+}
+
+public enum PollGenerationOutcomeKind { Converted, RetryableFailure, Rejected }
+public sealed record PollGenerationOutcome(PollGenerationOutcomeKind Kind, PropositionGenerationResult? Result = null, string? FailureCode = null);
 
 /// <summary>
 /// Compatibility model for the deterministic fallback pipeline. The active LLM

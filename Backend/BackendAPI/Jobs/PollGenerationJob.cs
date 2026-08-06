@@ -2,6 +2,7 @@ using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
 using Hangfire;
+using BackendAPI.Observability;
 
 namespace BackendAPI.Jobs
 {
@@ -16,6 +17,8 @@ namespace BackendAPI.Jobs
         private readonly IPollsRepository _pollsRepo;
         private readonly IPollGenerationService _generator;
         private readonly ILogger<PollGenerationJob> _logger;
+        private readonly PipelineMetrics _metrics;
+        private readonly IConfiguration _configuration;
 
         // Polls expire 48 hours after creation by default.
         private static readonly TimeSpan DefaultExpiry = TimeSpan.FromHours(48);
@@ -27,21 +30,24 @@ namespace BackendAPI.Jobs
             ITrendingTopicRepository topicRepo,
             IPollsRepository pollsRepo,
             IPollGenerationService generator,
-            ILogger<PollGenerationJob> logger)
+            ILogger<PollGenerationJob> logger, PipelineMetrics metrics, IConfiguration configuration)
         {
             _topicRepo = topicRepo;
             _pollsRepo = pollsRepo;
             _generator = generator;
             _logger = logger;
+            _metrics = metrics;
+            _configuration = configuration;
         }
 
         [DisableConcurrentExecution(timeoutInSeconds: 600)]
-        public async Task RunAsync()
+        public async Task RunAsync(int? requestedCount = null)
         {
             _logger.LogInformation("[PollGenerationJob] Starting at {Time}", DateTime.UtcNow);
 
-            // Process 5 topics per run to match free-tier rate limits.
-            var topics = (await _topicRepo.GetUnprocessedAsync(maxCount: 5)).ToList();
+            if ((await _topicRepo.GetControlStateAsync()).GenerationPaused) { _logger.LogInformation("Poll generation is paused"); return; }
+            var maxConfigured=Math.Clamp(_configuration.GetValue("Pipeline:MaxGenerationBatch",5),1,100);
+            var topics = (await _topicRepo.ClaimEligibleAsync(Math.Min(requestedCount ?? maxConfigured,maxConfigured),TimeSpan.FromMinutes(10))).ToList();
 
             if (topics.Count == 0)
             {
@@ -55,19 +61,22 @@ namespace BackendAPI.Jobs
 
             foreach (var topic in topics)
             {
-                var generated = await _generator.GenerateAsync(topic);
+                using var activity=PipelineActivities.Start("pipeline.generate.topic",topic.CorrelationId);
+                var correlationId=topic.CorrelationId ?? PipelineActivities.CorrelationId(activity);
+                using var scope=_logger.BeginScope(new Dictionary<string,object>{{"CorrelationId",correlationId},{"TopicId",topic.Id}});
+                var outcome = await _generator.GenerateWithOutcomeAsync(topic);
+                var generated = outcome.Result;
 
                 if (generated == null)
                 {
-                    _logger.LogWarning(
-                        "[PollGenerationJob] Skipping topic {TopicId} '{Title}' from {SourceType}. Generation returned null.",
-                        topic.Id,
-                        topic.Title,
-                        topic.SourceType);
+                    if(outcome.Kind==PollGenerationOutcomeKind.RetryableFailure) { await _topicRepo.MarkRetryAsync(topic.Id,outcome.FailureCode??"provider_failure",_configuration.GetValue("Pipeline:MaxAttempts",3),TimeSpan.FromSeconds(_configuration.GetValue("Pipeline:RetryBaseSeconds",60))); _metrics.Generation("retried"); }
+                    else { await _topicRepo.MarkRejectedAsync(topic.Id,outcome.FailureCode??"quality_rejection"); _metrics.Generation("rejected"); }
+                    _logger.LogWarning("Topic generation ended with {Outcome} and {FailureCode}",outcome.Kind,outcome.FailureCode);
                     skipped++;
-                    await _topicRepo.MarkProcessedAsync(topic.Id);
                     continue;
                 }
+
+                _metrics.Generation("converted");
 
                 await Task.Delay(LlmDelay);
 
@@ -91,15 +100,16 @@ namespace BackendAPI.Jobs
                     };
 
                     var pollId = await _pollsRepo.CreateAsync(request);
-                    await _topicRepo.MarkProcessedAsync(topic.Id);
+                    var status=request.AutoPublish?TopicProcessingStatus.Published:TopicProcessingStatus.Review;
+                    await _topicRepo.MarkCompletedAsync(topic.Id,pollId,status);
+                    _metrics.Generation(status==TopicProcessingStatus.Published?"published":"review");
 
                     _logger.LogInformation(
-                        "[PollGenerationJob] Created generated poll {PollId} from topic {TopicId}. SourceUrl={SourceUrl}. SimilarPollId={SimilarPollId}. ReviewNotes={ReviewNotes}",
+                        "Created generated poll {PollId} from topic {TopicId}; moderation={ModerationStatus}; similar={HasSimilarPoll}",
                         pollId,
                         topic.Id,
-                        topic.SourceUrl,
-                        generated.SimilarPollId,
-                        generated.ReviewNotes);
+                        status,
+                        generated.SimilarPollId is not null);
 
                     created++;
                 }
@@ -107,11 +117,7 @@ namespace BackendAPI.Jobs
                 {
                     _logger.LogError(
                         ex,
-                        "[PollGenerationJob] Failed to save generated poll for topic {TopicId} '{Title}'. Question={Question}. SourceUrl={SourceUrl}",
-                        topic.Id,
-                        topic.Title,
-                        generated.Proposition,
-                        topic.SourceUrl);
+                        "Failed to persist generated poll for topic {TopicId}", topic.Id);
                 }
             }
 

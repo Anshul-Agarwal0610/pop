@@ -2,6 +2,8 @@ using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Diagnostics;
+using BackendAPI.Observability;
 
 namespace BackendAPI.Services;
 
@@ -11,6 +13,8 @@ public class PollGenerationService : IPollGenerationService
     private readonly IPollsRepository _pollsRepo;
     private readonly IConfiguration _config;
     private readonly ILogger<PollGenerationService> _logger;
+    private readonly PipelineMetrics _metrics;
+    private readonly IPipelineRuntimeHealth _health;
 
     internal const string ResponseSchema = """
     {"type":"object","additionalProperties":false,"required":["proposition","category","sourceGrounding","quality"],"properties":{"proposition":{"type":"string"},"category":{"type":"string"},"sourceGrounding":{"type":"object","additionalProperties":false,"required":["rationale","evidence"],"properties":{"rationale":{"type":"string"},"evidence":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string"}}}},"quality":{"type":"object","additionalProperties":false,"required":["isSelfContained","isNeutral","isBinary","isGrounded","confidence","isAmbiguous","ambiguityReason"],"properties":{"isSelfContained":{"type":"boolean"},"isNeutral":{"type":"boolean"},"isBinary":{"type":"boolean"},"isGrounded":{"type":"boolean"},"confidence":{"type":"number","minimum":0,"maximum":1},"isAmbiguous":{"type":"boolean"},"ambiguityReason":{"type":["string","null"]}}}}}
@@ -25,34 +29,65 @@ public class PollGenerationService : IPollGenerationService
 
     public PollGenerationService(IEnumerable<ILlmProvider> providers, IPollsRepository pollsRepo,
         IConfiguration config, ILogger<PollGenerationService> logger)
-        => (_providers, _pollsRepo, _config, _logger) = (providers, pollsRepo, config, logger);
+        : this(providers, pollsRepo, config, logger, new PipelineMetrics(), new PipelineRuntimeHealth()) { }
+
+    public PollGenerationService(IEnumerable<ILlmProvider> providers, IPollsRepository pollsRepo,
+        IConfiguration config, ILogger<PollGenerationService> logger, PipelineMetrics metrics, IPipelineRuntimeHealth health)
+        => (_providers, _pollsRepo, _config, _logger, _metrics, _health) = (providers, pollsRepo, config, logger, metrics, health);
 
     public async Task<PropositionGenerationResult?> GenerateAsync(TrendingTopic topic)
     {
-        var providerName = _config["PollGen:Provider"]?.ToLowerInvariant() ?? "custom";
-        var provider = _providers.FirstOrDefault(p => p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
-        if (provider is null) return null;
+        return (await GenerateWithOutcomeAsync(topic)).Result;
+    }
 
+    public async Task<PollGenerationOutcome> GenerateWithOutcomeAsync(TrendingTopic topic, CancellationToken cancellationToken = default)
+    {
         var request = BuildRequest(topic);
-        var raw = await provider.CompleteAsync(request);
-        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var configured = (_config.GetSection("PollGeneration:Providers").Get<string[]>() ?? [_config["PollGen:Provider"] ?? "custom"])
+            .Select(x => x.ToLowerInvariant()).Distinct().Take(Math.Clamp(_config.GetValue("PollGeneration:MaxProviderAttempts", 3), 1, 3)).ToArray();
+        LlmCompletionResult? completion = null;
+        string? previous = null;
+        foreach (var name in configured)
+        {
+            var provider = _providers.FirstOrDefault(p => p.ProviderName.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (provider is null) continue;
+            var configuredProvider = IsConfigured(name);
+            var health = _health.GetGeneration(name, true, configuredProvider);
+            if (!configuredProvider || health.State == ProviderOperationalState.CoolingDown) continue;
+            if (previous is not null) _metrics.Failover(previous, name);
+            var started = Stopwatch.GetTimestamp();
+            completion = await provider.CompleteAsync(request, cancellationToken);
+            _metrics.LlmDuration(name, Stopwatch.GetElapsedTime(started));
+            var metricOutcome = completion.Success ? "success" : completion.RateLimited ? "rate_limited" : "failure";
+            _metrics.LlmRequest(name, metricOutcome);
+            _metrics.Tokens(name, "input", completion.InputTokens ?? 0);
+            _metrics.Tokens(name, "output", completion.OutputTokens ?? 0);
+            DateTimeOffset? cooldown = completion.RateLimited ? completion.RetryAfter ?? DateTimeOffset.UtcNow.AddSeconds(_config.GetValue("PollGeneration:ProviderCooldownSeconds", 60)) : null;
+            _health.RecordGeneration(name, completion.Success, completion.RateLimited, completion.ErrorCode, cooldown);
+            if (completion.Success) break;
+            if (!completion.Retryable) return new(PollGenerationOutcomeKind.Rejected, FailureCode: completion.ErrorCode);
+            previous = name;
+        }
+        if (completion is null || !completion.Success || string.IsNullOrWhiteSpace(completion.ResponseText))
+            return new(PollGenerationOutcomeKind.RetryableFailure, FailureCode: completion?.ErrorCode ?? "no_available_provider");
+        var raw = completion.ResponseText;
 
         PropositionGenerationResult? result;
         try { result = JsonSerializer.Deserialize<PropositionGenerationResult>(raw, JsonOptions); }
-        catch (JsonException ex)
+        catch (JsonException)
         {
-            _logger.LogWarning("[PollGen] Invalid structured response for topic {TopicId}: {Reason}", topic.Id, ex.Message);
-            return null;
+            _logger.LogWarning("Invalid structured response for topic {TopicId}; code={FailureCode}", topic.Id, "invalid_schema");
+            return new(PollGenerationOutcomeKind.Rejected, FailureCode: "invalid_schema");
         }
 
         var reason = "response was null";
         if (result is null || !Validate(result, out reason))
         {
             _logger.LogWarning("[PollGen] Rejected proposition for topic {TopicId}: {Reason}", topic.Id, reason);
-            return null;
+            return new(PollGenerationOutcomeKind.Rejected, FailureCode: "quality_rejection");
         }
 
-        if (!IsKnownCategory(result.Category)) return null;
+        if (!IsKnownCategory(result.Category)) return new(PollGenerationOutcomeKind.Rejected, FailureCode: "invalid_category");
         result.Category = CategoryCatalog.NormalizeName(result.Category);
         result.SourceTitle = topic.Title;
         result.SourceUrl = topic.SourceUrl;
@@ -62,8 +97,16 @@ public class PollGenerationService : IPollGenerationService
             result.SimilarPollId = similar.Id;
             result.QualityWarnings.Add($"Similar generated poll detected: #{similar.Id}.");
         }
-        return result;
+        return new(PollGenerationOutcomeKind.Converted, result);
     }
+
+    private bool IsConfigured(string provider) => provider switch
+    {
+        "openai" => !string.IsNullOrWhiteSpace(_config["PollGen:OpenAI:ApiKey"]) && !string.IsNullOrWhiteSpace(_config["PollGen:OpenAI:Model"]),
+        "anthropic" => !string.IsNullOrWhiteSpace(_config["PollGen:Anthropic:ApiKey"]) && !string.IsNullOrWhiteSpace(_config["PollGen:Anthropic:Model"]),
+        "custom" => Uri.TryCreate(_config["PollGen:Custom:BaseUrl"], UriKind.Absolute, out _),
+        _ => true
+    };
 
     internal static LlmGenerationRequest BuildRequest(TrendingTopic topic)
     {
