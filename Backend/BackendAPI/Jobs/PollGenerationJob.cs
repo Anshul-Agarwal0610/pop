@@ -73,15 +73,9 @@ namespace BackendAPI.Jobs
 
                 try
                 {
-                    if (!GeneratedPollContract.TryValidate(generated.Options, out var contractReason))
-                    {
-                        _logger.LogWarning("[PollGenerationJob] Quarantined topic {TopicId}: {Reason}", topic.Id, contractReason);
-                        skipped++;
-                        continue;
-                    }
                     var request = new CreatePollRequest
                     {
-                        Question = generated.Question,
+                        Question = generated.Proposition,
                         Description = topic.Summary,
                         Category = generated.Category,
                         ExpiresAt = DateTime.UtcNow.Add(DefaultExpiry),
@@ -116,7 +110,7 @@ namespace BackendAPI.Jobs
                         "[PollGenerationJob] Failed to save generated poll for topic {TopicId} '{Title}'. Question={Question}. SourceUrl={SourceUrl}",
                         topic.Id,
                         topic.Title,
-                        generated.Question,
+                        generated.Proposition,
                         topic.SourceUrl);
                 }
             }

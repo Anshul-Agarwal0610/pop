@@ -37,7 +37,7 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(string prompt, CancellationToken ct = default)
+        public async Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var apiKey = _config["PollGen:OpenAI:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
@@ -46,7 +46,8 @@ namespace BackendAPI.Services.Llm
                 return null;
             }
 
-            var model    = _config["PollGen:OpenAI:Model"] ?? "gpt-4o-mini";
+            var model = _config["PollGen:OpenAI:Model"];
+            if (string.IsNullOrWhiteSpace(model)) return null;
             var baseUrl  = _config["PollGen:OpenAI:BaseUrl"];
             var endpoint = string.IsNullOrWhiteSpace(baseUrl)
                 ? DefaultEndpoint
@@ -60,12 +61,12 @@ namespace BackendAPI.Services.Llm
                 model,
                 messages = new[]
                 {
-                    new { role = "system", content = "You are a poll generation assistant. Always respond with valid JSON only, no markdown." },
-                    new { role = "user",   content = prompt }
+                    new { role = "system", content = request.SystemInstruction },
+                    new { role = "user", content = request.UserPrompt }
                 },
-                temperature     = 0.7,
-                max_tokens      = 1024,
-                response_format = new { type = "json_object" }  // forces clean JSON — works on Gemini OpenAI-compat endpoint
+                temperature = request.Temperature,
+                max_tokens = request.MaxOutputTokens,
+                response_format = new { type = "json_schema", json_schema = new { name = "binary_proposition", strict = true, schema = JsonSerializer.Deserialize<JsonElement>(request.ResponseSchema) } }
             };
 
             var content = new StringContent(

@@ -37,9 +37,9 @@ namespace BackendAPI.Repository
                     )
                     BEGIN
                         INSERT INTO TrendingTopics
-                            (Title, Summary, SourceType, SourceUrl, ThumbnailUrl, Category, FetchedAt, IsProcessed)
+                            (Title, Summary, SourceType, SourceUrl, ThumbnailUrl, Publisher, PublishedAt, Category, FetchedAt, IsProcessed)
                         VALUES
-                            (@Title, @Summary, @SourceType, @SourceUrl, @ThumbnailUrl, @Category, GETUTCDATE(), 0)
+                            (@Title, @Summary, @SourceType, @SourceUrl, @ThumbnailUrl, @Publisher, @PublishedAt, @Category, GETUTCDATE(), 0)
                     END",
                     new
                     {
@@ -48,6 +48,8 @@ namespace BackendAPI.Repository
                         topic.SourceType,
                         SourceUrl    = topic.SourceUrl ?? "",
                         topic.ThumbnailUrl,
+                        topic.Publisher,
+                        topic.PublishedAt,
                         Category = normalizedCategory
                     });
             }

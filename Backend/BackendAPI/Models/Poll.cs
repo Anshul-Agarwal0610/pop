@@ -132,6 +132,8 @@ namespace BackendAPI.Models
         public string SourceType { get; set; } = string.Empty;
         public string SourceUrl { get; set; } = string.Empty;
         public string? ThumbnailUrl { get; set; }
+        public string? Publisher { get; set; }
+        public DateTime? PublishedAt { get; set; }
         public string Category { get; set; } = "General";
         public DateTime FetchedAt { get; set; }
         public bool IsProcessed { get; set; }
