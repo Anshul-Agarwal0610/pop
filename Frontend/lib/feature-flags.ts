@@ -1,4 +1,4 @@
-export const featureFlags = ["gamification_challenges_v1", "gamification_streaks_v1", "gamification_achievements_v1", "gamification_round_experience_v1"] as const
+export const featureFlags = ["gamification_challenges_v1", "gamification_streaks_v1", "gamification_achievements_v1", "gamification_round_experience_v1", "pop_live_shareplay_spike_v1", "pop_live_nfc_spike_v1"] as const
 export type FeatureFlag = typeof featureFlags[number]
 export function rolloutBucket(flag: FeatureFlag, subject: string): number {
   let hash = 2166136261
