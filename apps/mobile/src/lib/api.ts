@@ -8,6 +8,7 @@ import type {
   RegisterPayload,
 } from '../types/auth';
 import type { ApiPoll, CastVoteResponse } from '../types/poll';
+import type { MobileExperiments, PollTossInvitation } from '../types/pollToss';
 
 interface ApiErrorShape {
   message?: string;
@@ -39,7 +40,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   if (!response.ok) {
     throw new Error(await readError(response));
   }
-
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -93,4 +94,11 @@ export const votesApi = {
       method: 'POST',
       body: JSON.stringify({ pollId, optionId }),
     }),
+};
+
+export const pollTossApi = {
+  experiments: () => apiRequest<MobileExperiments>('/api/mobile/experiments', { cache: 'no-store' }),
+  create: (pollId: number) => apiRequest<PollTossInvitation>('/api/poll-toss/invitations', { method: 'POST', body: JSON.stringify({ pollId }) }),
+  redeem: (invitationToken: string) => apiRequest<ApiPoll>('/api/poll-toss/invitations/redeem', { method: 'POST', body: JSON.stringify({ invitationToken }) }),
+  cancel: (id: string) => apiRequest<void>(`/api/poll-toss/invitations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

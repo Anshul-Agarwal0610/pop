@@ -35,7 +35,8 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "./plugins/withPollifyNearby"
     ],
     "extra": {
       "releaseChannel": "production"
