@@ -677,6 +677,8 @@ export interface ApiStreakStatus {
 }
 
 export const usersApi = {
+  getAnalyticsPrivacy: () => request<{ consent: "unknown" | "granted" | "denied"; updatedAt: string | null }>("/api/users/me/privacy"),
+  updateAnalyticsPrivacy: (consent: "unknown" | "granted" | "denied") => request<{ consent: string; updatedAt: string | null }>("/api/users/me/privacy", { method: "PUT", body: JSON.stringify({ consent }) }),
   /** Leaderboard — top users by XP. */
   getLeaderboard: (count = 20) =>
     request<ApiUser[]>(`/api/users/leaderboard?count=${count}`),

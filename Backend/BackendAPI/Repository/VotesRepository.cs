@@ -2,6 +2,7 @@ using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
+using BackendAPI.Analytics;
 using Dapper;
 
 namespace BackendAPI.Repository
@@ -10,11 +11,13 @@ namespace BackendAPI.Repository
     {
         private readonly DapperContext _context;
         private readonly IAchievementsRepository _achievementsRepo;
+        private readonly IAnalyticsOutbox _analytics;
 
-        public VotesRepository(DapperContext context, IAchievementsRepository achievementsRepo)
+        public VotesRepository(DapperContext context, IAchievementsRepository achievementsRepo, IAnalyticsOutbox analytics)
         {
             _context = context;
             _achievementsRepo = achievementsRepo;
+            _analytics = analytics;
         }
 
         public async Task<(long VoteId, VoteRewardResult Reward)> CastVoteAsync(
@@ -79,6 +82,8 @@ namespace BackendAPI.Repository
                 result.NextRecoveryAt = streak.RecoveryUsed
                     ? utcNow.AddDays(GamificationRules.RecoveryCooldownDays)
                     : lastRecoveryAt?.AddDays(GamificationRules.RecoveryCooldownDays);
+                if (await conn.ExecuteScalarAsync<string>("SELECT AnalyticsConsent FROM Users WHERE Id=@UserId", new { UserId = userId }, transaction) == "granted")
+                    await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.GameRoundCompleted, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["round_id"] = $"server-{userId}-{request.PollId}", ["surface"] = "api", ["outcome"] = "voted", ["xp_awarded"] = xpAwarded }, "round_id", "surface", "outcome", "xp_awarded"), utcNow, $"vote:{userId}:{request.PollId}:round-completed"));
                 transaction.Commit();
                 committed = true;
 

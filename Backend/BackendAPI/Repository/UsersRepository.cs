@@ -2,6 +2,7 @@ using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
+using BackendAPI.Analytics;
 using Dapper;
 
 namespace BackendAPI.Repository
@@ -10,11 +11,13 @@ namespace BackendAPI.Repository
     {
         private readonly DapperContext _context;
         private readonly IAchievementsRepository _achievementsRepo;
+        private readonly IAnalyticsOutbox _analytics;
 
-        public UsersRepository(DapperContext context, IAchievementsRepository achievementsRepo)
+        public UsersRepository(DapperContext context, IAchievementsRepository achievementsRepo, IAnalyticsOutbox analytics)
         {
             _context = context;
             _achievementsRepo = achievementsRepo;
+            _analytics = analytics;
         }
 
         public async Task<IEnumerable<User>> GetLeaderboardAsync(int count = 20)
@@ -191,6 +194,17 @@ namespace BackendAPI.Repository
                 new { UserId = userId, Amount = xpToAdd, PollId = pollId, OccurredAt = utcNow, Eligible = leaderboardEligible },
                 transaction);
 
+            var consent = await conn.ExecuteScalarAsync<string>("SELECT AnalyticsConsent FROM Users WHERE Id=@Id", new { Id = userId }, transaction);
+            if (consent == "granted")
+            {
+                if (user.Streak != updated.Streak)
+                    await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.StreakChanged, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["previous_streak"] = user.Streak, ["current_streak"] = updated.Streak, ["change_reason"] = updated.Streak > user.Streak ? "advanced" : "reset" }, "previous_streak", "current_streak", "change_reason"), utcNow, $"vote-reward:{userId}:{utcNow:yyyyMMdd}:streak"));
+                var previousLevel = user.Xp / 1000 + 1;
+                var currentLevel = updated.Xp / 1000 + 1;
+                if (currentLevel > previousLevel)
+                    await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.LevelUp, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["previous_level"] = previousLevel, ["current_level"] = currentLevel }, "previous_level", "current_level"), utcNow, $"vote-reward:{userId}:{updated.TotalVotes}:level:{currentLevel}"));
+            }
+
             transaction.Commit();
 
             return updated;
@@ -305,6 +319,21 @@ namespace BackendAPI.Repository
             await conn.ExecuteAsync(
                 "DELETE FROM UserCategoryPreferences WHERE UserId = @UserId",
                 new { UserId = userId });
+        }
+
+        public async Task<AnalyticsPrivacyPreference> GetAnalyticsPrivacyAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.QuerySingleAsync<AnalyticsPrivacyPreference>("SELECT AnalyticsConsent AS Consent, AnalyticsConsentUpdatedAt AS UpdatedAt FROM Users WHERE Id=@UserId", new { UserId = userId });
+        }
+
+        public async Task<AnalyticsPrivacyPreference> UpdateAnalyticsPrivacyAsync(long userId, string consent)
+        {
+            var normalized = consent.ToLowerInvariant();
+            if (normalized is not ("unknown" or "granted" or "denied"))
+                throw new ArgumentException("Consent must be unknown, granted, or denied.");
+            using var conn = _context.CreateConnection();
+            return await conn.QuerySingleAsync<AnalyticsPrivacyPreference>(@"UPDATE Users SET AnalyticsConsent=@Consent, AnalyticsConsentUpdatedAt=GETUTCDATE() OUTPUT inserted.AnalyticsConsent AS Consent, inserted.AnalyticsConsentUpdatedAt AS UpdatedAt WHERE Id=@UserId", new { UserId = userId, Consent = normalized });
         }
 
         public async Task<UserProgression?> GetProgressionAsync(long userId, DateTime utcNow)

@@ -28,6 +28,7 @@ import { pollShareText, resultShareText } from "@/lib/share"
 import { cn } from "@/lib/utils"
 import { VoteFeedback } from "@/components/poll-feed/vote-feedback"
 import type { ApiVoteReward } from "@/lib/api"
+import { track } from "@/lib/analytics/client"
 
 interface PollDetailCardProps {
   pollId: string
@@ -108,6 +109,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   const [isReporting, setIsReporting] = useState(false)
   const [xpAwarded, setXpAwarded] = useState<number | null>(null)
   const [reward, setReward] = useState<ApiVoteReward | null>(null)
+  const roundId = useMemo(() => crypto.randomUUID(), [pollId])
 
   const loadPoll = useCallback(async () => {
     setLoading(true)
@@ -129,6 +131,10 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
     if (!poll?.isSponsored) return
     pollsApi.recordImpression(poll.id).catch(() => undefined)
   }, [poll?.id, poll?.isSponsored])
+
+  useEffect(() => {
+    if (poll) track("game_round_started", { round_id: roundId, surface: "detail", category: poll.category }, `detail:${pollId}`)
+  }, [poll?.id, poll?.category, pollId, roundId])
 
   const expired = useMemo(() => {
     if (!poll) return false
@@ -158,6 +164,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
       setReward(response.reward)
       applyProgression(response.reward.progression)
       window.dispatchEvent(new CustomEvent("challenge-progress-updated", { detail: response.challenges }))
+      track("game_round_completed", { round_id: roundId, surface: "detail", outcome: "voted", xp_awarded: response.reward.xpAwarded }, `detail:${pollId}:completed`)
     } catch (err) {
       setVoteError(err instanceof Error ? err.message : "Could not record your vote")
     } finally {

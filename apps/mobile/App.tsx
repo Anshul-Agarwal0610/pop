@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -22,6 +22,7 @@ import { getExpoPushToken } from './src/lib/pushNotifications';
 import { hasCompletedOnboarding, markOnboardingComplete } from './src/lib/session';
 import type { AuthUser } from './src/types/auth';
 import type { ApiPoll, ApiPollOption, VoteReward } from './src/types/poll';
+import { track } from './src/lib/analytics/client';
 
 type AuthMode = 'login' | 'register';
 type SignedInTab = 'home' | 'profile' | 'leaderboard';
@@ -452,6 +453,7 @@ function SignedInHome() {
   const [error, setError] = useState<string | null>(null);
   const [votingPollId, setVotingPollId] = useState<number | null>(null);
   const [latestReward, setLatestReward] = useState<VoteReward | null>(null);
+  const roundIds = useRef(new Map<number, string>());
 
   const loadLeaderboard = useCallback(async () => {
     setIsLeaderboardLoading(true);
@@ -488,6 +490,12 @@ function SignedInHome() {
   useEffect(() => {
     loadPolls();
   }, [loadPolls]);
+
+  useEffect(() => {
+    const poll = polls[0]; if (!poll) return;
+    let roundId = roundIds.current.get(poll.id); if (!roundId) { roundId = `mobile-${Date.now()}-${poll.id}`; roundIds.current.set(poll.id, roundId); }
+    void track('game_round_started', { round_id: roundId, surface: 'feed', category: poll.category }, `feed:${poll.id}`);
+  }, [polls[0]?.id, polls[0]?.category]);
 
   useEffect(() => {
     let isMounted = true;
@@ -534,6 +542,8 @@ function SignedInHome() {
       );
       setLatestReward(response.reward);
       applyVoteReward(response.reward);
+      let roundId = roundIds.current.get(pollId); if (!roundId) { roundId = `mobile-${Date.now()}-${pollId}`; roundIds.current.set(pollId, roundId); }
+      void track('game_round_completed', { round_id: roundId, surface: 'feed', outcome: 'voted', xp_awarded: response.reward.xpAwarded }, `feed:${pollId}:completed`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not record your vote');
     } finally {

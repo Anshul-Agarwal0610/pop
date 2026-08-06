@@ -13,6 +13,9 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
+    ,"@types/jest": "^29.5.14"
+    ,"jest": "^29.7.0"
+    ,"ts-jest": "^29.2.5"
   },
   "scripts": {
     "start": "expo start",
@@ -20,6 +23,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand",
     "verify:android:config": "npx expo config --type public",
     "verify:android:release": "npm run typecheck && npm run verify:android:config",
     "build:android:preview": "npx eas build --platform android --profile preview",

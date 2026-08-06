@@ -1,0 +1,8 @@
+export const featureFlags = ["gamification_challenges_v1", "gamification_streaks_v1", "gamification_achievements_v1", "gamification_round_experience_v1"] as const
+export type FeatureFlag = typeof featureFlags[number]
+export function rolloutBucket(flag: FeatureFlag, subject: string): number {
+  let hash = 2166136261
+  for (const char of `${flag}:${subject}`) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619) }
+  return (hash >>> 0) % 10000
+}
+export function getFeatureFlag(flag: FeatureFlag, subject: string, rolloutPercent = 100) { return rolloutBucket(flag, subject) < rolloutPercent * 100 }

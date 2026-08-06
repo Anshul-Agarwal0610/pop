@@ -2,6 +2,7 @@ using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using Dapper;
+using BackendAPI.Analytics;
 
 namespace BackendAPI.Repository;
 
@@ -9,11 +10,13 @@ public class ChallengesRepository : IChallengesRepository
 {
     private readonly DapperContext _context;
     private readonly IAchievementsRepository _achievementsRepo;
+    private readonly IAnalyticsOutbox _analytics;
 
-    public ChallengesRepository(DapperContext context, IAchievementsRepository achievementsRepo)
+    public ChallengesRepository(DapperContext context, IAchievementsRepository achievementsRepo, IAnalyticsOutbox analytics)
     {
         _context = context;
         _achievementsRepo = achievementsRepo;
+        _analytics = analytics;
     }
 
     public async Task EnsureCurrentOccurrencesAsync(DateTime utcNow)
@@ -97,6 +100,7 @@ public class ChallengesRepository : IChallengesRepository
 
             foreach (var challenge in challenges)
             {
+                var previousProgress = await conn.ExecuteScalarAsync<int?>("SELECT CurrentVotes FROM UserChallengeProgress WHERE UserId=@UserId AND ChallengeId=@ChallengeId", new { UserId = userId, ChallengeId = challenge.Id }, transaction) ?? 0;
                 var recorded = await conn.ExecuteAsync(@"
                     IF NOT EXISTS (SELECT 1 FROM ChallengeProgressEvents WITH (UPDLOCK, HOLDLOCK)
                         WHERE UserId=@UserId AND ChallengeId=@ChallengeId AND VoteId=@VoteId)
@@ -139,6 +143,15 @@ public class ChallengesRepository : IChallengesRepository
                             new { UserId = userId, BadgeId = challenge.RewardBadgeId, UtcNow = utcNow }, transaction);
                 }
                 affectedIds.Add(challenge.Id);
+                var consent = await conn.ExecuteScalarAsync<string>("SELECT AnalyticsConsent FROM Users WHERE Id=@UserId", new { UserId = userId }, transaction);
+                var currentProgress = Math.Min(challenge.RequiredVotes, previousProgress + 1);
+                if (consent == "granted" && currentProgress > previousProgress)
+                {
+                    var eventName = previousProgress == 0 ? AnalyticsEventNames.ChallengeStarted : AnalyticsEventNames.ChallengeProgressed;
+                    await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), eventName, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["challenge_id"] = challenge.Id.ToString(), [previousProgress == 0 ? "challenge_type" : "progress"] = previousProgress == 0 ? (object)(challenge.Category ?? "general") : currentProgress, ["required_actions"] = challenge.RequiredVotes }, "challenge_id", previousProgress == 0 ? "challenge_type" : "progress", "required_actions"), utcNow, $"challenge:{userId}:{challenge.Id}:progress:{currentProgress}"));
+                    if (currentProgress >= challenge.RequiredVotes)
+                        await _analytics.EnqueueAsync(conn, transaction, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.ChallengeCompleted, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["challenge_id"] = challenge.Id.ToString(), ["reward_xp"] = challenge.RewardXp, ["badge_granted"] = challenge.RewardBadgeId.HasValue }, "challenge_id", "reward_xp", "badge_granted"), utcNow, $"challenge:{userId}:{challenge.Id}:completed"));
+                }
             }
             transaction.Commit();
         }

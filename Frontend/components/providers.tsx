@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { AchievementCelebrationProvider } from "@/components/achievements/celebration-provider"
 import { AuthRouteGuard } from "@/components/auth/auth-route-guard"
+import { AnalyticsProvider } from "@/lib/analytics/provider"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +15,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""}
     >
       <AuthProvider>
+        <AnalyticsProvider>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -25,6 +27,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           </Suspense>
           <Toaster />
         </ThemeProvider>
+        </AnalyticsProvider>
       </AuthProvider>
     </GoogleOAuthProvider>
   )

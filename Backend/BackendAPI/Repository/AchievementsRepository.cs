@@ -2,11 +2,12 @@ using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
+using BackendAPI.Analytics;
 using Dapper;
 
 namespace BackendAPI.Repository;
 
-public class AchievementsRepository(DapperContext context) : IAchievementsRepository
+public class AchievementsRepository(DapperContext context, IAnalyticsOutbox analytics) : IAchievementsRepository
 {
     private const string BadgeSelectSql = @"SELECT ub.Id, ub.UserId, ub.BadgeId, b.Code, b.Name, b.Description, b.Icon,
         b.RewardXp, b.RewardTitle, ub.AwardedAt FROM UserBadges ub JOIN AchievementBadges b ON b.Id = ub.BadgeId";
@@ -109,6 +110,9 @@ public class AchievementsRepository(DapperContext context) : IAchievementsReposi
                         new { UserId = userId, b.RewardXp, BadgeId = b.Id, UtcNow = utcNow,
                             Eligible = b.RuleType != AchievementRuleType.PollCreation }, tx);
                 awarded.Add(new UserBadge { Id=id.Value,UserId=userId,BadgeId=b.Id,Code=b.Code,Name=b.Name,Description=b.Description,Icon=b.Icon,RewardXp=b.RewardXp,RewardTitle=b.RewardTitle,AwardedAt=utcNow });
+                var consent = await conn.ExecuteScalarAsync<string>("SELECT AnalyticsConsent FROM Users WHERE Id=@UserId", new { UserId = userId }, tx);
+                if (consent == "granted")
+                    await analytics.EnqueueAsync(conn, tx, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.AchievementUnlocked, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["achievement_code"] = b.Code, ["reward_xp"] = b.RewardXp }, "achievement_code", "reward_xp"), utcNow, $"achievement:{userId}:{b.Id}"));
             }
             var xp = awarded.Sum(x => x.RewardXp);
             if (xp > 0) await conn.ExecuteAsync("UPDATE Users SET Xp=Xp+@Xp WHERE Id=@UserId", new { Xp=xp,UserId=userId }, tx);

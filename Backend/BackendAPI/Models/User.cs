@@ -15,7 +15,12 @@ namespace BackendAPI.Models
         public ProgressionSnapshot Progression => Services.GamificationRules.FromTotalXp(Xp);
         public int Level => Progression.Level;
         public List<UserBadge> Badges { get; set; } = new();
+        public string AnalyticsConsent { get; set; } = "unknown";
+        public DateTime? AnalyticsConsentUpdatedAt { get; set; }
     }
+
+    public sealed class AnalyticsPrivacyPreference { public string Consent { get; set; } = "unknown"; public DateTime? UpdatedAt { get; set; } }
+    public sealed class UpdateAnalyticsPrivacyRequest { public string Consent { get; set; } = "unknown"; }
 
     public class CreateUserRequest
     {

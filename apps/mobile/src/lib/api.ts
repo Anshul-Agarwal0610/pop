@@ -58,6 +58,8 @@ export const authApi = {
 };
 
 export const usersApi = {
+  getAnalyticsPrivacy: () => apiRequest<{ consent: 'unknown' | 'granted' | 'denied'; updatedAt: string | null }>('/api/users/me/privacy'),
+  updateAnalyticsPrivacy: (consent: 'unknown' | 'granted' | 'denied') => apiRequest('/api/users/me/privacy', { method: 'PUT', body: JSON.stringify({ consent }) }),
   getLeaderboard: (count = 20) => apiRequest<AuthUser[]>(`/api/users/leaderboard?count=${count}`),
   getCategoryPreferences: () =>
     apiRequest<CategoryPreference[]>('/api/users/me/preferences/categories'),

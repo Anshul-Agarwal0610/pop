@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { RefreshCw, Sparkles, AlertCircle, Loader2 } from "lucide-react"
 import { FEED_CATEGORIES, normalizeCategoryName } from "@/lib/categories"
@@ -15,6 +15,7 @@ import type { Poll } from "@/lib/poll-data"
 import { usersApi, type ApiVoteReward } from "@/lib/api"
 import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
+import { track } from "@/lib/analytics/client"
 
 export function PollFeed({ initialCategory }: { initialCategory?: string | null }) {
   const { applyProgression } = useAuth()
@@ -33,12 +34,23 @@ export function PollFeed({ initialCategory }: { initialCategory?: string | null 
   const [currentVote, setCurrentVote]     = useState<"yes" | "no" | "option" | null>(null)
   const [sessionXp, setSessionXp]         = useState(0)
   const [reward, setReward]               = useState<ApiVoteReward | null>(null)
+  const roundIds = useRef(new Map<number, string>())
 
   const currentPoll: Poll | undefined = polls[currentIndex]
   const hasMorePolls = currentIndex < polls.length
   const nextUtcMidnight = new Date()
   nextUtcMidnight.setUTCHours(24, 0, 0, 0)
   const localResetTime = nextUtcMidnight.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZoneName: "short" })
+
+  useEffect(() => {
+    if (!currentPoll) return
+    let roundId = roundIds.current.get(currentPoll.id)
+    if (!roundId) {
+      roundId = crypto.randomUUID()
+      roundIds.current.set(currentPoll.id, roundId)
+    }
+    track("game_round_started", { round_id: roundId, surface: "feed", category: currentPoll.category }, `feed:${currentPoll.id}`)
+  }, [currentPoll])
 
   useEffect(() => {
     usersApi.getMyStreak().then((status) => {
@@ -90,6 +102,8 @@ export function PollFeed({ initialCategory }: { initialCategory?: string | null 
         setTotalXp(result.reward.xp)
         setSessionXp((xp) => xp + result.reward.xpAwarded)
         applyProgression(result.reward.progression)
+        const roundId = roundIds.current.get(currentPoll.id)
+        if (roundId) track("game_round_completed", { round_id: roundId, surface: "feed", outcome: "voted", xp_awarded: result.reward.xpAwarded }, `feed:${currentPoll.id}:completed`)
         result.challenges.forEach(challenge => toast(challenge.isCompleted
           ? `${challenge.title} completed!`
           : `${challenge.title}: ${challenge.currentVotes}/${challenge.requiredVotes}`))
