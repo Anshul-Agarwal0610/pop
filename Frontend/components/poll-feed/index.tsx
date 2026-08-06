@@ -12,6 +12,7 @@ import { ProgressIndicator } from "./progress-indicator"
 import { Button } from "@/components/ui/button"
 import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
+import { toast } from "sonner"
 
 export function PollFeed({ initialCategory }: { initialCategory?: string | null }) {
   const normalizedInitial = initialCategory ? normalizeCategoryName(initialCategory) : "All"
@@ -54,12 +55,18 @@ export function PollFeed({ initialCategory }: { initialCategory?: string | null 
     async (optionId: number, feedback: "yes" | "no" | "option") => {
       if (!currentPoll || currentVote) return
 
-      setCurrentVote(feedback)
-      setStreak((s) => s + 1)
-      setTotalXp((xp) => xp + currentPoll.xpReward)
-      setSessionXp((xp) => xp + currentPoll.xpReward)
-
-      await castVote(currentPoll.id, optionId)
+      try {
+        const result = await castVote(currentPoll.id, optionId)
+        setCurrentVote(feedback)
+        setStreak(result.reward.streak)
+        setTotalXp(result.reward.xp)
+        setSessionXp((xp) => xp + result.reward.xpAwarded)
+        result.challenges.forEach(challenge => toast(challenge.isCompleted
+          ? `${challenge.title} completed!`
+          : `${challenge.title}: ${challenge.currentVotes}/${challenge.requiredVotes}`))
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Vote failed")
+      }
     },
     [currentPoll, currentVote, castVote]
   )

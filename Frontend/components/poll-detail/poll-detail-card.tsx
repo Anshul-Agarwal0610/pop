@@ -152,6 +152,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
       })
       setPoll(response.poll)
       setXpAwarded(response.reward.xpAwarded)
+      window.dispatchEvent(new CustomEvent("challenge-progress-updated", { detail: response.challenges }))
     } catch (err) {
       setVoteError(err instanceof Error ? err.message : "Could not record your vote")
     } finally {

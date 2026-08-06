@@ -1,11 +1,11 @@
 using BackendAPI.Models;
 
-namespace BackendAPI.Interfaces
+namespace BackendAPI.Interfaces;
+
+public interface IChallengesRepository
 {
-    public interface IChallengesRepository
-    {
-        Task EnsureDailyChallengeAsync(DateTime utcNow);
-        Task<IEnumerable<UserChallenge>> GetActiveForUserAsync(long userId, DateTime utcNow);
-        Task<IEnumerable<UserChallenge>> AdvanceForVoteAsync(long userId, Poll poll, DateTime utcNow);
-    }
+    Task EnsureCurrentOccurrencesAsync(DateTime utcNow);
+    Task<IEnumerable<UserChallenge>> GetForUserAsync(long userId, DateTime utcNow, string state = "active");
+    Task<IEnumerable<UserChallenge>> GetActiveForUserAsync(long userId, DateTime utcNow);
+    Task<IEnumerable<UserChallenge>> AdvanceForVoteAsync(long userId, long voteId, Poll poll, DateTime utcNow);
 }

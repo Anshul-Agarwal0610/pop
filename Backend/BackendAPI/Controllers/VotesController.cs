@@ -63,9 +63,10 @@ namespace BackendAPI.Controllers
             if (!validOption)
                 return BadRequest(new { message = "Invalid option for this poll." });
 
+            long voteId;
             try
             {
-                await _votesRepo.CastVoteAsync(request, userId);
+                voteId = await _votesRepo.CastVoteAsync(request, userId);
             }
             catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser") ||
                                         ex.Message.Contains("duplicate key") ||
@@ -81,7 +82,7 @@ namespace BackendAPI.Controllers
                 userId,
                 GamificationRules.VoteXp(poll),
                 DateTime.UtcNow);
-            var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
+            var challenges = (await _challengesRepo.AdvanceForVoteAsync(userId, voteId, poll, DateTime.UtcNow)).ToList();
 
             if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)
             {
@@ -117,6 +118,7 @@ namespace BackendAPI.Controllers
                 Poll = updated!,
                 Reward = reward,
                 Challenges = challenges
+                ,CompletedChallenges = challenges.Where(challenge => challenge.IsCompleted)
             });
         }
 

@@ -89,6 +89,13 @@ export interface ApiChallenge {
   isCompleted: boolean
   rewardGranted: boolean
   completedAt: string | null
+  description: string
+  challengeType: string
+  recurrence: "Daily" | "Weekly" | "None"
+  requirementType: string
+  requirementText: string
+  state: "Available" | "InProgress" | "Completed" | "Expired"
+  eligiblePollsUrl: string
 }
 
 export interface ApiNotification {
@@ -442,6 +449,8 @@ export const wellnessApi = {
 
 export const challengesApi = {
   getActive: () => request<ApiChallenge[]>("/api/challenges/active"),
+  getAll: (state: "active" | "completed" | "expired" | "all" = "all") =>
+    request<ApiChallenge[]>(`/api/challenges?state=${state}`),
 }
 
 export interface ApiUser {

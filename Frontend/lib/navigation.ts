@@ -1,4 +1,4 @@
-import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse, Gamepad2 } from "lucide-react"
+import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse, Gamepad2, Target } from "lucide-react"
 
 export const navigationItems = [
   {
@@ -15,6 +15,11 @@ export const navigationItems = [
     label: "Polls",
     href: "/polls",
     icon: BarChart2,
+  },
+  {
+    label: "Challenges",
+    href: "/challenges",
+    icon: Target,
   },
   {
     label: "Create Poll",
