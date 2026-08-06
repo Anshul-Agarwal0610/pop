@@ -23,6 +23,7 @@ import { ShareButton } from "@/components/share-button"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
 import { pollsApi } from "@/lib/api"
 import { pollShareText, resultShareText } from "@/lib/share"
+import { canonicalGeneratedOptions, pollOptionLabel } from "@/lib/poll-sides"
 import {
   Tooltip,
   TooltipContent,
@@ -152,9 +153,10 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
   // US-19: voted state
   const hasVoted        = poll.hasVoted ?? false
   const pollOptions     = poll.options ?? []
-  const isBinaryPoll    = pollOptions.length <= 2
-  const yesOption       = poll.options?.[0]
-  const noOption        = poll.options?.[poll.options.length - 1]
+  const generatedOptions = poll.isAIGenerated ? canonicalGeneratedOptions(pollOptions) : null
+  const isBinaryPoll    = poll.isAIGenerated ? generatedOptions !== null : pollOptions.length === 2
+  const yesOption       = poll.isAIGenerated ? generatedOptions?.Up : pollOptions[0]
+  const noOption        = poll.isAIGenerated ? generatedOptions?.Against : pollOptions[1]
   const resultColors    = ["emerald", "red", "blue", "amber"] as const
   const userResultOption = pollOptions.find((option) => option.id === poll.userVotedOptionId)
   const leadingOption = [...pollOptions].sort((a, b) => (b.votePercentage ?? 0) - (a.votePercentage ?? 0))[0]
@@ -391,7 +393,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                     color={resultColors[index % resultColors.length]}
                     isUserVote={poll.userVotedOptionId === option.id}
                     key={option.id}
-                    label={option.text}
+                    label={pollOptionLabel(option, Boolean(poll.isAIGenerated))}
                     percentage={option.votePercentage}
                   />
                 ))}
@@ -409,6 +411,10 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                   />
                 </div>
               </motion.div>
+            ) : poll.isAIGenerated && !generatedOptions ? (
+              <p className="rounded-2xl bg-destructive/10 p-4 text-center text-sm font-medium text-destructive" role="alert">
+                This poll has invalid voting choices and cannot accept votes.
+              </p>
             ) : !isBinaryPoll ? (
               <div className="grid gap-2">
                 {pollOptions.map((option, index) => (
@@ -439,7 +445,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <span className="text-2xl">NO</span>
+                  <span className="text-2xl">{poll.isAIGenerated ? "Against" : noOption?.text}</span>
                 </motion.button>
                 <motion.button
                   onClick={() => yesOption && onVote(yesOption.id, "yes")}
@@ -447,7 +453,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <span className="text-2xl">YES</span>
+                  <span className="text-2xl">{poll.isAIGenerated ? "Up" : yesOption?.text}</span>
                 </motion.button>
               </div>
             )}

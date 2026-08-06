@@ -73,9 +73,8 @@ namespace BackendAPI.Services
             {
                 var videoId  = item.GetProperty("id").GetString() ?? "";
                 var snippet  = item.GetProperty("snippet");
-                var title    = snippet.GetProperty("title").GetString()?.Trim() ?? "";
-                var desc     = snippet.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
-                var category = "Entertainment";
+                var title    = TopicEnrichment.CleanText(snippet.GetProperty("title").GetString());
+                var desc     = TopicEnrichment.CleanText(snippet.TryGetProperty("description", out var d) ? d.GetString() : "");
                 var publisher = snippet.TryGetProperty("channelTitle", out var channel) ? channel.GetString() : null;
                 DateTime? publishedAt = snippet.TryGetProperty("publishedAt", out var published) && DateTime.TryParse(published.GetString(), out var date) ? date.ToUniversalTime() : null;
 
@@ -107,7 +106,7 @@ namespace BackendAPI.Services
                     ThumbnailUrl = thumbnail,
                     Publisher    = publisher,
                     PublishedAt  = publishedAt,
-                    Category     = category
+                    Category     = TopicEnrichment.Classify(title, desc)
                 });
             }
 

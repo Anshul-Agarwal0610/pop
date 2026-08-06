@@ -1,5 +1,6 @@
 import type { ApiPoll } from "./api"
 import { normalizeCategoryName } from "./categories"
+import type { PollSide } from "./poll-sides"
 
 // ── Source types ─────────────────────────────────────────────────────────────
 // Legacy UI sources (used by existing mock cards)
@@ -12,6 +13,7 @@ export type IngestionSource = "rss" | "youtube" | "gnews" | "manual" | "business
 export interface PollOption {
   id: number
   text: string
+  side?: PollSide | null
   voteCount: number
   votePercentage: number
 }
@@ -104,6 +106,7 @@ export function mapBackendPoll(p: ApiPoll): Poll {
     options:      p.options.map((o) => ({
       id:             o.id,
       text:           o.text,
+      side:           o.side,
       voteCount:      o.voteCount,
       votePercentage: o.votePercentage,
     })),

@@ -5,6 +5,24 @@ namespace BackendAPI.Interfaces;
 
 public interface IPollGenerationService { Task<PropositionGenerationResult?> GenerateAsync(TrendingTopic topic); }
 
+/// <summary>
+/// Compatibility model for the deterministic fallback pipeline. The active LLM
+/// path returns <see cref="PropositionGenerationResult"/> instead.
+/// </summary>
+public sealed class GeneratedPoll
+{
+    public string Question { get; set; } = string.Empty;
+    public List<string> Options { get; set; } = new();
+    public string Category { get; set; } = "General";
+    public List<string> QualityWarnings { get; set; } = new();
+    public long? SimilarPollId { get; set; }
+    public string? SourceTitle { get; set; }
+    public string? SourceUrl { get; set; }
+    public string ReviewNotes => QualityWarnings.Count == 0
+        ? "AI review: passed automated quality checks."
+        : $"AI review: {string.Join(" ", QualityWarnings)}";
+}
+
 public sealed class PropositionGenerationResult
 {
     [JsonPropertyName("proposition")] public required string Proposition { get; set; }
