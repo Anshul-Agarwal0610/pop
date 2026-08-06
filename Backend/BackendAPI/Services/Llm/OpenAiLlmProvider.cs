@@ -37,16 +37,17 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(string prompt, CancellationToken ct = default)
+        public async Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var apiKey = _config["PollGen:OpenAI:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 _logger.LogWarning("[OpenAI] PollGen:OpenAI:ApiKey not configured");
-                return null;
+                return LlmProviderResult.Permanent("PollGen:OpenAI:ApiKey not configured");
             }
 
-            var model    = _config["PollGen:OpenAI:Model"] ?? "gpt-4o-mini";
+            var model = _config["PollGen:OpenAI:Model"];
+            if (string.IsNullOrWhiteSpace(model)) return LlmProviderResult.Permanent("PollGen:OpenAI:Model not configured");
             var baseUrl  = _config["PollGen:OpenAI:BaseUrl"];
             var endpoint = string.IsNullOrWhiteSpace(baseUrl)
                 ? DefaultEndpoint
@@ -60,12 +61,12 @@ namespace BackendAPI.Services.Llm
                 model,
                 messages = new[]
                 {
-                    new { role = "system", content = "You are a poll generation assistant. Always respond with valid JSON only, no markdown." },
-                    new { role = "user",   content = prompt }
+                    new { role = "system", content = request.SystemInstruction },
+                    new { role = "user", content = request.UserPrompt }
                 },
-                temperature     = 0.7,
-                max_tokens      = 1024,
-                response_format = new { type = "json_object" }  // forces clean JSON — works on Gemini OpenAI-compat endpoint
+                temperature = request.Temperature,
+                max_tokens = request.MaxOutputTokens,
+                response_format = new { type = "json_schema", json_schema = new { name = "binary_proposition", strict = true, schema = JsonSerializer.Deserialize<JsonElement>(request.ResponseSchema) } }
             };
 
             var content = new StringContent(
@@ -79,24 +80,36 @@ namespace BackendAPI.Services.Llm
                 {
                     var err = await response.Content.ReadAsStringAsync(ct);
                     _logger.LogWarning("[OpenAI] HTTP {Status}: {Error}", (int)response.StatusCode, err);
-                    return null;
+                    return IsTransient(response.StatusCode) ? LlmProviderResult.Transient($"HTTP {(int)response.StatusCode}") : LlmProviderResult.Permanent($"HTTP {(int)response.StatusCode}");
                 }
 
                 var json = await response.Content.ReadAsStringAsync(ct);
                 using var doc = JsonDocument.Parse(json);
 
                 // Extract content from choices[0].message.content
-                return doc.RootElement
+                var text = doc.RootElement
                     .GetProperty("choices")[0]
                     .GetProperty("message")
                     .GetProperty("content")
                     .GetString();
+                return string.IsNullOrWhiteSpace(text) ? LlmProviderResult.Permanent("provider returned empty content") : LlmProviderResult.Succeeded(text);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "[OpenAI] Request timed out");
+                return LlmProviderResult.Transient("request timed out");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "[OpenAI] Request failed");
+                return LlmProviderResult.Transient(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[OpenAI] Request failed");
-                return null;
+                _logger.LogError(ex, "[OpenAI] Invalid provider response");
+                return LlmProviderResult.Permanent(ex.Message);
             }
         }
+        private static bool IsTransient(System.Net.HttpStatusCode status) => status is System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests || (int)status >= 500;
     }
 }

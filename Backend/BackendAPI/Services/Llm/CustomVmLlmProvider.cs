@@ -33,13 +33,13 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(string prompt, CancellationToken ct = default)
+        public async Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var baseUrl = _config["PollGen:Custom:BaseUrl"];
             if (string.IsNullOrWhiteSpace(baseUrl))
             {
                 _logger.LogWarning("[CustomVM] PollGen:Custom:BaseUrl not configured");
-                return null;
+                return LlmProviderResult.Permanent("PollGen:Custom:BaseUrl not configured");
             }
 
             var client = _http.CreateClient();
@@ -49,7 +49,7 @@ namespace BackendAPI.Services.Llm
                 client.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 
-            var body    = new { prompt };
+            var body = new { systemInstruction = request.SystemInstruction, prompt = request.UserPrompt, responseSchema = JsonSerializer.Deserialize<JsonElement>(request.ResponseSchema), temperature = request.Temperature, maxOutputTokens = request.MaxOutputTokens };
             var content = new StringContent(
                 JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
@@ -61,17 +61,29 @@ namespace BackendAPI.Services.Llm
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogWarning("[CustomVM] HTTP {Status}", (int)response.StatusCode);
-                    return null;
+                    return IsTransient(response.StatusCode) ? LlmProviderResult.Transient($"HTTP {(int)response.StatusCode}") : LlmProviderResult.Permanent($"HTTP {(int)response.StatusCode}");
                 }
 
                 // Custom VM is expected to return the JSON poll directly
-                return await response.Content.ReadAsStringAsync(ct);
+                var text = await response.Content.ReadAsStringAsync(ct);
+                return string.IsNullOrWhiteSpace(text) ? LlmProviderResult.Permanent("provider returned empty content") : LlmProviderResult.Succeeded(text);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "[CustomVM] Request timed out");
+                return LlmProviderResult.Transient("request timed out");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "[CustomVM] Request failed");
+                return LlmProviderResult.Transient(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[CustomVM] Request failed");
-                return null;
+                _logger.LogError(ex, "[CustomVM] Invalid provider response");
+                return LlmProviderResult.Permanent(ex.Message);
             }
         }
+        private static bool IsTransient(System.Net.HttpStatusCode status) => status is System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests || (int)status >= 500;
     }
 }
