@@ -15,6 +15,7 @@ namespace BackendAPI.Jobs
         private readonly ITrendingTopicRepository _topicRepo;
         private readonly IPollsRepository _pollsRepo;
         private readonly IPollGenerationService _generator;
+        private readonly IGeneratedPollQualityGate _qualityGate;
         private readonly ILogger<PollGenerationJob> _logger;
 
         // Polls expire 48 hours after creation by default.
@@ -27,11 +28,13 @@ namespace BackendAPI.Jobs
             ITrendingTopicRepository topicRepo,
             IPollsRepository pollsRepo,
             IPollGenerationService generator,
+            IGeneratedPollQualityGate qualityGate,
             ILogger<PollGenerationJob> logger)
         {
             _topicRepo = topicRepo;
             _pollsRepo = pollsRepo;
             _generator = generator;
+            _qualityGate = qualityGate;
             _logger = logger;
         }
 
@@ -60,10 +63,8 @@ namespace BackendAPI.Jobs
                 if (generated == null)
                 {
                     _logger.LogWarning(
-                        "[PollGenerationJob] Skipping topic {TopicId} '{Title}' from {SourceType}. Generation returned null.",
-                        topic.Id,
-                        topic.Title,
-                        topic.SourceType);
+                        "[PollGenerationJob] Skipping topic {TopicId}. Generation returned null. SourceType={SourceType}",
+                        topic.Id, topic.SourceType);
                     skipped++;
                     await _topicRepo.MarkProcessedAsync(topic.Id);
                     continue;
@@ -73,6 +74,18 @@ namespace BackendAPI.Jobs
 
                 try
                 {
+                    var decision = await _qualityGate.EvaluateAsync(topic, generated, GeneratedPollContract.CanonicalOptions);
+                    _logger.LogInformation("[PollQuality] TopicId={TopicId} Disposition={Disposition} Reasons={ReasonCodes} Sensitive={Sensitive} Rules={RulesVersion} Schema={SchemaVersion} ScoreBucket={ScoreBucket} DuplicateType={DuplicateType}",
+                        topic.Id, decision.Disposition, string.Join(',', decision.ReasonCodes), decision.IsSensitive,
+                        decision.RulesVersion, decision.EvaluatorSchemaVersion, Math.Floor(decision.OverallScore * 10) / 10,
+                        decision.DuplicateMatchType);
+                    if (decision.Disposition == PollQualityDisposition.Rejected)
+                    {
+                        skipped++;
+                        await _pollsRepo.RecordRejectedQualityDecisionAsync(topic.Id, decision);
+                        await _topicRepo.MarkProcessedAsync(topic.Id);
+                        continue;
+                    }
                     var request = new CreatePollRequest
                     {
                         Question = generated.Proposition,
@@ -84,22 +97,17 @@ namespace BackendAPI.Jobs
                         SourceUrl = topic.SourceUrl,
                         ThumbnailUrl = topic.ThumbnailUrl,
                         IsAIGenerated = true,
-                        AutoPublish = !TopicEnrichment.RequiresHumanReview(topic)
-                            && generated.QualityWarnings.All(warning =>
-                                warning.StartsWith("Generated with the deterministic fallback", StringComparison.OrdinalIgnoreCase)),
-                        ModerationReason = generated.ReviewNotes
+                        QualityDecision = decision,
+                        TrendingTopicId = topic.Id,
+                        ModerationReason = string.Join(',', decision.ReasonCodes)
                     };
 
                     var pollId = await _pollsRepo.CreateAsync(request);
                     await _topicRepo.MarkProcessedAsync(topic.Id);
 
                     _logger.LogInformation(
-                        "[PollGenerationJob] Created generated poll {PollId} from topic {TopicId}. SourceUrl={SourceUrl}. SimilarPollId={SimilarPollId}. ReviewNotes={ReviewNotes}",
-                        pollId,
-                        topic.Id,
-                        topic.SourceUrl,
-                        generated.SimilarPollId,
-                        generated.ReviewNotes);
+                        "[PollGenerationJob] Created generated poll {PollId} from topic {TopicId}. Disposition={Disposition} Rules={RulesVersion}",
+                        pollId, topic.Id, decision.Disposition, decision.RulesVersion);
 
                     created++;
                 }
@@ -107,11 +115,7 @@ namespace BackendAPI.Jobs
                 {
                     _logger.LogError(
                         ex,
-                        "[PollGenerationJob] Failed to save generated poll for topic {TopicId} '{Title}'. Question={Question}. SourceUrl={SourceUrl}",
-                        topic.Id,
-                        topic.Title,
-                        generated.Proposition,
-                        topic.SourceUrl);
+                        "[PollGenerationJob] Failed to save generated poll for topic {TopicId}", topic.Id);
                 }
             }
 

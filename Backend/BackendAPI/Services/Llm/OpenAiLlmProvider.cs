@@ -78,8 +78,7 @@ namespace BackendAPI.Services.Llm
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    var err = await response.Content.ReadAsStringAsync(ct);
-                    _logger.LogWarning("[OpenAI] HTTP {Status}: {Error}", (int)response.StatusCode, err);
+                    _logger.LogWarning("[OpenAI] HTTP {Status}; response body omitted", (int)response.StatusCode);
                     return null;
                 }
 

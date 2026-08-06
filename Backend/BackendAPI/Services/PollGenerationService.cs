@@ -8,10 +8,11 @@ namespace BackendAPI.Services;
 public class PollGenerationService : IPollGenerationService
 {
     private readonly IEnumerable<ILlmProvider> _providers;
-    private readonly IPollsRepository _pollsRepo;
     private readonly IConfiguration _config;
     private readonly ILogger<PollGenerationService> _logger;
 
+    public const string GenerationPromptVersion = "generation-prompt-v1";
+    public const string GenerationSchemaVersion = "generation-schema-v1";
     internal const string ResponseSchema = """
     {"type":"object","additionalProperties":false,"required":["proposition","category","sourceGrounding","quality"],"properties":{"proposition":{"type":"string"},"category":{"type":"string"},"sourceGrounding":{"type":"object","additionalProperties":false,"required":["rationale","evidence"],"properties":{"rationale":{"type":"string"},"evidence":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string"}}}},"quality":{"type":"object","additionalProperties":false,"required":["isSelfContained","isNeutral","isBinary","isGrounded","confidence","isAmbiguous","ambiguityReason"],"properties":{"isSelfContained":{"type":"boolean"},"isNeutral":{"type":"boolean"},"isBinary":{"type":"boolean"},"isGrounded":{"type":"boolean"},"confidence":{"type":"number","minimum":0,"maximum":1},"isAmbiguous":{"type":"boolean"},"ambiguityReason":{"type":["string","null"]}}}}}
     """;
@@ -23,9 +24,9 @@ public class PollGenerationService : IPollGenerationService
         NumberHandling = JsonNumberHandling.Strict
     };
 
-    public PollGenerationService(IEnumerable<ILlmProvider> providers, IPollsRepository pollsRepo,
-        IConfiguration config, ILogger<PollGenerationService> logger)
-        => (_providers, _pollsRepo, _config, _logger) = (providers, pollsRepo, config, logger);
+    public PollGenerationService(IEnumerable<ILlmProvider> providers, IConfiguration config,
+        ILogger<PollGenerationService> logger)
+        => (_providers, _config, _logger) = (providers, config, logger);
 
     public async Task<PropositionGenerationResult?> GenerateAsync(TrendingTopic topic)
     {
@@ -56,12 +57,7 @@ public class PollGenerationService : IPollGenerationService
         result.Category = CategoryCatalog.NormalizeName(result.Category);
         result.SourceTitle = topic.Title;
         result.SourceUrl = topic.SourceUrl;
-        var similar = await FindSimilarPollAsync(result.Proposition, topic.SourceUrl);
-        if (similar is not null)
-        {
-            result.SimilarPollId = similar.Id;
-            result.QualityWarnings.Add($"Similar generated poll detected: #{similar.Id}.");
-        }
+        result.ProviderName = provider.ProviderName;
         return result;
     }
 
@@ -95,31 +91,8 @@ public class PollGenerationService : IPollGenerationService
         reason = "";
         if (string.IsNullOrWhiteSpace(r.Proposition) || r.Proposition.Length is < 20 or > 160 || !r.Proposition.EndsWith('?')) reason = "invalid proposition length or form";
         else if (r.Grounding is null || string.IsNullOrWhiteSpace(r.Grounding.Rationale) || r.Grounding.Rationale.Length > 300 || r.Grounding.Evidence is null || r.Grounding.Evidence.Count is < 1 or > 3 || r.Grounding.Evidence.Any(e => string.IsNullOrWhiteSpace(e) || e.Length > 240)) reason = "invalid source grounding";
-        else if (r.Quality is null || r.Quality.Confidence is < 0 or > 1 || r.Quality.IsAmbiguous || !r.Quality.IsSelfContained || !r.Quality.IsNeutral || !r.Quality.IsBinary || !r.Quality.IsGrounded) reason = "negative or ambiguous quality metadata";
-        else if (ContainsForbiddenFraming(r.Proposition)) reason = "survey, preference, or prediction framing";
-        else if (r.Proposition.Count(c => c == '?') != 1 || r.Proposition.Contains(" and should ", StringComparison.OrdinalIgnoreCase)) reason = "compound proposition";
+        else if (r.Quality is null || r.Quality.Confidence is < 0 or > 1) reason = "invalid provider metadata";
         return reason.Length == 0;
     }
-
-    private static bool ContainsForbiddenFraming(string value)
-    {
-        var text = value.ToLowerInvariant();
-        return new[] { "which ", "favorite", "favourite", "most important", "choose ", "who will", "what will", "will it", "will the" }.Any(text.Contains);
-    }
-
-    private async Task<Poll?> FindSimilarPollAsync(string proposition, string? sourceUrl)
-    {
-        var recent = await _pollsRepo.GetRecentGeneratedAsync();
-        var normalized = NormalizeText(proposition);
-        return recent.FirstOrDefault(p => (!string.IsNullOrWhiteSpace(sourceUrl) && sourceUrl.Equals(p.SourceUrl, StringComparison.OrdinalIgnoreCase)) || Similarity(normalized, NormalizeText(p.Question)) >= .72);
-    }
-
-    private static double Similarity(string a, string b)
-    {
-        var x = a.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
-        var y = b.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
-        return x.Count == 0 || y.Count == 0 ? 0 : (double)x.Intersect(y).Count() / x.Union(y).Count();
-    }
-    private static string NormalizeText(string value) => string.Join(' ', new string(value.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : ' ').ToArray()).Split(' ', StringSplitOptions.RemoveEmptyEntries));
     private static bool IsKnownCategory(string? value) => !string.IsNullOrWhiteSpace(value) && CategoryCatalog.All.Any(c => c.Name.Equals(value, StringComparison.OrdinalIgnoreCase) || c.Slug.Equals(value, StringComparison.OrdinalIgnoreCase));
 }
