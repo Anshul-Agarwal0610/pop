@@ -166,14 +166,19 @@ using (var scope = app.Services.CreateScope())
     recurringJobs.AddOrUpdate<IngestionJob>(
         "ingest-trending-topics",
         job => job.RunAsync(),
-        "*/30 * * * *");
+        builder.Configuration["Ingestion:Cron"] ?? "*/30 * * * *");
 
     // US-08: Generate polls from unprocessed topics every 35 minutes
     // (offset by 5 min so ingestion always runs first)
     recurringJobs.AddOrUpdate<PollGenerationJob>(
         "generate-polls-from-topics",
         job => job.RunAsync(),
-        "5/35 * * * *");
+        builder.Configuration["PollGeneration:Cron"] ?? "5/35 * * * *");
+
+    if (builder.Configuration.GetValue<bool>("PollGeneration:RunOnStartup"))
+    {
+        BackgroundJob.Enqueue<PollGenerationJob>(job => job.RunAsync());
+    }
 
     recurringJobs.AddOrUpdate<RetentionNotificationJob>(
         "create-retention-notifications",

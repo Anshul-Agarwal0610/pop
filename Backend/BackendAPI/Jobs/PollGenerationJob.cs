@@ -1,6 +1,7 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
+using Hangfire;
 
 namespace BackendAPI.Jobs;
 
@@ -15,6 +16,7 @@ public class PollGenerationJob
     public PollGenerationJob(ITrendingTopicRepository topics, IPollsRepository polls, IPollGenerationService generator,
         IConfiguration config, ILogger<PollGenerationJob> logger) => (_topics, _polls, _generator, _config, _logger) = (topics, polls, generator, config, logger);
 
+    [DisableConcurrentExecution(timeoutInSeconds: 600)]
     public async Task RunAsync()
     {
         var limit = Math.Max(1, _config.GetValue("PollGen:RetryLimit", 3));

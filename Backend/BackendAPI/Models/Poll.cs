@@ -75,6 +75,8 @@ namespace BackendAPI.Models
         public bool IsAIGenerated { get; set; }
         public string GenerationMethod { get; set; } = GenerationMethods.ManualReview;
         public long? TrendingTopicId { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool AutoPublish { get; set; }
         public bool IsPrivate { get; set; }
         public bool IsWellness { get; set; }
         public string? ModerationReason { get; set; }
@@ -149,6 +151,8 @@ namespace BackendAPI.Models
         public string SourceType { get; set; } = string.Empty;
         public string SourceUrl { get; set; } = string.Empty;
         public string? ThumbnailUrl { get; set; }
+        public string? Publisher { get; set; }
+        public DateTime? PublishedAt { get; set; }
         public string Category { get; set; } = "General";
         public DateTime FetchedAt { get; set; }
         public bool IsProcessed { get; set; }
@@ -161,7 +165,5 @@ namespace BackendAPI.Models
         public string? LastFailureReason { get; set; }
         public string? LastGenerationMethod { get; set; }
         public long? GeneratedPollId { get; set; }
-        public string? Publisher { get; set; }
-        public DateTime? PublishedAt { get; set; }
     }
 }

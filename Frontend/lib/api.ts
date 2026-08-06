@@ -6,6 +6,7 @@
 
 import { getToken } from "@/lib/auth"
 import { API_BASE_URL } from "@/lib/config"
+import type { PollSide } from "@/lib/poll-sides"
 
 // ── Raw backend shapes ────────────────────────────────────────────────────────
 
@@ -13,6 +14,7 @@ export interface ApiPollOption {
   id: number
   pollId: number
   text: string
+  side?: PollSide | null
   voteCount: number
   votePercentage: number
 }

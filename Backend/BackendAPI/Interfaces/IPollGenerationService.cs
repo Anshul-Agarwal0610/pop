@@ -11,6 +11,21 @@ public sealed record PollGenerationOutcome(GenerationOutcome Outcome, Propositio
 
 public interface IPollGenerationService { Task<PollGenerationOutcome> GenerateAsync(TrendingTopic topic); }
 
+/// <summary>Compatibility model retained for the existing topic-enrichment fallback.</summary>
+public sealed class GeneratedPoll
+{
+    public string Question { get; set; } = string.Empty;
+    public List<string> Options { get; set; } = [];
+    public string Category { get; set; } = "General";
+    public List<string> QualityWarnings { get; set; } = [];
+    public long? SimilarPollId { get; set; }
+    public string? SourceTitle { get; set; }
+    public string? SourceUrl { get; set; }
+    public string ReviewNotes => QualityWarnings.Count == 0
+        ? "AI review: passed automated quality checks."
+        : $"AI review: {string.Join(" ", QualityWarnings)}";
+}
+
 public sealed class PropositionGenerationResult
 {
     [JsonPropertyName("proposition")] public required string Proposition { get; set; }
