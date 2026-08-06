@@ -14,8 +14,10 @@ import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
 import { toast } from "sonner"
 
-export function PollFeed() {
-  const [selectedCategory, setSelectedCategory] = useState("All")
+export function PollFeed({ initialCategory }: { initialCategory?: string | null }) {
+  const normalizedInitial = initialCategory ? normalizeCategoryName(initialCategory) : "All"
+  const validInitial = FEED_CATEGORIES.includes(normalizedInitial as (typeof FEED_CATEGORIES)[number]) ? normalizedInitial : "All"
+  const [selectedCategory, setSelectedCategory] = useState(validInitial)
   const feedCategory = selectedCategory === "All" ? undefined : selectedCategory
   const { polls, loading, error, castVote, loadMore, hasMore } = usePolls(feedCategory)
   const [currentIndex, setCurrentIndex]   = useState(0)
@@ -28,11 +30,7 @@ export function PollFeed() {
   const hasMorePolls = currentIndex < polls.length
 
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("category")
-    if (requested) {
-      setSelectedCategory(normalizeCategoryName(requested))
-      return
-    }
+    if (initialCategory) return
     const saved = window.localStorage.getItem("poll-feed-category")
     if (!saved) return
     if (saved === "All") {
@@ -44,7 +42,7 @@ export function PollFeed() {
     if (FEED_CATEGORIES.includes(normalized as (typeof FEED_CATEGORIES)[number])) {
       setSelectedCategory(normalized)
     }
-  }, [])
+  }, [initialCategory])
 
   const handleCategorySelect = useCallback((category: string) => {
     setSelectedCategory(category)
@@ -136,7 +134,7 @@ export function PollFeed() {
       </motion.div>
 
       {/* Card Stack */}
-      <div className="relative mx-auto flex-1 w-full max-w-md px-0 md:px-4">
+      <div className="relative mx-auto min-h-0 w-full max-w-md flex-1 px-0 sm:px-4">
         <AnimatePresence mode="popLayout">
           {hasMorePolls ? (
             polls.slice(currentIndex, currentIndex + 2)

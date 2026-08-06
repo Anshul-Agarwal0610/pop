@@ -239,6 +239,10 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) { super(message); this.name = "ApiError" }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -251,7 +255,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new Error(`API ${res.status}: ${text}`)
+    throw new ApiError(res.status, `API ${res.status}: ${text}`)
   }
 
   return res.json() as Promise<T>
@@ -477,6 +481,30 @@ export interface ApiUserBadge {
   awardedAt: string
 }
 
+export interface ApiProgression {
+  xp: number; level: number; currentLevelStartXp: number; nextLevelXp: number
+  xpIntoLevel: number; xpRequiredForLevel: number; progressPercent: number
+  streak: number; todayActivityComplete: boolean; lastVoteDate: string | null
+}
+
+export interface ApiAchievementProgress {
+  badgeId: number; code: string; name: string; description: string; icon: string
+  ruleType: string; currentValue: number; threshold: number; progressPercent: number; rewardXp: number
+}
+
+export interface ApiAchievementOverview {
+  recentlyEarned: ApiUserBadge[]; nextAchievable: ApiAchievementProgress[]; allEarned: boolean
+}
+
+export interface ApiWeeklyLeaderboardEntry {
+  userId: number; username: string; displayName: string; rank: number; score: number; scoreUnit: string
+}
+
+export interface ApiWeeklyLeaderboardResponse {
+  weekStart: string; weekEnd: string; entries: ApiWeeklyLeaderboardEntry[]
+  currentUser: ApiWeeklyLeaderboardEntry | null; scoreUnit: string
+}
+
 export interface ApiVoteHistoryItem {
   pollId: number
   question: string
@@ -512,6 +540,14 @@ export const usersApi = {
 
   resetCategoryPreferences: () =>
     request<void>("/api/users/me/preferences/categories", { method: "DELETE" }),
+
+  getMyProgression: () => request<ApiProgression>("/api/users/me/progression"),
+  getWeeklyLeaderboard: (count = 5) =>
+    request<ApiWeeklyLeaderboardResponse>(`/api/users/leaderboard/weekly?count=${count}`),
+}
+
+export const achievementsApi = {
+  getMyOverview: () => request<ApiAchievementOverview>("/api/achievements/me/overview"),
 }
 
 // ── Auth endpoints ────────────────────────────────────────────────────────────
