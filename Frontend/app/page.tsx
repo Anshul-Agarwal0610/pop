@@ -112,6 +112,8 @@ export default function HomePage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-4 py-6">
+        {isAuthenticated && <div className="mb-6 flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-border/50"><div><p className="font-semibold">Achievement collection</p><p className="text-sm text-muted-foreground">See earned badges and goals in progress.</p></div><Button asChild variant="outline"><Link href="/achievements">View achievements</Link></Button></div>}
+
         <motion.div
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"

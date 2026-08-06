@@ -5,6 +5,7 @@ import { GoogleOAuthProvider } from "@react-oauth/google"
 import { AuthProvider } from "@/contexts/auth-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
+import { AchievementCelebrationProvider } from "@/components/achievements/celebration-provider"
 import { AuthRouteGuard } from "@/components/auth/auth-route-guard"
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -20,7 +21,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           disableTransitionOnChange
         >
           <Suspense fallback={null}>
-            <AuthRouteGuard>{children}</AuthRouteGuard>
+            <AuthRouteGuard><AchievementCelebrationProvider>{children}</AchievementCelebrationProvider></AuthRouteGuard>
           </Suspense>
           <Toaster />
         </ThemeProvider>

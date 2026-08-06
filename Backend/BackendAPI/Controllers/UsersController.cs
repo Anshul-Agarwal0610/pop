@@ -11,11 +11,16 @@ namespace BackendAPI.Controllers
     public class UsersController : ControllerBase
     {
         private readonly IUsersRepository _usersRepo;
+        private readonly IAchievementsRepository _achievementsRepo;
 
-        public UsersController(IUsersRepository usersRepo)
+        public UsersController(IUsersRepository usersRepo, IAchievementsRepository achievementsRepo)
         {
             _usersRepo = usersRepo;
+            _achievementsRepo = achievementsRepo;
         }
+
+        [HttpGet("{id}/achievements")]
+        public async Task<IActionResult> GetAchievements(long id) => Ok(await _achievementsRepo.GetPublicAchievementsAsync(id));
 
         // ── Helper ────────────────────────────────────────────────────────────
         private long? CurrentUserId()
