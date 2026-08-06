@@ -9,6 +9,7 @@ IF COL_LENGTH('dbo.AchievementBadges','SortOrder') IS NULL ALTER TABLE dbo.Achie
 IF COL_LENGTH('dbo.AchievementBadges','IsActive') IS NULL ALTER TABLE dbo.AchievementBadges ADD IsActive BIT NOT NULL CONSTRAINT DF_AchievementBadges_Active DEFAULT 1;
 IF COL_LENGTH('dbo.UserBadges','CelebrationClaimedAt') IS NULL ALTER TABLE dbo.UserBadges ADD CelebrationClaimedAt DATETIME2 NULL;
 IF COL_LENGTH('dbo.Users','SelectedTitleBadgeId') IS NULL ALTER TABLE dbo.Users ADD SelectedTitleBadgeId BIGINT NULL;
+GO
 
 IF NOT EXISTS(SELECT 1 FROM sys.foreign_keys WHERE name='FK_Users_SelectedTitleBadge') ALTER TABLE dbo.Users ADD CONSTRAINT FK_Users_SelectedTitleBadge FOREIGN KEY(SelectedTitleBadgeId) REFERENCES dbo.AchievementBadges(Id);
 IF NOT EXISTS(SELECT 1 FROM sys.check_constraints WHERE name='CK_AchievementBadges_Category') ALTER TABLE dbo.AchievementBadges ADD CONSTRAINT CK_AchievementBadges_Category CHECK(Category IN ('Voting','Streak','Challenge','Exploration'));
