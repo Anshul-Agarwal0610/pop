@@ -42,6 +42,10 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Votes (PollId, OptionId, UserId, CreatedAt)
                       OUTPUT inserted.Id VALUES (@PollId, @OptionId, @UserId, @UtcNow)",
                     new { request.PollId, request.OptionId, UserId = userId, UtcNow = utcNow }, transaction);
+                await conn.ExecuteAsync(@"
+                    INSERT INTO XpEvents (UserId, Amount, SourceType, PollId, OccurredAt, IsValid, IsLeaderboardEligible)
+                    VALUES (@UserId, @XpAwarded, 'Vote', @PollId, @UtcNow, 1, 1)",
+                    new { UserId = userId, XpAwarded = xpAwarded, request.PollId, UtcNow = utcNow }, transaction);
                 await conn.ExecuteAsync(
                     "UPDATE PollOptions SET VoteCount = VoteCount + 1 WHERE Id = @OptionId AND PollId = @PollId",
                     new { request.OptionId, request.PollId }, transaction);

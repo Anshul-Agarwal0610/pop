@@ -102,6 +102,12 @@ public class AchievementsRepository(DapperContext context) : IAchievementsReposi
                     OUTPUT inserted.Id SELECT @UserId,@BadgeId,@UtcNow WHERE NOT EXISTS(SELECT 1 FROM UserBadges WITH (UPDLOCK,HOLDLOCK) WHERE UserId=@UserId AND BadgeId=@BadgeId);",
                     new { UserId = userId, BadgeId = b.Id, UtcNow = utcNow }, tx);
                 if (id is null) continue;
+                if (b.RewardXp > 0)
+                    await conn.ExecuteAsync(@"
+                        INSERT INTO XpEvents (UserId, Amount, SourceType, BadgeId, OccurredAt, IsValid, IsLeaderboardEligible)
+                        VALUES (@UserId, @RewardXp, 'Achievement', @BadgeId, @UtcNow, 1, @Eligible)",
+                        new { UserId = userId, b.RewardXp, BadgeId = b.Id, UtcNow = utcNow,
+                            Eligible = b.RuleType != AchievementRuleType.PollCreation }, tx);
                 awarded.Add(new UserBadge { Id=id.Value,UserId=userId,BadgeId=b.Id,Code=b.Code,Name=b.Name,Description=b.Description,Icon=b.Icon,RewardXp=b.RewardXp,RewardTitle=b.RewardTitle,AwardedAt=utcNow });
             }
             var xp = awarded.Sum(x => x.RewardXp);

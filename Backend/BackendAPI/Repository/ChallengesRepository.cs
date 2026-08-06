@@ -129,6 +129,10 @@ public class ChallengesRepository : IChallengesRepository
                     awardedXp[challenge.Id] = challenge.RewardXp;
                     await conn.ExecuteAsync("UPDATE Users SET Xp=Xp+@RewardXp WHERE Id=@UserId",
                         new { challenge.RewardXp, UserId = userId }, transaction);
+                    await conn.ExecuteAsync(@"
+                        INSERT INTO XpEvents (UserId, Amount, SourceType, ChallengeId, OccurredAt, IsValid, IsLeaderboardEligible)
+                        VALUES (@UserId, @RewardXp, 'Challenge', @ChallengeId, @UtcNow, 1, 1)",
+                        new { UserId = userId, challenge.RewardXp, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
                     if (challenge.RewardBadgeId.HasValue)
                         await conn.ExecuteAsync(@"IF NOT EXISTS (SELECT 1 FROM UserBadges WHERE UserId=@UserId AND BadgeId=@BadgeId)
                             INSERT UserBadges(UserId, BadgeId, AwardedAt) VALUES(@UserId, @BadgeId, @UtcNow)",

@@ -37,6 +37,32 @@ namespace BackendAPI.Controllers
             return Ok(users);
         }
 
+        // Competition ranking: ties share a rank (1, 2, 2, 4), then username and id
+        // provide stable display order. Weekly boundaries are supplied by the server in UTC.
+        [HttpGet("leaderboard/rankings")]
+        public async Task<IActionResult> GetRankings(
+            [FromQuery] string period = "weekly",
+            [FromQuery] int limit = 20,
+            [FromQuery] int offset = 0)
+        {
+            if (!TryParsePeriod(period, out var parsed))
+                return BadRequest(new { message = "period must be 'weekly' or 'allTime'." });
+
+            limit = Math.Clamp(limit, 1, 100);
+            offset = Math.Max(0, offset);
+            return Ok(await _usersRepo.GetRankingsAsync(parsed, limit, offset, CurrentUserId(), DateTime.UtcNow));
+        }
+
+        internal static bool TryParsePeriod(string value, out LeaderboardPeriod period)
+        {
+            if (value.Equals("weekly", StringComparison.OrdinalIgnoreCase))
+            { period = LeaderboardPeriod.Weekly; return true; }
+            if (value.Equals("allTime", StringComparison.OrdinalIgnoreCase) || value.Equals("all-time", StringComparison.OrdinalIgnoreCase))
+            { period = LeaderboardPeriod.AllTime; return true; }
+            period = default;
+            return false;
+        }
+
         // GET /api/users/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(long id)
