@@ -13,6 +13,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
 using BackendAPI.Analytics;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,6 +54,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization(options =>
     options.AddPolicy("Admin", policy => policy.RequireRole("Admin")));
 
+string RatePartition(HttpContext context) => context.User.FindFirst("sub")?.Value is { } user
+    ? $"user:{user}" : $"guest:{context.Connection.RemoteIpAddress?.MapToIPv6()}";
+void AddFixed(RateLimiterOptions options, string name, int authenticated, int anonymous, int seconds) =>
+    options.AddPolicy(name, context => RateLimitPartition.GetFixedWindowLimiter(RatePartition(context), _ => new()
+    {
+        PermitLimit = context.User.Identity?.IsAuthenticated == true ? authenticated : anonymous,
+        Window = TimeSpan.FromSeconds(seconds), QueueLimit = 0, AutoReplenishment = true
+    }));
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, _) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retry) ? Math.Ceiling(retry.TotalSeconds).ToString() : "60";
+        await context.HttpContext.Response.WriteAsJsonAsync(new { code = "multiplayer_rate_limited" });
+    };
+    void Policy(string name, int authDefault, int guestDefault) => AddFixed(options, name,
+        builder.Configuration.GetValue($"Multiplayer:RateLimits:{name}:Authenticated", authDefault),
+        builder.Configuration.GetValue($"Multiplayer:RateLimits:{name}:Anonymous", guestDefault),
+        builder.Configuration.GetValue($"Multiplayer:RateLimits:{name}:WindowSeconds", 60));
+    Policy("multiplayer-invite-create", 20, 4);
+    Policy("multiplayer-invite-lookup", 40, 10);
+    Policy("multiplayer-join", 30, 6);
+    Policy("multiplayer-vote", 120, 30);
+    Policy("multiplayer-notification", 60, 10);
+});
+
 // ── Dapper context ────────────────────────────────────────────────────────
 builder.Services.AddSingleton<DapperContext>();
 
@@ -71,6 +100,8 @@ builder.Services.AddScoped<IRewardRepository,        RewardRepository>();
 builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
+builder.Services.AddScoped<IMultiplayerTrustRepository, MultiplayerTrustRepository>();
+builder.Services.AddSingleton<IMultiplayerRewardRiskEvaluator, MultiplayerRewardRiskEvaluator>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
@@ -152,6 +183,7 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 
@@ -186,3 +218,5 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+public partial class Program { }
