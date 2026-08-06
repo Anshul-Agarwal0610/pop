@@ -2,16 +2,6 @@ import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, Hea
 
 export const navigationItems = [
   {
-    label: "Play",
-    href: "/play",
-    icon: Gamepad2,
-  },
-  {
-    label: "Games",
-    href: "/games",
-    icon: Gamepad2,
-  },
-  {
     label: "Home",
     href: "/",
     icon: Home,
@@ -57,6 +47,16 @@ export const navigationItems = [
     href: "/profile",
     icon: User,
   },
+  {
+    label: "Play",
+    href: "/play",
+    icon: Gamepad2,
+  },
+  {
+    label: "Games",
+    href: "/games",
+    icon: Gamepad2,
+  },
 ] as const
 
 export const mobileNavigationItems = navigationItems.filter(item =>
@@ -65,8 +65,21 @@ export const mobileNavigationItems = navigationItems.filter(item =>
 
 export type NavigationItem = (typeof navigationItems)[number]
 
-export const mobilePrimaryNavigation = navigationItems.slice(0, 4)
-export const mobileSecondaryNavigation = navigationItems.slice(4)
+const mobilePrimaryHrefs = ["/", "/play", "/games", "/polls"]
+const sidebarBottomHrefs = ["/play", "/games"]
+
+export const mobilePrimaryNavigation = mobilePrimaryHrefs.map(
+  href => navigationItems.find(item => item.href === href)!
+)
+export const mobileSecondaryNavigation = navigationItems.filter(
+  item => !mobilePrimaryHrefs.includes(item.href)
+)
+export const sidebarPrimaryNavigation = navigationItems.filter(
+  item => !sidebarBottomHrefs.includes(item.href)
+)
+export const sidebarBottomNavigation = sidebarBottomHrefs.map(
+  href => navigationItems.find(item => item.href === href)!
+)
 
 export function isNavigationItemActive(pathname: string, href: string) {
   return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
