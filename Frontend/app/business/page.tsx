@@ -1,7 +1,6 @@
 "use client"
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import {
   BarChart3,
   BriefcaseBusiness,
@@ -27,8 +26,7 @@ import {
 import { cn } from "@/lib/utils"
 
 export default function BusinessPage() {
-  const router = useRouter()
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated } = useAuth()
   const [accounts, setAccounts] = useState<ApiBusinessAccount[]>([])
   const [campaigns, setCampaigns] = useState<ApiBusinessCampaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null)
@@ -91,13 +89,8 @@ export default function BusinessPage() {
   }, [])
 
   useEffect(() => {
-    if (authLoading) return
-    if (!isAuthenticated) {
-      router.push("/login?message=Sign in to manage business campaigns&redirect=/business")
-      return
-    }
-    loadBusiness()
-  }, [authLoading, isAuthenticated, loadBusiness, router])
+    if (isAuthenticated) loadBusiness()
+  }, [isAuthenticated, loadBusiness])
 
   useEffect(() => {
     loadAnalytics(selectedCampaignId)
@@ -216,12 +209,12 @@ export default function BusinessPage() {
               Create sponsored polls, review performance, and export campaign results.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button className="gap-2" disabled={!selectedCampaign || exporting} onClick={exportCsv} variant="outline">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <Button className="min-w-0 flex-1 gap-2 sm:flex-none" disabled={!selectedCampaign || exporting} onClick={exportCsv} variant="outline">
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Export CSV
             </Button>
-            <Button className="gap-2" onClick={loadBusiness} variant="outline">
+            <Button className="min-w-0 flex-1 gap-2 sm:flex-none" onClick={loadBusiness} variant="outline">
               <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
@@ -261,15 +254,15 @@ export default function BusinessPage() {
             </div>
           </form>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[280px_1fr]">
-            <aside className="space-y-4">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+            <aside className="min-w-0 space-y-4">
               <div className="rounded-lg border border-border/60 bg-card p-4">
                 <p className="text-xs text-muted-foreground">Account</p>
                 <p className="mt-1 font-semibold text-foreground">{selectedAccount?.name}</p>
                 <p className="text-sm text-muted-foreground">{selectedAccount?.websiteUrl ?? "No website"}</p>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 xl:grid-cols-1">
+              <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-3 xl:grid-cols-1">
                 <Metric label="Impressions" value={totals.impressions} />
                 <Metric label="Votes" value={totals.votes} />
                 <Metric label="Completions" value={totals.completions} />
@@ -304,15 +297,15 @@ export default function BusinessPage() {
               </div>
             </aside>
 
-            <section className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-4">
+            <section className="min-w-0 space-y-4">
+              <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 md:grid-cols-4">
                 <Metric label="Campaign impressions" value={analytics?.campaign.impressions ?? 0} />
                 <Metric label="Campaign votes" value={analytics?.campaign.votes ?? 0} />
                 <Metric label="Completions" value={analytics?.campaign.completions ?? 0} />
                 <Metric label="Completion rate" value={analytics?.campaign.completionRate ?? 0} suffix="%" />
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+              <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
                 <div className="rounded-lg border border-border/60 bg-card p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <h2 className="flex items-center gap-2 font-semibold text-foreground">
@@ -354,7 +347,7 @@ export default function BusinessPage() {
                         required
                         value={objective}
                       />
-                      <Button className="gap-2" disabled={saving}>
+                      <Button className="w-full gap-2 sm:w-auto" disabled={saving}>
                         <Plus className="h-4 w-4" />
                         Create campaign
                       </Button>
@@ -381,7 +374,7 @@ export default function BusinessPage() {
                         required
                         value={pollOptions}
                       />
-                      <Button className="gap-2" disabled={!selectedCampaign || saving}>
+                      <Button className="w-full gap-2 sm:w-auto" disabled={!selectedCampaign || saving}>
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                         Submit for review
                       </Button>
@@ -427,7 +420,7 @@ function PollAnalyticsRow({
             {poll.moderationStatus} - {new Date(poll.createdAt).toLocaleDateString()}
           </p>
         </div>
-        <div className="grid grid-cols-4 gap-2 text-right text-xs">
+        <div className="grid w-full grid-cols-2 gap-2 text-left text-xs sm:w-auto sm:grid-cols-4 sm:text-right">
           <MiniMetric label="Imp." value={poll.impressions} />
           <MiniMetric label="Votes" value={poll.votes} />
           <MiniMetric label="Done" value={poll.completions} />
@@ -438,8 +431,8 @@ function PollAnalyticsRow({
         {options.map((option) => (
           <div key={option.optionId}>
             <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-              <span className="truncate text-muted-foreground">{option.optionText}</span>
-              <span className="font-medium text-foreground">
+              <span className="min-w-0 break-words text-muted-foreground">{option.optionText}</span>
+              <span className="shrink-0 text-right font-medium text-foreground">
                 {option.voteCount} votes - {Math.round(option.votePercentage)}%
               </span>
             </div>

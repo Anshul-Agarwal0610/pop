@@ -42,6 +42,24 @@ public class AchievementsRepository(DapperContext context) : IAchievementsReposi
             TotalCount = items.Count, SelectedTitle = title?.SelectedTitle, SelectedTitleBadgeId = title?.SelectedTitleBadgeId };
     }
 
+    public async Task<AchievementOverview> GetOverviewAsync(long userId)
+    {
+        var collection = await GetCollectionAsync(userId);
+        var recent = (await GetUserBadgesAsync(userId)).Take(3).ToList();
+        var next = collection.Achievements
+            .Where(item => item.Status != AchievementStatus.Earned && item.CurrentProgress.HasValue && item.TargetProgress.HasValue)
+            .OrderByDescending(item => item.ProgressPercent ?? 0)
+            .ThenBy(item => item.TargetProgress!.Value - item.CurrentProgress!.Value)
+            .Take(3)
+            .Select(item => new AchievementProgress
+            {
+                BadgeId = item.BadgeId, Code = item.Code, Name = item.Name, Description = item.Description,
+                Icon = item.Icon, CurrentValue = item.CurrentProgress!.Value, Threshold = item.TargetProgress!.Value,
+                ProgressPercent = item.ProgressPercent ?? 0, RewardXp = item.RewardXp
+            }).ToList();
+        return new AchievementOverview { RecentlyEarned = recent, NextAchievable = next, AllEarned = collection.EarnedCount == collection.TotalCount };
+    }
+
     public async Task<PublicAchievementsResponse> GetPublicAchievementsAsync(long userId)
     {
         using var conn = context.CreateConnection();

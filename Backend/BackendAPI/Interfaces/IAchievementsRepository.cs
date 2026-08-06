@@ -12,5 +12,6 @@ namespace BackendAPI.Interfaces
         Task<IEnumerable<AchievementCelebration>> ClaimPendingCelebrationsAsync(long userId, DateTime utcNow);
         Task<bool> SelectTitleAsync(long userId, long badgeId);
         Task ClearTitleAsync(long userId);
+        Task<AchievementOverview> GetOverviewAsync(long userId);
     }
 }

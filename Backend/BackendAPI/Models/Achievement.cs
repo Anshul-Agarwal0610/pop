@@ -103,6 +103,26 @@ public class AchievementAwardResult
     public int BonusXpAwarded { get; set; }
 }
 
+public class AchievementProgress
+{
+    public long BadgeId { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Icon { get; set; } = string.Empty;
+    public int CurrentValue { get; set; }
+    public int Threshold { get; set; }
+    public double ProgressPercent { get; set; }
+    public int RewardXp { get; set; }
+}
+
+public class AchievementOverview
+{
+    public List<UserBadge> RecentlyEarned { get; set; } = [];
+    public List<AchievementProgress> NextAchievable { get; set; } = [];
+    public bool AllEarned { get; set; }
+}
+
 public static class AchievementRuleType
 {
     public const string VoteCount = "VoteCount";

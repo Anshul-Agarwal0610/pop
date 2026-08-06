@@ -10,10 +10,6 @@ import { useAuth } from "@/contexts/auth-context"
 import { usersApi, type ApiUser } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-function levelFromXp(xp: number) {
-  return Math.floor(xp / 1000) + 1
-}
-
 function rankTone(rank: number) {
   if (rank === 1) return "bg-amber-500 text-white"
   if (rank === 2) return "bg-slate-400 text-white"
@@ -154,7 +150,7 @@ export default function LeaderboardPage() {
                       {user.xp.toLocaleString()}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Level {user.level ?? levelFromXp(user.xp)} - {user.totalVotes.toLocaleString()} votes
+                      Level {user.progression.level} - {user.totalVotes.toLocaleString()} votes
                     </p>
                   </div>
                 </motion.div>

@@ -1,6 +1,7 @@
 "use client"
 
-import { Suspense, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
+import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { AppLogo } from "@/components/app-shell/app-logo"
@@ -8,6 +9,9 @@ import { LoginForm } from "@/components/auth/login-form"
 import { RegisterForm } from "@/components/auth/register-form"
 import { GoogleButton } from "@/components/auth/google-button"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { useAuth } from "@/contexts/auth-context"
+import { getSafeRedirect } from "@/lib/auth-redirect"
 
 type Tab = "login" | "register"
 
@@ -22,12 +26,17 @@ export default function LoginPage() {
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { isAuthenticated, isLoading } = useAuth()
   const [tab, setTab] = useState<Tab>("login")
   const message = searchParams.get("message")
-  const redirect = searchParams.get("redirect") ?? "/"
+  const redirect = getSafeRedirect(searchParams.get("redirect"))
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) router.replace(redirect)
+  }, [isAuthenticated, isLoading, redirect, router])
 
   function handleSuccess() {
-    router.push(redirect)
+    router.replace(redirect)
   }
 
   return (
@@ -44,7 +53,7 @@ function LoginContent() {
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl bg-card p-8 shadow-sm ring-1 ring-border/50">
+        <div className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50 sm:p-8">
           {message && (
             <div className="mb-5 rounded-xl bg-primary/10 px-4 py-3 text-sm font-medium text-primary">
               {message}
@@ -92,6 +101,10 @@ function LoginContent() {
 
           {/* Google */}
           <GoogleButton onSuccess={handleSuccess} />
+
+          <Button asChild variant="ghost" className="mt-3 w-full">
+            <Link href="/">Back to Home</Link>
+          </Button>
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
