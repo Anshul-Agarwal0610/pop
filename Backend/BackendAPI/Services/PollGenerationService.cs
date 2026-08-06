@@ -2,6 +2,7 @@ using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services.Llm;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 
 namespace BackendAPI.Services
 {
@@ -20,63 +21,55 @@ namespace BackendAPI.Services
     {
         private readonly IEnumerable<ILlmProvider> _providers;
         private readonly IPollsRepository _pollsRepo;
-        private readonly IConfiguration _config;
+        private readonly IOptionsMonitor<PollGenerationOptions> _options;
+        private readonly LlmProviderReadinessService _readiness;
         private readonly ILogger<PollGenerationService> _logger;
 
         public PollGenerationService(
             IEnumerable<ILlmProvider> providers,
             IPollsRepository pollsRepo,
-            IConfiguration config,
+            IOptionsMonitor<PollGenerationOptions> options,
+            LlmProviderReadinessService readiness,
             ILogger<PollGenerationService> logger)
         {
             _providers = providers;
             _pollsRepo = pollsRepo;
-            _config    = config;
+            _options   = options;
+            _readiness = readiness;
             _logger    = logger;
         }
 
         public async Task<GeneratedPoll?> GenerateAsync(TrendingTopic topic)
         {
-            var providerName = _config["PollGen:Provider"]?.ToLowerInvariant() ?? "custom";
-
-            var provider = _providers.FirstOrDefault(p =>
-                p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
-
-            if (provider == null)
+            if (!_options.CurrentValue.Enabled) return null;
+            var available = _readiness.GetStatus().Where(x => x.State == LlmProviderReadinessState.Available).Select(x => x.Provider).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var providers = _providers.ToDictionary(x => x.ProviderName, StringComparer.OrdinalIgnoreCase);
+            LlmProviderResult? generation = null;
+            var request = new LlmGenerationRequest("You are a poll generation assistant. Always respond with valid JSON only, no markdown.", BuildPrompt(topic));
+            foreach (var providerName in _options.CurrentValue.ProviderOrder)
             {
-                _logger.LogWarning(
-                    "[PollGen] Unknown provider '{Provider}'. Valid: openai, anthropic, custom",
-                    providerName);
-                return null;
+                if (!available.Contains(providerName) || !providers.TryGetValue(providerName, out var provider)) continue;
+                generation = await provider.GenerateAsync(request);
+                _logger.LogInformation("[PollGen] Attempt completed. Provider={Provider} Model={Model} Outcome={Outcome}", generation.Provider, generation.Model, generation.Outcome);
+                if (generation.Outcome == LlmProviderOutcome.TransientFailure) continue;
+                if (generation.Outcome == LlmProviderOutcome.PermanentFailure) return null;
+                break;
             }
-
-            _logger.LogInformation(
-                "[PollGen] Using provider '{Provider}' for topic '{Title}'",
-                providerName, topic.Title);
-
-            var prompt   = BuildPrompt(topic);
-            var rawJson  = await provider.CompleteAsync(prompt);
-
-            if (string.IsNullOrWhiteSpace(rawJson))
-            {
-                _logger.LogWarning(
-                    "[PollGen] Provider '{Provider}' returned empty response for '{Title}'",
-                    providerName, topic.Title);
-                return null;
-            }
-
-            var result = ParsePollJson(rawJson, topic.Category);
+            if (generation?.Outcome != LlmProviderOutcome.Success || string.IsNullOrWhiteSpace(generation.Content)) return null;
+            var result = ParsePollJson(generation.Content, topic.Category);
 
             if (result == null)
             {
                 _logger.LogWarning(
-                    "[PollGen] Could not parse response for topic {TopicId} '{Title}'. Provider={Provider}. Raw={Raw}",
-                    topic.Id, topic.Title, providerName, rawJson[..Math.Min(400, rawJson.Length)]);
+                    "[PollGen] Could not parse response for topic {TopicId} '{Title}'. Provider={Provider} Model={Model}",
+                    topic.Id, topic.Title, generation.Provider, generation.Model);
                 return null;
             }
 
             result.SourceTitle = topic.Title;
             result.SourceUrl = topic.SourceUrl;
+            result.GenerationProvider = generation.Provider;
+            result.GenerationModel = generation.Model;
             await ApplyQualityChecksAsync(result, topic);
 
             if (result.QualityWarnings.Any(warning => warning.StartsWith("Rejected:", StringComparison.OrdinalIgnoreCase)))
@@ -127,7 +120,8 @@ namespace BackendAPI.Services
                 - Question must be clear, specific, neutral, and 30-120 characters
                 - Question must be answerable by ordinary readers without niche expertise
                 - Do not use vague questions like "What do you think about this?"
-                - 2 to 4 options, mutually exclusive, short (under 40 chars each)
+                - Exactly 2 options, mutually exclusive and short
+                - This is a binary publication contract: options must be exactly ["Up", "Against"] in that order
                 - Options must not overlap in meaning and must not be duplicates
                 - Preserve the source topic meaning; do not invent facts beyond the summary
                 - Category must be one of the valid categories
@@ -224,6 +218,9 @@ namespace BackendAPI.Services
 
             if (poll.Options.Count is < 2 or > 4)
                 poll.QualityWarnings.Add("Rejected: poll must have 2 to 4 options.");
+
+            if (!BinaryPublicationValidator.IsPublishable(poll))
+                poll.QualityWarnings.Add("Rejected: publication requires exactly the options Up and Against.");
 
             if (poll.Options.GroupBy(NormalizeText).Any(group => group.Count() > 1))
                 poll.QualityWarnings.Add("Rejected: options contain duplicates.");

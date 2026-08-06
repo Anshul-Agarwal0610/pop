@@ -20,6 +20,8 @@ namespace BackendAPI.Interfaces
         public long? SimilarPollId { get; set; }
         public string? SourceTitle { get; set; }
         public string? SourceUrl { get; set; }
+        public string? GenerationProvider { get; set; }
+        public string? GenerationModel { get; set; }
         public string ReviewNotes =>
             QualityWarnings.Count == 0
                 ? "AI review: passed automated quality checks."

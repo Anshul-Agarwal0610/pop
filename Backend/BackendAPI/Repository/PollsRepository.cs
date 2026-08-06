@@ -337,7 +337,7 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
             return await conn.QueryAsync<Poll>(
-                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated
+                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated, GenerationProvider, GenerationModel
                   FROM Polls
                   WHERE IsAIGenerated = 1
                   ORDER BY CreatedAt DESC",
@@ -405,13 +405,15 @@ namespace BackendAPI.Repository
                          CreatedByUserId,
                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated,
                          IsPrivate, IsWellness, PollMode,
-                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt)
+                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
+                         GenerationProvider, GenerationModel)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated,
                          @IsPrivate, @IsWellness, @PollMode,
-                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL);
+                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
+                         @GenerationProvider, @GenerationModel);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     new
                     {
@@ -423,6 +425,8 @@ namespace BackendAPI.Repository
                         request.SourceUrl,
                         request.ThumbnailUrl,
                         request.IsAIGenerated,
+                        GenerationProvider = request.IsAIGenerated ? request.GenerationProvider : null,
+                        GenerationModel = request.IsAIGenerated ? request.GenerationModel : null,
                         IsPrivate = isPrivate,
                         IsWellness = isWellness,
                         PollMode = pollMode,

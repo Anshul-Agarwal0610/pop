@@ -81,6 +81,8 @@ namespace BackendAPI.Jobs
                         SourceUrl = topic.SourceUrl,
                         ThumbnailUrl = topic.ThumbnailUrl,
                         IsAIGenerated = true,
+                        GenerationProvider = generated.GenerationProvider,
+                        GenerationModel = generated.GenerationModel,
                         ModerationReason = generated.ReviewNotes
                     };
 

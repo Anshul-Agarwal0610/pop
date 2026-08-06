@@ -22,7 +22,9 @@ CREATE TABLE Polls (
     ExpiresAt   DATETIME2       NOT NULL,
     CreatedAt   DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
     TotalVotes  INT             NOT NULL DEFAULT 0,
-    CreatedByUserId BIGINT      NULL
+    CreatedByUserId BIGINT      NULL,
+    GenerationProvider NVARCHAR(50) NULL,
+    GenerationModel NVARCHAR(200) NULL
 );
 GO
 

@@ -1,19 +1,28 @@
-namespace BackendAPI.Interfaces
-{
-    /// <summary>
-    /// Abstraction over LLM providers (OpenAI, Anthropic, Custom VM).
-    /// Each provider receives a structured prompt and returns raw JSON string
-    /// that PollGenerationService will parse into a GeneratedPoll.
-    /// </summary>
-    public interface ILlmProvider
-    {
-        /// <summary>Provider identifier — must match PollGen:Provider config value.</summary>
-        string ProviderName { get; }
+namespace BackendAPI.Interfaces;
 
-        /// <summary>
-        /// Send the prompt to the LLM and return the raw response text.
-        /// Returns null if the call fails or the model returns an unusable response.
-        /// </summary>
-        Task<string?> CompleteAsync(string prompt, CancellationToken ct = default);
-    }
+public enum LlmProviderOutcome
+{
+    Success,
+    TransientFailure,
+    PermanentFailure
+}
+
+public sealed record LlmGenerationRequest(
+    string SystemInstruction,
+    string UserPrompt,
+    string? ResponseSchema = null,
+    double Temperature = 0.7,
+    int MaxTokens = 1024);
+
+public sealed record LlmProviderResult(
+    LlmProviderOutcome Outcome,
+    string? Content,
+    string? Reason,
+    string Provider,
+    string Model);
+
+public interface ILlmProvider
+{
+    string ProviderName { get; }
+    Task<LlmProviderResult> GenerateAsync(LlmGenerationRequest request, CancellationToken ct = default);
 }
