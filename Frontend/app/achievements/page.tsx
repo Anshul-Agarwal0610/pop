@@ -6,6 +6,7 @@ import { AchievementCard } from "@/components/achievements/achievement-card"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { achievementsApi, type ApiAchievementCollection } from "@/lib/api"
+import { ResultCardCollection } from "@/components/result-cards/result-card-collection"
 
 const categories = ["All","Voting","Streak","Challenge","Exploration"] as const
 export default function AchievementsPage() {
@@ -23,5 +24,6 @@ export default function AchievementsPage() {
       <label className="ml-auto text-sm">Profile title <select className="ml-2 rounded-md border bg-background p-2" value={data.selectedTitleBadgeId??""} onChange={e=>void selectTitle(e.target.value)}><option value="">No title</option>{data.achievements.filter(x=>x.status==="earned"&&x.rewardTitle).map(x=><option key={x.badgeId} value={x.badgeId}>{x.rewardTitle}</option>)}</select></label></div>
       <div className="mt-6 flex flex-wrap gap-2" role="tablist" aria-label="Achievement categories">{categories.map(x=><Button key={x} role="tab" aria-selected={category===x} variant={category===x?"default":"outline"} onClick={()=>setCategory(x)}>{x}</Button>)}</div>
       {visible.length===0?<p className="mt-8 rounded-xl bg-card p-8 text-center">No achievements in this category.</p>:<div className="mt-6 grid gap-4 sm:grid-cols-2">{visible.map(x=><AchievementCard key={x.badgeId} achievement={x}/>)}</div>}</>}
+    <section className="mt-12" aria-labelledby="memories-heading"><h2 id="memories-heading" className="text-2xl font-bold">Multiplayer memories</h2><p className="mb-5 mt-1 text-muted-foreground">Your shareable Clash, Relay, and Room moments.</p><ResultCardCollection /></section>
   </main></AppShell>
 }

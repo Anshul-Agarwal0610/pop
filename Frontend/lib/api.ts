@@ -749,3 +749,19 @@ export const authApi = {
   /** Fetch fresh profile data for the logged-in user. Requires auth token. */
   getMe: () => request<ApiUser>("/api/auth/me"),
 }
+
+export type ResultCardMode = "Clash" | "Relay" | "Room"
+export type ResultCardState = "Active" | "Completed" | "Expired"
+export interface ApiResultCardParticipant { label: string; avatarUrl?: string | null; isAnonymous: boolean }
+export interface ApiResultCard {
+  id: number; publicToken: string; publicUrl: string; imageUrl: string; createdAt: string; expiresAt: string
+  payload: { schemaVersion: number; mode: ResultCardMode; state: ResultCardState; aggregateResult: string
+    milestone?: string | null; badge?: { name: string; icon: string } | null; participantCount: number
+    participants: ApiResultCardParticipant[]; accessibleSummary: string }
+}
+export interface ApiResultCardPage { items: ApiResultCard[]; offset: number; limit: number; hasMore: boolean }
+
+export const resultCardsApi = {
+  getMine: (offset = 0, limit = 12) => request<ApiResultCardPage>(`/api/result-cards/me?offset=${offset}&limit=${limit}`),
+  getForSession: (sessionId: number) => request<ApiResultCard>(`/api/result-cards/session/${sessionId}`),
+}
