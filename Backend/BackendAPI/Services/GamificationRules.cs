@@ -4,8 +4,6 @@ namespace BackendAPI.Services
 {
     public static class GamificationRules
     {
-        public static int VoteXp(Poll poll) => poll.IsTrending ? 35 : 25;
-
         public static StreakUpdate ApplyDailyStreak(
             int currentStreak,
             DateTime? lastVoteDate,

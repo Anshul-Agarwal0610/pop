@@ -17,6 +17,7 @@ namespace BackendAPI.Controllers
         private readonly INotificationsRepository _notificationsRepo;
         private readonly IChallengesRepository _challengesRepo;
         private readonly IBusinessRepository _businessRepo;
+        private readonly IRewardService _rewardService;
 
         public VotesController(
             IVotesRepository votesRepo,
@@ -24,7 +25,8 @@ namespace BackendAPI.Controllers
             IPollsRepository pollsRepo,
             INotificationsRepository notificationsRepo,
             IChallengesRepository challengesRepo,
-            IBusinessRepository businessRepo)
+            IBusinessRepository businessRepo,
+            IRewardService rewardService)
         {
             _votesRepo = votesRepo;
             _usersRepo = usersRepo;
@@ -32,6 +34,7 @@ namespace BackendAPI.Controllers
             _notificationsRepo = notificationsRepo;
             _challengesRepo = challengesRepo;
             _businessRepo = businessRepo;
+            _rewardService = rewardService;
         }
 
         // POST /api/votes  (US-15: requires authentication)
@@ -63,6 +66,7 @@ namespace BackendAPI.Controllers
             if (!validOption)
                 return BadRequest(new { message = "Invalid option for this poll." });
 
+            var isReplay = false;
             try
             {
                 await _votesRepo.CastVoteAsync(request, userId);
@@ -71,16 +75,29 @@ namespace BackendAPI.Controllers
                                         ex.Message.Contains("duplicate key") ||
                                         ex.Message.Contains("UNIQUE"))
             {
-                return Conflict(new { message = "You have already voted on this poll." });
+                // Re-run the deterministic grant so a retry repairs a vote committed before a transient reward failure.
+                isReplay = true;
             }
 
             var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
 
-            // US-50: Award XP and apply daily streak rules after a unique vote.
+            var granted = await _rewardService.GrantAsync(new RewardGrantRequest(
+                userId,
+                poll.IsTrending ? RewardRuleCodes.VoteTrending : RewardRuleCodes.VoteStandard,
+                "vote",
+                $"poll:{poll.Id}",
+                DateTime.UtcNow));
+
+            if (isReplay)
+                return Conflict(new { message = "You have already voted on this poll." });
+
+            // Streak and counters remain projections; XP comes only from the ledger.
             var reward = await _usersRepo.ApplyVoteRewardAsync(
                 userId,
-                GamificationRules.VoteXp(poll),
+                0,
                 DateTime.UtcNow);
+            reward.Xp = granted.CurrentXp;
+            reward.XpAwarded = granted.IsDuplicate ? 0 : granted.Event.Value;
             var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
 
             if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)

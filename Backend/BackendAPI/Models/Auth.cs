@@ -39,6 +39,7 @@ namespace BackendAPI.Models
         public string? Email { get; set; }
         public string? AvatarUrl { get; set; }
         public string AuthProvider { get; set; } = "local";
+        public bool IsAdmin { get; set; }
         public int Xp { get; set; }
         public int Streak { get; set; }
         public int TotalVotes { get; set; }

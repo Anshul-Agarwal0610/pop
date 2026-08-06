@@ -160,6 +160,22 @@ namespace BackendAPI.Repository
                     if (progress.IsCompleted && !progress.RewardGranted)
                     {
                         await conn.ExecuteAsync(
+                            @"INSERT INTO RewardEvents
+                                  (UserId,RuleCode,RuleVersion,Reason,SourceType,SourceReference,SourceKey,Value,EventType,CreatedAt)
+                              VALUES
+                                  (@UserId,@RuleCode,1,@Reason,'challenge',@SourceReference,@SourceKey,@RewardXp,'Grant',@UtcNow)",
+                            new
+                            {
+                                UserId = userId,
+                                RuleCode = $"challenge.{challenge.Id}",
+                                Reason = $"Challenge completed: {challenge.Title}",
+                                SourceReference = challenge.Id.ToString(),
+                                SourceKey = $"challenge:{challenge.Id}:complete",
+                                challenge.RewardXp,
+                                UtcNow = utcNow
+                            }, transaction);
+
+                        await conn.ExecuteAsync(
                             "UPDATE Users SET Xp = Xp + @RewardXp WHERE Id = @UserId",
                             new { UserId = userId, challenge.RewardXp },
                             transaction);

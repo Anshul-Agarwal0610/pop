@@ -101,6 +101,23 @@ namespace BackendAPI.Repository
 
                     if (inserted == null) continue;
 
+                    if (badge.RewardXp > 0)
+                    await conn.ExecuteAsync(
+                        @"INSERT INTO RewardEvents
+                              (UserId, RuleCode, RuleVersion, Reason, SourceType, SourceReference, SourceKey, Value, EventType, CreatedAt)
+                          VALUES
+                              (@UserId, @RuleCode, 1, @Reason, 'achievement', @SourceReference, @SourceKey, @Value, 'Grant', @AwardedAt)",
+                        new
+                        {
+                            UserId = userId,
+                            RuleCode = $"achievement.{badge.Code}",
+                            Reason = $"Achievement awarded: {badge.Name}",
+                            SourceReference = badge.Id.ToString(),
+                            SourceKey = $"achievement:{badge.Id}:award",
+                            Value = badge.RewardXp,
+                            AwardedAt = utcNow
+                        }, transaction);
+
                     bonusXp += badge.RewardXp;
                     awarded.Add(new UserBadge
                     {
