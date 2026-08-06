@@ -12,7 +12,8 @@ namespace BackendAPI.Repository;
 public sealed class GameSessionsRepository(
     DapperContext context,
     IChallengesRepository challenges,
-    IAchievementsRepository achievements) : IGameSessionsRepository
+    IAchievementsRepository achievements,
+    IUsersRepository users) : IGameSessionsRepository
 {
     private const int PollCount = 5;
     private const int CompletionXp = 100;
@@ -111,17 +112,18 @@ public sealed class GameSessionsRepository(
         }
         if (!poll.Options.Any(o => o.Id == request.OptionId)) throw new GameSessionException("invalid_option", "That option does not belong to the current poll.");
         var voteXp = GamificationRules.VoteXp(poll);
+        long voteId;
         try
         {
-            await conn.ExecuteAsync("INSERT INTO Votes(PollId,OptionId,UserId,CreatedAt) VALUES(@PollId,@OptionId,@UserId,@Now)", new { request.PollId, request.OptionId, UserId = userId, Now = utcNow }, tx);
+            voteId = await conn.ExecuteScalarAsync<long>(@"INSERT INTO Votes(PollId,OptionId,UserId,CreatedAt)
+                OUTPUT inserted.Id VALUES(@PollId,@OptionId,@UserId,@Now)", new { request.PollId, request.OptionId, UserId = userId, Now = utcNow }, tx);
         }
         catch (SqlException ex) when (ex.Number is 2601 or 2627) { throw new GameSessionException("already_voted", "You have already voted on this poll."); }
         await conn.ExecuteAsync("UPDATE PollOptions SET VoteCount=VoteCount+1 WHERE Id=@OptionId AND PollId=@PollId; UPDATE Polls SET TotalVotes=TotalVotes+1 WHERE Id=@PollId", request, tx);
         await conn.ExecuteAsync("UPDATE GameSessionPolls SET VotedOptionId=@OptionId,VotedAt=@Now WHERE SessionId=@Id AND Position=@Position AND VotedOptionId IS NULL", new { Id = id, request.Position, request.OptionId, Now = utcNow }, tx);
         var isFinal = request.Position + 1 == (int)row.PollCount;
         var completionAward = isFinal ? (int)row.CompletionXp : 0;
-        await conn.ExecuteAsync(@"UPDATE Users SET Xp=Xp+@Xp,TotalVotes=TotalVotes+1,LastVoteDate=CONVERT(date,@Now) WHERE Id=@UserId;
-            UPDATE GameSessions SET CurrentPosition=CurrentPosition+1,VotesCast=VotesCast+1,VoteXpEarned=VoteXpEarned+@VoteXp,
+        await conn.ExecuteAsync(@"UPDATE GameSessions SET CurrentPosition=CurrentPosition+1,VotesCast=VotesCast+1,VoteXpEarned=VoteXpEarned+@VoteXp,
               Status=CASE WHEN @Final=1 THEN 'Completed' ELSE Status END,CompletedAt=CASE WHEN @Final=1 THEN @Now ELSE CompletedAt END,
               CompletionXpAwarded=CASE WHEN @Final=1 AND RewardGrantedAt IS NULL THEN @CompletionXp ELSE CompletionXpAwarded END,
               RewardGrantedAt=CASE WHEN @Final=1 AND RewardGrantedAt IS NULL THEN @Now ELSE RewardGrantedAt END,UpdatedAt=@Now WHERE Id=@Id;
@@ -129,7 +131,8 @@ public sealed class GameSessionsRepository(
             new { Id = id, UserId = userId, Xp = voteXp, VoteXp = voteXp, Final = isFinal, CompletionXp = completionAward, Now = utcNow }, tx);
         tx.Commit();
 
-        var challengeProgress = await challenges.AdvanceForVoteAsync(userId, poll, utcNow);
+        await users.ApplyVoteRewardAsync(userId, poll.Id, voteXp, utcNow, leaderboardEligible: true);
+        var challengeProgress = await challenges.AdvanceForVoteAsync(userId, voteId, poll, utcNow);
         var unlocked = (await achievements.AwardEligibleBadgesAsync(userId, utcNow)).AwardedBadges;
         if (isFinal) await SaveSummary(id, userId, challengeProgress, unlocked);
         return new GameVoteResult { Session = (await GetAsync(id, userId, utcNow))!, XpAwarded = voteXp + completionAward, Challenges = challengeProgress, AchievementsUnlocked = unlocked };

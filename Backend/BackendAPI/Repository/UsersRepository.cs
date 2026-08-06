@@ -35,6 +35,64 @@ namespace BackendAPI.Repository
             return users;
         }
 
+        public async Task<LeaderboardResponse> GetRankingsAsync(
+            LeaderboardPeriod period, int limit, int offset, long? currentUserId, DateTime utcNow)
+        {
+            limit = Math.Clamp(limit, 1, 100);
+            offset = Math.Max(offset, 0);
+            var window = LeaderboardWindow.For(period, utcNow);
+
+            using var conn = _context.CreateConnection();
+            var candidates = (await conn.QueryAsync<RankedCandidate>(
+                @"WITH Totals AS (
+                      SELECT e.UserId, SUM(CONVERT(BIGINT, e.Amount)) AS PeriodXp
+                      FROM XpEvents e
+                      WHERE e.IsValid = 1 AND e.IsLeaderboardEligible = 1
+                        AND (@StartUtc IS NULL OR e.OccurredAt >= @StartUtc)
+                        AND (@EndUtc IS NULL OR e.OccurredAt < @EndUtc)
+                      GROUP BY e.UserId
+                  ), Ranked AS (
+                      SELECT u.Id, u.Username, u.DisplayName, u.AvatarUrl, u.Xp AS LifetimeXp,
+                             t.PeriodXp,
+                             RANK() OVER (ORDER BY t.PeriodXp DESC) AS Rank,
+                             ROW_NUMBER() OVER (ORDER BY t.PeriodXp DESC, LOWER(u.Username), u.Id) AS RowNumber,
+                             COUNT_BIG(*) OVER () AS TotalCount
+                      FROM Totals t JOIN Users u ON u.Id = t.UserId
+                      WHERE t.PeriodXp > 0
+                  )
+                  SELECT * FROM Ranked
+                  WHERE (RowNumber > @Offset AND RowNumber <= @Offset + @Limit + 1)
+                     OR Id = @CurrentUserId
+                  ORDER BY RowNumber",
+                new { window.StartUtc, window.EndUtc, Limit = limit, Offset = offset, CurrentUserId = currentUserId })).ToList();
+
+            var page = candidates.Where(x => x.RowNumber > offset && x.RowNumber <= offset + limit).Cast<LeaderboardRow>().ToList();
+            var current = currentUserId == null ? null : candidates.FirstOrDefault(x => x.Id == currentUserId.Value);
+            var badgeIds = page.Select(x => x.Id).Append(current?.Id ?? 0).Where(x => x > 0).Distinct();
+            var badges = await _achievementsRepo.GetBadgesForUsersAsync(badgeIds);
+            foreach (var row in page.Append(current).Where(x => x != null).DistinctBy(x => x!.Id))
+                if (badges.TryGetValue(row!.Id, out var userBadges)) row.Badges = userBadges;
+
+            return new LeaderboardResponse
+            {
+                Rows = page,
+                CurrentUser = current,
+                Period = period,
+                PeriodStartUtc = window.StartUtc,
+                PeriodEndUtc = window.EndUtc,
+                NextResetAtUtc = period == LeaderboardPeriod.Weekly ? window.EndUtc : null,
+                Limit = limit,
+                Offset = offset,
+                HasMore = candidates.Any(x => x.RowNumber == (long)offset + limit + 1)
+            };
+        }
+
+        private sealed class RankedCandidate : LeaderboardRow
+        {
+            public long RowNumber { get; set; }
+            public long TotalCount { get; set; }
+        }
+
         public async Task<User?> GetByIdAsync(long id)
         {
             using var conn = _context.CreateConnection();
@@ -44,7 +102,7 @@ namespace BackendAPI.Repository
             );
 
             if (user != null)
-                user.Badges = (await _achievementsRepo.GetUserBadgesAsync(id)).ToList();
+                user.Badges = (await _achievementsRepo.GetBadgesForUsersAsync(new[] { id })).GetValueOrDefault(id) ?? [];
 
             return user;
         }
@@ -79,7 +137,7 @@ namespace BackendAPI.Repository
             await _achievementsRepo.AwardEligibleBadgesAsync(userId, DateTime.UtcNow);
         }
 
-        public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, int xpToAdd, DateTime utcNow)
+        public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, long pollId, int xpToAdd, DateTime utcNow, bool leaderboardEligible = true)
         {
             using var conn = _context.CreateConnection();
             conn.Open();
@@ -95,7 +153,9 @@ namespace BackendAPI.Repository
 
             var streak = GamificationRules.ApplyDailyStreak(
                 user.Streak,
+                user.LongestStreak,
                 user.LastVoteDate,
+                null,
                 utcNow);
 
             var updated = await conn.QuerySingleAsync<VoteRewardResult>(
@@ -103,9 +163,11 @@ namespace BackendAPI.Repository
                   SET Xp = Xp + @XpAwarded,
                       TotalVotes = TotalVotes + 1,
                       Streak = @Streak,
+                      LongestStreak = @LongestStreak,
                       LastVoteDate = @LastVoteDate
                   OUTPUT inserted.Xp,
                          inserted.Streak,
+                         inserted.LongestStreak,
                          inserted.TotalVotes,
                          @XpAwarded AS XpAwarded,
                          @StreakAdvanced AS StreakAdvanced,
@@ -116,23 +178,41 @@ namespace BackendAPI.Repository
                     Id = userId,
                     XpAwarded = xpToAdd,
                     streak.Streak,
+                    streak.LongestStreak,
                     streak.StreakAdvanced,
                     streak.LastVoteDate
                 },
                 transaction
             );
 
+            await conn.ExecuteAsync(
+                @"INSERT INTO XpEvents (UserId, Amount, SourceType, PollId, OccurredAt, IsValid, IsLeaderboardEligible)
+                  VALUES (@UserId, @Amount, 'Vote', @PollId, @OccurredAt, 1, @Eligible)",
+                new { UserId = userId, Amount = xpToAdd, PollId = pollId, OccurredAt = utcNow, Eligible = leaderboardEligible },
+                transaction);
+
             transaction.Commit();
 
-            var awards = await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
-            updated.AwardedBadges = awards.AwardedBadges;
-            if (awards.BonusXpAwarded > 0)
-            {
-                updated.Xp += awards.BonusXpAwarded;
-                updated.XpAwarded += awards.BonusXpAwarded;
-            }
-
             return updated;
+        }
+
+        public async Task<StreakStatus?> GetStreakStatusAsync(long userId, DateTime utcNow)
+        {
+            using var conn = _context.CreateConnection();
+            var row = await conn.QueryFirstOrDefaultAsync<(int Streak, int LongestStreak, DateTime? LastVoteDate, DateTime? LastRecoveryAt)>(@"
+                SELECT u.Streak, u.LongestStreak, u.LastVoteDate,
+                    (SELECT MAX(r.AppliedAt) FROM StreakRecoveries r WHERE r.UserId = u.Id) AS LastRecoveryAt
+                FROM Users u WHERE u.Id = @UserId", new { UserId = userId });
+            if (row == default) return null;
+            var today = utcNow.ToUniversalTime().Date;
+            var recoverable = row.LastVoteDate?.Date == today.AddDays(-2);
+            var available = !row.LastRecoveryAt.HasValue || row.LastRecoveryAt.Value <= utcNow.AddDays(-GamificationRules.RecoveryCooldownDays);
+            return new StreakStatus {
+                Streak = row.Streak, LongestStreak = row.LongestStreak,
+                TodayComplete = row.LastVoteDate?.Date == today, LastVoteDate = row.LastVoteDate,
+                RecoveryEligible = recoverable && available,
+                NextRecoveryAt = row.LastRecoveryAt?.AddDays(GamificationRules.RecoveryCooldownDays)
+            };
         }
 
         // US-22: Vote history ─────────────────────────────────────────────────
@@ -225,6 +305,69 @@ namespace BackendAPI.Repository
             await conn.ExecuteAsync(
                 "DELETE FROM UserCategoryPreferences WHERE UserId = @UserId",
                 new { UserId = userId });
+        }
+
+        public async Task<UserProgression?> GetProgressionAsync(long userId, DateTime utcNow)
+        {
+            using var conn = _context.CreateConnection();
+            var user = await conn.QueryFirstOrDefaultAsync<User>(
+                "SELECT Id, Xp, Streak, LastVoteDate FROM Users WHERE Id = @UserId",
+                new { UserId = userId });
+            return user == null ? null : GamificationRules.Progression(user, utcNow);
+        }
+
+        public async Task<WeeklyLeaderboardResponse> GetWeeklyLeaderboardAsync(long userId, int count, DateTime utcNow)
+        {
+            count = Math.Clamp(count, 1, 20);
+            var today = utcNow.Date;
+            var mondayOffset = ((int)today.DayOfWeek + 6) % 7;
+            var weekStart = today.AddDays(-mondayOffset);
+            var weekEnd = weekStart.AddDays(7);
+
+            using var conn = _context.CreateConnection();
+            using var results = await conn.QueryMultipleAsync(
+                @"WITH Scores AS (
+                    SELECT u.Id AS UserId, u.Username, u.DisplayName, COUNT_BIG(v.Id) AS Score
+                    FROM Users u
+                    JOIN Votes v ON v.UserId = u.Id AND v.CreatedAt >= @WeekStart AND v.CreatedAt < @WeekEnd
+                    JOIN Polls p ON p.Id = v.PollId
+                    WHERE COALESCE(p.IsPrivate, 0) = 0 AND COALESCE(p.IsWellness, 0) = 0 AND p.Category <> 'Health'
+                    GROUP BY u.Id, u.Username, u.DisplayName
+                  )
+                  SELECT TOP (@Count) UserId, Username, DisplayName,
+                         CAST(DENSE_RANK() OVER (ORDER BY Score DESC) AS int) AS Rank,
+                         CAST(Score AS int) AS Score
+                  FROM Scores
+                  ORDER BY Rank, UserId;
+
+                  WITH Scores AS (
+                    SELECT u.Id AS UserId, u.Username, u.DisplayName, COUNT_BIG(v.Id) AS Score
+                    FROM Users u
+                    JOIN Votes v ON v.UserId = u.Id AND v.CreatedAt >= @WeekStart AND v.CreatedAt < @WeekEnd
+                    JOIN Polls p ON p.Id = v.PollId
+                    WHERE COALESCE(p.IsPrivate, 0) = 0 AND COALESCE(p.IsWellness, 0) = 0 AND p.Category <> 'Health'
+                    GROUP BY u.Id, u.Username, u.DisplayName
+                  ), Ranked AS (
+                    SELECT UserId, Username, DisplayName,
+                           CAST(DENSE_RANK() OVER (ORDER BY Score DESC) AS int) AS Rank,
+                           CAST(Score AS int) AS Score
+                    FROM Scores
+                  )
+                  SELECT UserId, Username, DisplayName, Rank, Score
+                  FROM Ranked
+                  WHERE UserId = @UserId;",
+                new { WeekStart = weekStart, WeekEnd = weekEnd, Count = count, UserId = userId });
+
+            var entries = (await results.ReadAsync<WeeklyLeaderboardEntry>()).ToList();
+            var currentUser = await results.ReadFirstOrDefaultAsync<WeeklyLeaderboardEntry>();
+
+            return new WeeklyLeaderboardResponse
+            {
+                WeekStart = weekStart,
+                WeekEnd = weekEnd,
+                Entries = entries,
+                CurrentUser = currentUser
+            };
         }
     }
 }

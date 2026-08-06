@@ -157,7 +157,7 @@ export function PollCreator() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-dvh min-w-0 flex-col bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/90 glass">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4">
@@ -192,7 +192,7 @@ export function PollCreator() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-xl px-4 py-8">
+        <div className="mx-auto max-w-xl px-4 py-5 sm:py-8">
           <AnimatePresence mode="wait">
             {currentStep === 1 && (
               <QuestionStep
@@ -242,14 +242,14 @@ export function PollCreator() {
 
       {/* Footer Navigation */}
       <footer className="sticky bottom-0 border-t border-border/50 bg-background/90 glass safe-bottom">
-        <div className="mx-auto flex h-20 max-w-xl items-center justify-between gap-4 px-4">
+        <div className="mx-auto flex min-h-20 max-w-xl flex-wrap items-center justify-between gap-2 px-4 py-3 sm:flex-nowrap sm:gap-4">
           {/* Back Button */}
           <Button
             variant="outline"
             onClick={prevStep}
             disabled={currentStep === 1}
             className={cn(
-              "rounded-xl px-6",
+              "min-h-11 rounded-xl px-4 sm:px-6",
               currentStep === 1 && "invisible"
             )}
           >

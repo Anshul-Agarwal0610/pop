@@ -57,17 +57,47 @@ export interface ApiPoll {
 export interface CastVoteRequest {
   pollId: number
   optionId: number
+  useStreakRecovery?: boolean
+}
+
+export interface ApiProgression {
+  totalXp: number
+  level: number
+  currentLevelXp: number
+  nextLevelXp: number
+  xpIntoLevel: number
+  xpRequiredForNextLevel: number
+  progressPercent: number
+}
+
+export interface ApiRewardEvent {
+  type: "Vote" | "Challenge" | "Achievement"
+  sourceId: string
+  awardedXp: number
+  label: string | null
 }
 
 export interface ApiVoteReward {
   xp: number
   level: number
   streak: number
+  longestStreak: number
   totalVotes: number
   xpAwarded: number
   streakAdvanced: boolean
+  todayComplete: boolean
+  recoveryEligible: boolean
+  recoveryUsed: boolean
+  nextRecoveryAt: string | null
+  milestoneReached: number | null
   lastVoteDate: string | null
   awardedBadges: ApiUserBadge[]
+  awardedXp: number
+  progression: ApiProgression
+  previousLevel: number
+  leveledUp: boolean
+  levelsGained: number
+  events: ApiRewardEvent[]
 }
 
 export interface ApiCastVoteResponse {
@@ -89,12 +119,19 @@ export interface ApiChallenge {
   isCompleted: boolean
   rewardGranted: boolean
   completedAt: string | null
+  description: string
+  challengeType: string
+  recurrence: "Daily" | "Weekly" | "None"
+  requirementType: string
+  requirementText: string
+  state: "Available" | "InProgress" | "Completed" | "Expired"
+  eligiblePollsUrl: string
 }
 
 export interface ApiNotification {
   id: number
   userId: number
-  type: "VoteMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring"
+  type: "VoteMilestone" | "StreakMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring"
   title: string
   body: string
   pollId: number | null
@@ -232,6 +269,10 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string, public code?: string) { super(message); this.name = "ApiError" }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -251,10 +292,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return res.json() as Promise<T>
-}
-
-export class ApiError extends Error {
-  constructor(public status: number, message: string, public code?: string) { super(message) }
 }
 
 export interface ApiGameMode {
@@ -505,6 +542,8 @@ export const wellnessApi = {
 
 export const challengesApi = {
   getActive: () => request<ApiChallenge[]>("/api/challenges/active"),
+  getAll: (state: "active" | "completed" | "expired" | "all" = "all") =>
+    request<ApiChallenge[]>(`/api/challenges?state=${state}`),
 }
 
 export interface ApiUser {
@@ -516,11 +555,13 @@ export interface ApiUser {
   authProvider: string
   xp: number
   streak: number
+  longestStreak: number
   totalVotes: number
   pollsCreated: number
   lastVoteDate?: string | null
   createdAt: string
   level: number
+  progression: ApiProgression
   badges: ApiUserBadge[]
 }
 
@@ -533,6 +574,78 @@ export interface ApiUserBadge {
   description: string
   icon: string
   awardedAt: string
+  rewardXp: number
+  rewardTitle: string | null
+}
+
+export type AchievementStatus = "earned" | "in-progress" | "locked"
+export interface ApiAchievement {
+  badgeId: number; userBadgeId: number | null; code: string; name: string; description: string
+  icon: string; category: "Voting" | "Streak" | "Challenge" | "Exploration"; status: AchievementStatus
+  requirement: string | null; rewardXp: number; rewardTitle: string | null; awardedAt: string | null
+  currentProgress: number | null; targetProgress: number | null; progressPercent: number | null; isSecret: boolean
+}
+export interface ApiAchievementCollection {
+  achievements: ApiAchievement[]; selectedTitle: string | null; selectedTitleBadgeId: number | null
+  earnedCount: number; totalCount: number
+}
+
+export const achievementsApi = {
+  getMine: () => request<ApiAchievementCollection>("/api/achievements/me"),
+  getMyOverview: () => request<ApiAchievementOverview>("/api/achievements/me/overview"),
+  claimCelebrations: () => request<ApiUserBadge[]>("/api/achievements/me/celebrations/claim", { method: "POST" }),
+  selectTitle: (badgeId: number) => request<void>("/api/achievements/me/title", { method: "PUT", body: JSON.stringify({ badgeId }) }),
+  clearTitle: () => request<void>("/api/achievements/me/title", { method: "DELETE" }),
+}
+
+export interface ApiProgression {
+  xp: number; level: number; currentLevelStartXp: number; nextLevelXp: number
+  xpIntoLevel: number; xpRequiredForLevel: number; progressPercent: number
+  streak: number; todayActivityComplete: boolean; lastVoteDate: string | null
+}
+
+export interface ApiAchievementProgress {
+  badgeId: number; code: string; name: string; description: string; icon: string
+  ruleType: string; currentValue: number; threshold: number; progressPercent: number; rewardXp: number
+}
+
+export interface ApiAchievementOverview {
+  recentlyEarned: ApiUserBadge[]; nextAchievable: ApiAchievementProgress[]; allEarned: boolean
+}
+
+export interface ApiWeeklyLeaderboardEntry {
+  userId: number; username: string; displayName: string; rank: number; score: number; scoreUnit: string
+}
+
+export interface ApiWeeklyLeaderboardResponse {
+  weekStart: string; weekEnd: string; entries: ApiWeeklyLeaderboardEntry[]
+  currentUser: ApiWeeklyLeaderboardEntry | null; scoreUnit: string
+}
+
+export type LeaderboardPeriod = "weekly" | "allTime"
+
+export interface ApiLeaderboardRow {
+  rank: number
+  id: number
+  username: string
+  displayName: string
+  avatarUrl?: string | null
+  periodXp: number
+  lifetimeXp: number
+  level: number
+  badges: ApiUserBadge[]
+}
+
+export interface ApiLeaderboardResponse {
+  rows: ApiLeaderboardRow[]
+  currentUser: ApiLeaderboardRow | null
+  period: "Weekly" | "AllTime"
+  periodStartUtc: string | null
+  periodEndUtc: string | null
+  nextResetAtUtc: string | null
+  limit: number
+  offset: number
+  hasMore: boolean
 }
 
 export interface ApiVoteHistoryItem {
@@ -550,14 +663,33 @@ export interface ApiCategoryPreference {
   voteCount: number
 }
 
+export interface ApiStreakStatus {
+  streak: number
+  longestStreak: number
+  todayComplete: boolean
+  lastVoteDate: string | null
+  recoveryEligible: boolean
+  nextRecoveryAt: string | null
+  timeZone: "UTC"
+  dayBoundary: string
+  milestones: number[]
+}
+
 export const usersApi = {
   /** Leaderboard — top users by XP. */
   getLeaderboard: (count = 20) =>
     request<ApiUser[]>(`/api/users/leaderboard?count=${count}`),
 
+  getRankings: (period: LeaderboardPeriod, limit = 20, offset = 0) =>
+    request<ApiLeaderboardResponse>(
+      `/api/users/leaderboard/rankings?period=${period}&limit=${limit}&offset=${offset}`
+    ),
+
   /** Vote history for the current authenticated user. */
   getMyVotes: (count = 10) =>
     request<ApiVoteHistoryItem[]>(`/api/users/me/votes?count=${count}`),
+
+  getMyStreak: () => request<ApiStreakStatus>("/api/users/me/streak"),
 
   getCategoryPreferences: () =>
     request<ApiCategoryPreference[]>("/api/users/me/preferences/categories"),
@@ -570,6 +702,10 @@ export const usersApi = {
 
   resetCategoryPreferences: () =>
     request<void>("/api/users/me/preferences/categories", { method: "DELETE" }),
+
+  getMyProgression: () => request<ApiProgression>("/api/users/me/progression"),
+  getWeeklyLeaderboard: (count = 5) =>
+    request<ApiWeeklyLeaderboardResponse>(`/api/users/leaderboard/weekly?count=${count}`),
 }
 
 // ── Auth endpoints ────────────────────────────────────────────────────────────
