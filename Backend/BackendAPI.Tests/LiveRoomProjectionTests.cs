@@ -1,0 +1,7 @@
+using System.Text.Json; using BackendAPI.Models; using BackendAPI.Services; using Xunit;
+namespace BackendAPI.Tests;
+public sealed class LiveRoomProjectionTests
+{
+ [Fact] public void Display_projection_has_no_controls_credentials_or_individual_votes(){var p=new LiveParticipantState{Name="Guest",TokenHash="secret"};var r=new LiveRoomState{HostId=99,Code="ABC123",DisplayToken="display-secret",Status=LiveRoomStatus.Active,Mode=LiveRoomMode.PredictMajority,Position=0,Propositions=["Question"]};r.Participants.Add(p);r.Round=new(){Position=0,Proposition="Question"};r.Round.Votes[p.Id]=(BinaryChoice.Up,BinaryChoice.Up);var json=JsonSerializer.Serialize(LiveRoomProjector.Display(r));Assert.DoesNotContain("secret",json,StringComparison.OrdinalIgnoreCase);Assert.DoesNotContain("HostId",json);Assert.DoesNotContain("Choice",json);Assert.DoesNotContain("Prediction",json);Assert.Contains("\"Up\":null",json);Assert.Contains("Submitted",json);}
+ [Fact] public void Revealed_display_contains_aggregates_but_not_vote_mappings(){var p=new LiveParticipantState{Name="Guest",TokenHash="hidden"};var r=new LiveRoomState{Code="ABC",Status=LiveRoomStatus.Active,Position=0};r.Participants.Add(p);r.Round=new(){Position=0,Proposition="Question",Status=LiveRoundStatus.Revealed};r.Round.Votes[p.Id]=(BinaryChoice.Against,null);var json=JsonSerializer.Serialize(LiveRoomProjector.Display(r));Assert.Contains("Against",json);Assert.DoesNotContain("Prediction",json);Assert.DoesNotContain("Choice",json);}
+}

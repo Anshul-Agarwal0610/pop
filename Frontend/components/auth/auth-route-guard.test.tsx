@@ -59,4 +59,17 @@ describe("AuthRouteGuard", () => {
     render(<AuthRouteGuard><div>Leaderboard</div></AuthRouteGuard>)
     expect(screen.getByText("Leaderboard")).toBeInTheDocument()
   })
+
+  it.each(["/live/join", "/live/room-1/play", "/live/room-1/display"])("classifies %s as public", (path) => {
+    navigation.pathname = path
+    render(<AuthRouteGuard><div>Live public route</div></AuthRouteGuard>)
+    expect(screen.getByText("Live public route")).toBeInTheDocument()
+  })
+
+  it("keeps live host routes protected", async () => {
+    navigation.pathname = "/live/room-1/host"
+    render(<AuthRouteGuard><div>Host controls</div></AuthRouteGuard>)
+    expect(screen.queryByText("Host controls")).not.toBeInTheDocument()
+    await waitFor(() => expect(navigation.replace).toHaveBeenCalledOnce())
+  })
 })

@@ -8,7 +8,8 @@ import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
 
 export function isPublicRoute(pathname: string) {
-  return pathname === "/" || pathname === "/login"
+  return pathname === "/" || pathname === "/login" || pathname === "/live/join" ||
+    /^\/live\/[^/]+\/(play|display)$/.test(pathname)
 }
 
 export function AuthRouteGuard({ children }: { children: ReactNode }) {

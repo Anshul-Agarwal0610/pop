@@ -1,0 +1,2 @@
+import type { LiveRound } from "@/lib/api"
+export function AggregateResults({round}:{round:LiveRound}) { if(round.status!=="Revealed"||round.up===undefined)return <p>{round.submitted} of {round.eligible} submitted</p>;return <div className="grid grid-cols-2 gap-4 text-center"><div className="rounded-xl bg-emerald-100 p-5"><b>Up</b><div className="text-3xl">{round.up}</div></div><div className="rounded-xl bg-rose-100 p-5"><b>Against</b><div className="text-3xl">{round.against}</div></div></div> }
