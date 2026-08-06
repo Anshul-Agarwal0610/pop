@@ -7,6 +7,11 @@ export const navigationItems = [
     icon: Gamepad2,
   },
   {
+    label: "Games",
+    href: "/games",
+    icon: Gamepad2,
+  },
+  {
     label: "Home",
     href: "/",
     icon: Home,
