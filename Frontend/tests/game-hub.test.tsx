@@ -34,8 +34,8 @@ describe("GameHub", () => {
     expect(screen.getByText("4 day streak")).toBeInTheDocument()
     expect(screen.getByText("Today's activity is complete")).toBeInTheDocument()
     expect(screen.getByText("Level 2")).toBeInTheDocument()
-    expect(screen.getByText("First Vote")).toBeInTheDocument()
-    expect(screen.getByText(/You are #2/)).toBeInTheDocument()
+    expect(await screen.findByText(/First Vote/)).toBeInTheDocument()
+    expect(await screen.findByText(/You are #2/)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Play now" })).toHaveAttribute("href", "/polls?category=Technology")
     expect(challengesApi.getActive).toHaveBeenCalledOnce()
     expect(usersApi.getMyProgression).toHaveBeenCalledOnce()
@@ -55,7 +55,7 @@ describe("GameHub", () => {
     render(<GameHub />)
     expect(await screen.findByText("Daily Pulse")).toBeInTheDocument()
     expect(await screen.findByText("Could not load badges")).toBeInTheDocument()
-    expect(screen.getByText("Level 2")).toBeInTheDocument()
+    expect(await screen.findByText("Level 2")).toBeInTheDocument()
   })
 
   it("renders the completed and empty leaderboard states", async () => {

@@ -245,7 +245,7 @@ namespace BackendAPI.Repository
             var weekEnd = weekStart.AddDays(7);
 
             using var conn = _context.CreateConnection();
-            var ranked = (await conn.QueryAsync<WeeklyLeaderboardEntry>(
+            using var results = await conn.QueryMultipleAsync(
                 @"WITH Scores AS (
                     SELECT u.Id AS UserId, u.Username, u.DisplayName, COUNT_BIG(v.Id) AS Score
                     FROM Users u
@@ -254,19 +254,39 @@ namespace BackendAPI.Repository
                     WHERE COALESCE(p.IsPrivate, 0) = 0 AND COALESCE(p.IsWellness, 0) = 0 AND p.Category <> 'Health'
                     GROUP BY u.Id, u.Username, u.DisplayName
                   )
-                  SELECT UserId, Username, DisplayName,
+                  SELECT TOP (@Count) UserId, Username, DisplayName,
                          CAST(DENSE_RANK() OVER (ORDER BY Score DESC) AS int) AS Rank,
                          CAST(Score AS int) AS Score
                   FROM Scores
-                  ORDER BY Rank, UserId",
-                new { WeekStart = weekStart, WeekEnd = weekEnd })).ToList();
+                  ORDER BY Rank, UserId;
+
+                  WITH Scores AS (
+                    SELECT u.Id AS UserId, u.Username, u.DisplayName, COUNT_BIG(v.Id) AS Score
+                    FROM Users u
+                    JOIN Votes v ON v.UserId = u.Id AND v.CreatedAt >= @WeekStart AND v.CreatedAt < @WeekEnd
+                    JOIN Polls p ON p.Id = v.PollId
+                    WHERE COALESCE(p.IsPrivate, 0) = 0 AND COALESCE(p.IsWellness, 0) = 0 AND p.Category <> 'Health'
+                    GROUP BY u.Id, u.Username, u.DisplayName
+                  ), Ranked AS (
+                    SELECT UserId, Username, DisplayName,
+                           CAST(DENSE_RANK() OVER (ORDER BY Score DESC) AS int) AS Rank,
+                           CAST(Score AS int) AS Score
+                    FROM Scores
+                  )
+                  SELECT UserId, Username, DisplayName, Rank, Score
+                  FROM Ranked
+                  WHERE UserId = @UserId;",
+                new { WeekStart = weekStart, WeekEnd = weekEnd, Count = count, UserId = userId });
+
+            var entries = (await results.ReadAsync<WeeklyLeaderboardEntry>()).ToList();
+            var currentUser = await results.ReadFirstOrDefaultAsync<WeeklyLeaderboardEntry>();
 
             return new WeeklyLeaderboardResponse
             {
                 WeekStart = weekStart,
                 WeekEnd = weekEnd,
-                Entries = ranked.Take(count).ToList(),
-                CurrentUser = ranked.FirstOrDefault(entry => entry.UserId == userId)
+                Entries = entries,
+                CurrentUser = currentUser
             };
         }
     }

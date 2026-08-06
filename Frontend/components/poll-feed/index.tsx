@@ -127,7 +127,7 @@ export function PollFeed({ initialCategory }: { initialCategory?: string | null 
       </motion.div>
 
       {/* Card Stack */}
-      <div className="relative mx-auto flex-1 w-full max-w-md px-0 md:px-4">
+      <div className="relative mx-auto min-h-0 w-full max-w-md flex-1 px-0 sm:px-4">
         <AnimatePresence mode="popLayout">
           {hasMorePolls ? (
             polls.slice(currentIndex, currentIndex + 2)

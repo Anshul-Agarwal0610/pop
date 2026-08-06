@@ -10,7 +10,7 @@ function PollsPageContent() {
 
   return (
     <AppShell hideBottomPadding>
-      <div className="h-[calc(100vh-4rem-4.5rem)] md:h-[calc(100vh-4rem)]">
+      <div className="h-[calc(100dvh-4rem-4.5rem-env(safe-area-inset-bottom))] min-h-[28rem] lg:h-[calc(100dvh-4rem)]">
         <PollFeed initialCategory={category} />
       </div>
     </AppShell>

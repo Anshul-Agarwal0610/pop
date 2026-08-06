@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { Award, CheckCircle2, Flame, Gamepad2, RefreshCw, Target, Trophy, Zap } from "lucide-react"
+import { Award, CheckCircle2, Flame, Gamepad2, RefreshCw, Trophy, Zap } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { achievementsApi, ApiError, challengesApi, usersApi, type ApiAchievementOverview, type ApiChallenge, type ApiProgression, type ApiWeeklyLeaderboardResponse } from "@/lib/api"
 import { normalizeCategoryName } from "@/lib/categories"
@@ -53,7 +53,13 @@ export function GameHub() {
   }, [handleError])
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) void Promise.allSettled([loadChallenges(), loadProgression(), loadBadges(), loadLeaderboard()])
+    if (authLoading || !isAuthenticated) return
+
+    const timer = window.setTimeout(() => {
+      void Promise.allSettled([loadChallenges(), loadProgression(), loadBadges(), loadLeaderboard()])
+    }, 0)
+
+    return () => window.clearTimeout(timer)
   }, [authLoading, isAuthenticated, loadChallenges, loadProgression, loadBadges, loadLeaderboard])
 
   if (authLoading) return <div className="mx-auto grid max-w-6xl gap-4 px-4 py-6 sm:grid-cols-2"><LoadingCard /><LoadingCard /><LoadingCard /><LoadingCard /></div>
@@ -79,7 +85,7 @@ export function GameHub() {
       </section>
 
       <section className="min-w-0 lg:col-start-2" aria-label="Weekly leaderboard">
-        {leaderboard.loading ? <LoadingCard /> : leaderboard.error ? <ErrorCard title="Could not load weekly leaderboard" error={leaderboard.error} retry={loadLeaderboard} /> : <Card className="min-w-0"><CardHeader><CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" />Weekly leaderboard</CardTitle><CardDescription>{currentRank ? `You are #${currentRank.rank} with ${currentRank.score} ${leaderboard.data?.scoreUnit}` : "Cast a public vote to join this week's board"}</CardDescription></CardHeader><CardContent className="space-y-2">{leaderboard.data?.entries.length ? leaderboard.data.entries.slice(0, 3).map(entry => <div key={entry.userId} className="flex min-w-0 items-center gap-3 rounded-lg bg-secondary/50 px-3 py-2 text-sm"><span className="w-6 shrink-0 font-black">#{entry.rank}</span><span className="min-w-0 flex-1 truncate">{entry.displayName || entry.username}</span><span className="shrink-0 font-semibold">{entry.score} votes</span></div>) : <p className="text-sm text-muted-foreground">No qualifying activity this week yet.</p>}<Button asChild variant="outline" className="mt-3 w-full"><Link href="/leaderboard?view=weekly">View leaderboard</Link></Button></CardContent></Card>}
+        {leaderboard.loading ? <LoadingCard /> : leaderboard.error ? <ErrorCard title="Could not load weekly leaderboard" error={leaderboard.error} retry={loadLeaderboard} /> : <Card className="min-w-0"><CardHeader><CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" />Weekly leaderboard</CardTitle><CardDescription>{currentRank ? `You are #${currentRank.rank} with ${currentRank.score} ${leaderboard.data?.scoreUnit}` : "Cast a public vote to join this week's board"}</CardDescription></CardHeader><CardContent className="space-y-2">{leaderboard.data?.entries.length ? leaderboard.data.entries.slice(0, 3).map(entry => <div key={entry.userId} className="flex min-w-0 items-center gap-3 rounded-lg bg-secondary/50 px-3 py-2 text-sm"><span className="w-6 shrink-0 font-black">#{entry.rank}</span><span className="min-w-0 flex-1 truncate">{entry.displayName || entry.username}</span><span className="shrink-0 font-semibold">{entry.score} votes</span></div>) : <p className="text-sm text-muted-foreground">No qualifying activity this week yet.</p>}<Button asChild variant="outline" className="mt-3 w-full"><Link href="/leaderboard">View all-time leaderboard</Link></Button></CardContent></Card>}
       </section>
     </div>
   </div>

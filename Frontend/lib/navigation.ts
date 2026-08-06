@@ -53,3 +53,10 @@ export const mobileNavigationItems = navigationItems.filter(item =>
 )
 
 export type NavigationItem = (typeof navigationItems)[number]
+
+export const mobilePrimaryNavigation = navigationItems.slice(0, 4)
+export const mobileSecondaryNavigation = navigationItems.slice(4)
+
+export function isNavigationItemActive(pathname: string, href: string) {
+  return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
+}
