@@ -8,6 +8,7 @@ namespace BackendAPI.Models
         DailyReminder,
         ChallengeAvailable,
         StreakReminder,
+        StreakMilestone,
         PollExpiring
     }
 

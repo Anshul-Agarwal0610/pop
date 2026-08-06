@@ -11,11 +11,16 @@ namespace BackendAPI.Controllers
     public class UsersController : ControllerBase
     {
         private readonly IUsersRepository _usersRepo;
+        private readonly IAchievementsRepository _achievementsRepo;
 
-        public UsersController(IUsersRepository usersRepo)
+        public UsersController(IUsersRepository usersRepo, IAchievementsRepository achievementsRepo)
         {
             _usersRepo = usersRepo;
+            _achievementsRepo = achievementsRepo;
         }
+
+        [HttpGet("{id}/achievements")]
+        public async Task<IActionResult> GetAchievements(long id) => Ok(await _achievementsRepo.GetPublicAchievementsAsync(id));
 
         // ── Helper ────────────────────────────────────────────────────────────
         private long? CurrentUserId()
@@ -77,6 +82,35 @@ namespace BackendAPI.Controllers
 
             var history = await _usersRepo.GetVoteHistoryAsync(userId.Value, count);
             return Ok(history);
+        }
+
+        [HttpGet("me/streak")]
+        [Authorize]
+        public async Task<IActionResult> GetMyStreak()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            var status = await _usersRepo.GetStreakStatusAsync(userId.Value, DateTime.UtcNow);
+            return status == null ? NotFound() : Ok(status);
+        }
+
+        [HttpGet("me/progression")]
+        [Authorize]
+        public async Task<IActionResult> GetMyProgression()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            var progression = await _usersRepo.GetProgressionAsync(userId.Value, DateTime.UtcNow);
+            return progression == null ? NotFound() : Ok(progression);
+        }
+
+        [HttpGet("leaderboard/weekly")]
+        [Authorize]
+        public async Task<IActionResult> GetWeeklyLeaderboard([FromQuery] int count = 5)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            return Ok(await _usersRepo.GetWeeklyLeaderboardAsync(userId.Value, count, DateTime.UtcNow));
         }
 
         // GET /api/users/me/preferences/categories

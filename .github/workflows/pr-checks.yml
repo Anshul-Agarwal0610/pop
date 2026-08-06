@@ -46,7 +46,12 @@ jobs:
 
       - name: Run lint
         working-directory: Frontend
+        # Keep legacy lint findings visible without blocking unrelated feature PRs.
         run: npm run lint || true
+
+      - name: Run tests
+        working-directory: Frontend
+        run: npm test
 
       - name: Run build
         working-directory: Frontend
@@ -68,11 +73,10 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore dependencies
-        working-directory: Backend/BackendAPI
-        run: dotnet restore
+        run: dotnet restore pop.sln
 
       - name: Build
-        run: dotnet build pop.sln --configuration Release
+        run: dotnet build pop.sln --no-restore --configuration Release
 
       - name: Test
         run: dotnet test pop.sln --no-build --configuration Release

@@ -3,191 +3,171 @@ using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using Dapper;
 
-namespace BackendAPI.Repository
+namespace BackendAPI.Repository;
+
+public class ChallengesRepository : IChallengesRepository
 {
-    public class ChallengesRepository : IChallengesRepository
+    private readonly DapperContext _context;
+    private readonly IAchievementsRepository _achievementsRepo;
+
+    public ChallengesRepository(DapperContext context, IAchievementsRepository achievementsRepo)
     {
-        private readonly DapperContext _context;
-        private readonly IAchievementsRepository _achievementsRepo;
+        _context = context;
+        _achievementsRepo = achievementsRepo;
+    }
 
-        public ChallengesRepository(DapperContext context, IAchievementsRepository achievementsRepo)
+    public async Task EnsureCurrentOccurrencesAsync(DateTime utcNow)
+    {
+        using var conn = _context.CreateConnection();
+        var definitions = await conn.QueryAsync<ChallengeDefinition>(
+            "SELECT * FROM ChallengeDefinitions WHERE IsEnabled = 1");
+
+        foreach (var definition in definitions)
         {
-            _context = context;
-            _achievementsRepo = achievementsRepo;
-        }
-
-        public async Task EnsureDailyChallengeAsync(DateTime utcNow)
-        {
-            using var conn = _context.CreateConnection();
-            var start = utcNow.Date;
-            var end = start.AddDays(1);
-
-            var exists = await conn.ExecuteScalarAsync<int>(
-                @"SELECT COUNT(1)
-                  FROM Challenges
-                  WHERE StartAt = @StartAt
-                    AND EndAt = @EndAt
-                    AND Title = @Title",
-                new { StartAt = start, EndAt = end, Title = "Daily Pulse" });
-
-            if (exists > 0) return;
-
-            await conn.ExecuteAsync(
-                @"INSERT INTO Challenges
-                    (Title, Category, RequiredVotes, RewardXp, RewardBadge, StartAt, EndAt, IsActive, CreatedAt)
-                  VALUES
-                    (@Title, NULL, 3, 75, @RewardBadge, @StartAt, @EndAt, 1, GETUTCDATE())",
-                new
-                {
-                    Title = "Daily Pulse",
-                    RewardBadge = "Daily Voter",
-                    StartAt = start,
-                    EndAt = end
-                });
-        }
-
-        public async Task<IEnumerable<UserChallenge>> GetActiveForUserAsync(long userId, DateTime utcNow)
-        {
-            await EnsureDailyChallengeAsync(utcNow);
-
-            using var conn = _context.CreateConnection();
-            return await conn.QueryAsync<UserChallenge>(
-                @"SELECT
-                      c.Id AS ChallengeId,
-                      c.Title,
-                      c.Category,
-                      c.RequiredVotes,
-                      c.RewardXp,
-                      c.RewardBadge,
-                      c.StartAt,
-                      c.EndAt,
-                      COALESCE(uc.CurrentVotes, 0) AS CurrentVotes,
-                      CAST(COALESCE(uc.IsCompleted, 0) AS bit) AS IsCompleted,
-                      CAST(COALESCE(uc.RewardGranted, 0) AS bit) AS RewardGranted,
-                      uc.CompletedAt
-                  FROM Challenges c
-                  LEFT JOIN UserChallengeProgress uc
-                    ON uc.ChallengeId = c.Id AND uc.UserId = @UserId
-                  WHERE c.IsActive = 1
-                    AND c.StartAt <= @UtcNow
-                    AND c.EndAt > @UtcNow
-                  ORDER BY c.EndAt ASC, c.Id ASC",
-                new { UserId = userId, UtcNow = utcNow });
-        }
-
-        public async Task<IEnumerable<UserChallenge>> AdvanceForVoteAsync(long userId, Poll poll, DateTime utcNow)
-        {
-            await EnsureDailyChallengeAsync(utcNow);
-
-            using var conn = _context.CreateConnection();
-            conn.Open();
-            using var transaction = conn.BeginTransaction();
-
+            var window = ChallengeDomain.Window(definition.Recurrence, utcNow);
             try
             {
-                var challenges = (await conn.QueryAsync<Challenge>(
-                    @"SELECT *
-                      FROM Challenges
-                      WHERE IsActive = 1
-                        AND StartAt <= @UtcNow
-                        AND EndAt > @UtcNow
-                        AND (Category IS NULL OR LOWER(Category) = LOWER(@Category))",
-                    new { UtcNow = utcNow, poll.Category },
-                    transaction)).ToList();
-
-                foreach (var challenge in challenges)
-                {
-                    await conn.ExecuteAsync(
-                        @"IF NOT EXISTS (
-                              SELECT 1 FROM UserChallengeProgress
-                              WHERE UserId = @UserId AND ChallengeId = @ChallengeId
-                          )
-                          BEGIN
-                              INSERT INTO UserChallengeProgress
-                                  (UserId, ChallengeId, CurrentVotes, IsCompleted, RewardGranted, CreatedAt, UpdatedAt)
-                              VALUES
-                                  (@UserId, @ChallengeId, 0, 0, 0, GETUTCDATE(), GETUTCDATE())
-                          END",
-                        new { UserId = userId, ChallengeId = challenge.Id },
-                        transaction);
-
-                    var progress = await conn.QuerySingleAsync<UserChallenge>(
-                        @"UPDATE UserChallengeProgress
-                          SET CurrentVotes = CASE
-                                  WHEN IsCompleted = 1 THEN CurrentVotes
-                                  ELSE CASE
-                                      WHEN CurrentVotes + 1 > @RequiredVotes THEN @RequiredVotes
-                                      ELSE CurrentVotes + 1
-                                  END
-                              END,
-                              IsCompleted = CASE
-                                  WHEN IsCompleted = 1 OR CurrentVotes + 1 >= @RequiredVotes THEN 1
-                                  ELSE 0
-                              END,
-                              CompletedAt = CASE
-                                  WHEN CompletedAt IS NULL AND CurrentVotes + 1 >= @RequiredVotes THEN GETUTCDATE()
-                                  ELSE CompletedAt
-                              END,
-                              UpdatedAt = GETUTCDATE()
-                          OUTPUT
-                              inserted.ChallengeId,
-                              @Title AS Title,
-                              @Category AS Category,
-                              @RequiredVotes AS RequiredVotes,
-                              @RewardXp AS RewardXp,
-                              @RewardBadge AS RewardBadge,
-                              @StartAt AS StartAt,
-                              @EndAt AS EndAt,
-                              inserted.CurrentVotes,
-                              inserted.IsCompleted,
-                              inserted.RewardGranted,
-                              inserted.CompletedAt
-                          WHERE UserId = @UserId AND ChallengeId = @ChallengeId",
-                        new
-                        {
-                            UserId = userId,
-                            ChallengeId = challenge.Id,
-                            challenge.Title,
-                            challenge.Category,
-                            challenge.RequiredVotes,
-                            challenge.RewardXp,
-                            challenge.RewardBadge,
-                            challenge.StartAt,
-                            challenge.EndAt
-                        },
-                        transaction);
-
-                    if (progress.IsCompleted && !progress.RewardGranted)
-                    {
-                        var granted = await conn.ExecuteAsync(
-                            @"UPDATE UserChallengeProgress
-                              SET RewardGranted = 1, UpdatedAt = @UtcNow
-                              WHERE UserId = @UserId AND ChallengeId = @ChallengeId AND RewardGranted = 0",
-                            new { UserId = userId, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
-                        if (granted == 1)
-                        {
-                            await conn.ExecuteAsync(
-                                "UPDATE Users SET Xp = Xp + @RewardXp WHERE Id = @UserId",
-                                new { UserId = userId, challenge.RewardXp }, transaction);
-                            await conn.ExecuteAsync(
-                                @"INSERT INTO XpEvents (UserId, Amount, SourceType, ChallengeId, OccurredAt, IsValid, IsLeaderboardEligible)
-                                  VALUES (@UserId, @RewardXp, 'Challenge', @ChallengeId, @UtcNow, 1, 1)",
-                                new { UserId = userId, challenge.RewardXp, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
-                        }
-                    }
-                }
-
-                transaction.Commit();
+                await conn.ExecuteAsync(@"
+                    IF NOT EXISTS (SELECT 1 FROM Challenges WITH (UPDLOCK, HOLDLOCK)
+                        WHERE DefinitionId = @Id AND StartAt = @StartAt AND EndAt = @EndAt)
+                    INSERT INTO Challenges
+                        (DefinitionId, Title, Description, ChallengeType, Recurrence, RequirementType,
+                         RequirementText, Category, RequiredVotes, RewardXp, RewardBadge, RewardBadgeId,
+                         AllowPrivateVotes, AllowWellnessVotes, StartAt, EndAt, IsActive, CreatedAt)
+                    VALUES
+                        (@Id, @Title, @Description, @ChallengeType, @Recurrence, @RequirementType,
+                         @RequirementText, @Category, @TargetCount, @RewardXp, @RewardBadge, @RewardBadgeId,
+                         @AllowPrivateVotes, @AllowWellnessVotes, @StartAt, @EndAt, 1, SYSUTCDATETIME())",
+                    new { definition.Id, definition.Title, definition.Description, definition.ChallengeType,
+                        definition.Recurrence, definition.RequirementType, definition.RequirementText,
+                        definition.Category, definition.TargetCount, definition.RewardXp, definition.RewardBadge,
+                        definition.RewardBadgeId, definition.AllowPrivateVotes, definition.AllowWellnessVotes,
+                        window.StartAt, window.EndAt });
             }
-            catch
-            {
-                transaction.Rollback();
-                throw;
-            }
-
-            await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
-
-            return await GetActiveForUserAsync(userId, utcNow);
+            catch (Exception ex) when (ex.Message.Contains("UQ_Challenges_DefinitionWindow")) { }
         }
+    }
+
+    public Task<IEnumerable<UserChallenge>> GetActiveForUserAsync(long userId, DateTime utcNow) =>
+        GetForUserAsync(userId, utcNow, "active");
+
+    public async Task<IEnumerable<UserChallenge>> GetForUserAsync(long userId, DateTime utcNow, string state = "active")
+    {
+        await EnsureCurrentOccurrencesAsync(utcNow);
+        using var conn = _context.CreateConnection();
+        var rows = (await conn.QueryAsync<UserChallenge>(@"
+            SELECT c.Id AS ChallengeId, c.*, COALESCE(uc.CurrentVotes, 0) AS CurrentVotes,
+                   CAST(COALESCE(uc.IsCompleted, 0) AS bit) AS IsCompleted,
+                   CAST(COALESCE(uc.RewardGranted, 0) AS bit) AS RewardGranted, uc.CompletedAt
+            FROM Challenges c
+            LEFT JOIN UserChallengeProgress uc ON uc.ChallengeId = c.Id AND uc.UserId = @UserId
+            WHERE c.IsActive = 1
+            ORDER BY c.EndAt DESC, c.Id DESC", new { UserId = userId })).ToList();
+
+        foreach (var row in rows)
+        {
+            row.CurrentVotes = Math.Min(row.RequiredVotes, row.CurrentVotes);
+            row.State = ChallengeDomain.State(row.IsCompleted, row.CurrentVotes, row.EndAt, utcNow);
+            row.EligiblePollsUrl = row.Category == null ? "/polls" : $"/polls?category={Uri.EscapeDataString(row.Category)}";
+        }
+        return state.ToLowerInvariant() switch
+        {
+            "active" => rows.Where(x => x.State is ChallengeStates.Available or ChallengeStates.InProgress),
+            "completed" => rows.Where(x => x.State == ChallengeStates.Completed),
+            "expired" => rows.Where(x => x.State == ChallengeStates.Expired),
+            "all" => rows,
+            _ => throw new ArgumentException("state must be active, completed, expired, or all", nameof(state))
+        };
+    }
+
+    public async Task<IEnumerable<UserChallenge>> AdvanceForVoteAsync(long userId, long voteId, Poll poll, DateTime utcNow)
+    {
+        await EnsureCurrentOccurrencesAsync(utcNow);
+        using var conn = _context.CreateConnection();
+        conn.Open();
+        using var transaction = conn.BeginTransaction(System.Data.IsolationLevel.Serializable);
+        var affectedIds = new List<long>();
+        var awardedXp = new Dictionary<long, int>();
+        try
+        {
+            var challenges = (await conn.QueryAsync<Challenge>(@"
+                SELECT * FROM Challenges WITH (UPDLOCK)
+                WHERE IsActive = 1 AND StartAt <= @UtcNow AND EndAt > @UtcNow",
+                new { UtcNow = utcNow }, transaction)).Where(c => ChallengeDomain.IsEligible(c, poll, utcNow));
+
+            foreach (var challenge in challenges)
+            {
+                var recorded = await conn.ExecuteAsync(@"
+                    IF NOT EXISTS (SELECT 1 FROM ChallengeProgressEvents WITH (UPDLOCK, HOLDLOCK)
+                        WHERE UserId=@UserId AND ChallengeId=@ChallengeId AND VoteId=@VoteId)
+                    BEGIN
+                        INSERT ChallengeProgressEvents(UserId, ChallengeId, VoteId, CreatedAt)
+                        VALUES(@UserId, @ChallengeId, @VoteId, SYSUTCDATETIME());
+                    END", new { UserId = userId, ChallengeId = challenge.Id, VoteId = voteId }, transaction);
+                if (recorded == 0) continue;
+
+                await conn.ExecuteAsync(@"
+                    IF NOT EXISTS (SELECT 1 FROM UserChallengeProgress WITH (UPDLOCK, HOLDLOCK)
+                        WHERE UserId=@UserId AND ChallengeId=@ChallengeId)
+                    INSERT UserChallengeProgress(UserId, ChallengeId, CurrentVotes, IsCompleted, RewardGranted, CreatedAt, UpdatedAt)
+                    VALUES(@UserId, @ChallengeId, 0, 0, 0, SYSUTCDATETIME(), SYSUTCDATETIME());
+
+                    UPDATE UserChallengeProgress WITH (UPDLOCK)
+                    SET CurrentVotes = CASE WHEN CurrentVotes < @Target THEN CurrentVotes + 1 ELSE @Target END,
+                        IsCompleted = CASE WHEN CurrentVotes + 1 >= @Target THEN 1 ELSE IsCompleted END,
+                        CompletedAt = CASE WHEN CompletedAt IS NULL AND CurrentVotes + 1 >= @Target THEN @UtcNow ELSE CompletedAt END,
+                        UpdatedAt = @UtcNow
+                    WHERE UserId=@UserId AND ChallengeId=@ChallengeId;",
+                    new { UserId = userId, ChallengeId = challenge.Id, Target = challenge.RequiredVotes, UtcNow = utcNow }, transaction);
+
+                var claimed = await conn.ExecuteAsync(@"
+                    UPDATE UserChallengeProgress SET RewardGranted=1, UpdatedAt=@UtcNow
+                    WHERE UserId=@UserId AND ChallengeId=@ChallengeId AND IsCompleted=1 AND RewardGranted=0",
+                    new { UserId = userId, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
+                if (claimed == 1)
+                {
+                    awardedXp[challenge.Id] = challenge.RewardXp;
+                    await conn.ExecuteAsync("UPDATE Users SET Xp=Xp+@RewardXp WHERE Id=@UserId",
+                        new { challenge.RewardXp, UserId = userId }, transaction);
+                    await conn.ExecuteAsync(@"
+                        INSERT INTO XpEvents (UserId, Amount, SourceType, ChallengeId, OccurredAt, IsValid, IsLeaderboardEligible)
+                        VALUES (@UserId, @RewardXp, 'Challenge', @ChallengeId, @UtcNow, 1, 1)",
+                        new { UserId = userId, challenge.RewardXp, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
+                    if (challenge.RewardBadgeId.HasValue)
+                        await conn.ExecuteAsync(@"IF NOT EXISTS (SELECT 1 FROM UserBadges WHERE UserId=@UserId AND BadgeId=@BadgeId)
+                            INSERT UserBadges(UserId, BadgeId, AwardedAt) VALUES(@UserId, @BadgeId, @UtcNow)",
+                            new { UserId = userId, BadgeId = challenge.RewardBadgeId, UtcNow = utcNow }, transaction);
+                }
+                affectedIds.Add(challenge.Id);
+            }
+            transaction.Commit();
+        }
+        catch { transaction.Rollback(); throw; }
+
+        if (affectedIds.Count == 0) return Array.Empty<UserChallenge>();
+        await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
+        var all = await GetForUserAsync(userId, utcNow, "all");
+        var affected = all.Where(x => affectedIds.Contains(x.ChallengeId)).ToList();
+        foreach (var challenge in affected)
+            challenge.AwardedXp = awardedXp.GetValueOrDefault(challenge.ChallengeId);
+        return affected;
+    }
+
+    private sealed class ChallengeDefinition
+    {
+        public long Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string ChallengeType { get; set; } = "Voting";
+        public string Recurrence { get; set; } = ChallengeRecurrences.Daily;
+        public string RequirementType { get; set; } = "VoteCount";
+        public string RequirementText { get; set; } = "";
+        public int TargetCount { get; set; }
+        public string? Category { get; set; }
+        public int RewardXp { get; set; }
+        public string? RewardBadge { get; set; }
+        public long? RewardBadgeId { get; set; }
+        public bool AllowPrivateVotes { get; set; }
+        public bool AllowWellnessVotes { get; set; }
     }
 }

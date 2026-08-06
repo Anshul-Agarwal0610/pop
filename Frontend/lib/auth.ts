@@ -17,6 +17,7 @@ export interface AuthUser {
   lastVoteDate?: string | null
   createdAt: string
   level?: number
+  progression: import("@/lib/api").ApiProgression
   badges?: Array<{
     id: number
     userId: number
@@ -54,6 +55,10 @@ export function getStoredUser(): AuthUser | null {
 export function saveSession(data: AuthResponse) {
   localStorage.setItem(TOKEN_KEY, data.token)
   localStorage.setItem(USER_KEY, JSON.stringify(data.user))
+}
+
+export function saveStoredUser(user: AuthUser) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
 export function clearSession() {
@@ -97,4 +102,15 @@ export async function apiLogin(
 
 export async function apiGoogleLogin(idToken: string): Promise<AuthResponse> {
   return post<AuthResponse>("/api/auth/google", { idToken })
+}
+
+export async function getCurrentUser(): Promise<AuthUser> {
+  const token = getToken()
+  if (!token) throw new Error("Missing authentication token")
+
+  const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error("Session is no longer valid")
+  return res.json() as Promise<AuthUser>
 }
