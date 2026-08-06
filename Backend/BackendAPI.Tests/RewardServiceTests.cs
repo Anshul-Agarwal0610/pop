@@ -41,6 +41,24 @@ public sealed class RewardServiceTests
     }
 
     [Fact]
+    public async Task Relay_completed_transfer_source_is_idempotent()
+    {
+        var service = new RewardService(new FakeRewardRepository(), NullLogger<RewardService>.Instance);
+        var request = new RewardGrantRequest(7, RewardRuleCodes.RelayCompleted, "relay-transfer", "relay-transfer:8:3", DateTime.UtcNow);
+        Assert.False((await service.GrantAsync(request)).IsDuplicate);
+        Assert.True((await service.GrantAsync(request)).IsDuplicate);
+    }
+
+    [Fact]
+    public async Task Different_relay_milestones_are_independently_awardable()
+    {
+        var service = new RewardService(new FakeRewardRepository(), NullLogger<RewardService>.Instance);
+        var at=DateTime.UtcNow;
+        Assert.False((await service.GrantAsync(new(7,RewardRuleCodes.RelayMilestone,"relay-milestone","relay-milestone:8:3",at))).IsDuplicate);
+        Assert.False((await service.GrantAsync(new(7,RewardRuleCodes.RelayMilestone,"relay-milestone","relay-milestone:8:5",at))).IsDuplicate);
+    }
+
+    [Fact]
     public async Task Non_utc_grant_is_rejected()
     {
         var service = new RewardService(new FakeRewardRepository(), NullLogger<RewardService>.Instance);

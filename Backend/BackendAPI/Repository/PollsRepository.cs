@@ -48,6 +48,19 @@ namespace BackendAPI.Repository
         {
             foreach (var poll in polls)
             {
+                // Relay progress and outcomes are available only through member-scoped Relay APIs.
+                if (poll.PollMode.Equals(PollModes.Relay, StringComparison.OrdinalIgnoreCase))
+                {
+                    poll.TotalVotes = 0;
+                    poll.HasVoted = false;
+                    poll.UserVotedOptionId = null;
+                    foreach (var option in poll.Options)
+                    {
+                        option.VoteCount = 0;
+                        option.VotePercentage = 0;
+                    }
+                    continue;
+                }
                 if (userVotes.TryGetValue(poll.Id, out var optionId))
                 {
                     poll.HasVoted          = true;
@@ -392,7 +405,9 @@ namespace BackendAPI.Repository
             var normalizedCategory = CategoryCatalog.NormalizeName(request.Category);
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
-            var pollMode = isWellness ? PollModes.Wellness : PollModes.Public;
+            var pollMode = isWellness ? PollModes.Wellness
+                : request.PollMode?.Equals(PollModes.Relay, StringComparison.OrdinalIgnoreCase) == true ? PollModes.Relay
+                : PollModes.Public;
             var moderationStatus = isWellness
                 ? PollModerationStatus.Published
                 : PollModerationStatus.PendingReview;

@@ -53,6 +53,9 @@ namespace BackendAPI.Controllers
             if (poll == null)
                 return NotFound(new { message = $"Poll {request.PollId} not found." });
 
+            if (poll.PollMode.Equals(PollModes.Relay, StringComparison.OrdinalIgnoreCase))
+                return Conflict(new { code = "relay_required", message = "Relay polls can only be voted through an accepted handoff." });
+
             if (!poll.IsActive || poll.ExpiresAt < DateTime.UtcNow)
                 return BadRequest(new { message = "This poll has expired or is no longer active." });
 
@@ -201,6 +204,9 @@ namespace BackendAPI.Controllers
         [HttpGet("{pollId}")]
         public async Task<IActionResult> GetVotesByPoll(long pollId)
         {
+            var poll = await _pollsRepo.GetByIdAsync(pollId);
+            if (poll?.PollMode.Equals(PollModes.Relay, StringComparison.OrdinalIgnoreCase) == true)
+                return StatusCode(403, new { code = "relay_votes_private", message = "Individual Relay votes are private." });
             var votes = await _votesRepo.GetVotesByPollAsync(pollId);
             return Ok(votes);
         }

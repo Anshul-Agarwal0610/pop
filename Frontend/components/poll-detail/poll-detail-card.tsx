@@ -382,7 +382,12 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
             </div>
           )}
 
-          {showResults ? (
+          {poll.pollMode === "Relay" ? (
+            <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 text-sm">
+              <p className="font-semibold text-foreground">This poll travels by Relay.</p>
+              <p className="mt-1 text-muted-foreground">Open your single-use handoff link to accept, vote, and pass the chain onward. Interim results and individual choices stay private.</p>
+            </div>
+          ) : showResults ? (
             <div className="space-y-3">
               {poll.options.map((option) => (
                 <ResultBar
