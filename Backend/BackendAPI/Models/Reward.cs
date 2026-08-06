@@ -22,7 +22,7 @@ public sealed class RewardRule
     public bool IsEnabled { get; set; }
 }
 
-public sealed class RewardEvent
+public sealed class RewardLedgerEvent
 {
     public long Id { get; set; }
     public long UserId { get; set; }
@@ -43,7 +43,7 @@ public sealed class RewardEvent
 public sealed record RewardGrantRequest(long UserId, string RuleCode, string SourceType,
     string SourceReference, DateTime OccurredAtUtc);
 
-public sealed record RewardGrantResult(RewardEvent Event, int CurrentXp, bool IsDuplicate);
+public sealed record RewardGrantResult(RewardLedgerEvent Event, int CurrentXp, bool IsDuplicate);
 
 public sealed record ReverseRewardRequest(string Reason, string IdempotencyKey);
 public sealed record ManualAdjustmentRequest(long UserId, int Value, string Reason, string IdempotencyKey);

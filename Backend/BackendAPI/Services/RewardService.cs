@@ -39,10 +39,10 @@ public sealed class RewardService : IRewardService
         }
     }
 
-    public Task<RewardEvent> ReverseAsync(long eventId, long actorUserId, string reason, string idempotencyKey, CancellationToken cancellationToken = default)
+    public Task<RewardLedgerEvent> ReverseAsync(long eventId, long actorUserId, string reason, string idempotencyKey, CancellationToken cancellationToken = default)
         => _repository.ReverseAsync(eventId, actorUserId, RequireReason(reason), RequireKey(idempotencyKey), cancellationToken);
 
-    public Task<RewardEvent> AdjustAsync(long userId, int value, long actorUserId, string reason, string idempotencyKey, CancellationToken cancellationToken = default)
+    public Task<RewardLedgerEvent> AdjustAsync(long userId, int value, long actorUserId, string reason, string idempotencyKey, CancellationToken cancellationToken = default)
     {
         if (value == 0) throw new ArgumentOutOfRangeException(nameof(value), "Adjustment must be non-zero.");
         return _repository.AdjustAsync(userId, value, actorUserId, RequireReason(reason), RequireKey(idempotencyKey), cancellationToken);

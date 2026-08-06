@@ -37,7 +37,7 @@ export function SearchResultCard({ poll, onSelect }: SearchResultCardProps) {
       onClick={openPoll}
       type="button"
     >
-      <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-secondary">
+      <div className="hidden h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-secondary min-[360px]:block">
         {poll.thumbnailUrl ? (
           <img
             alt=""
@@ -52,7 +52,7 @@ export function SearchResultCard({ poll, onSelect }: SearchResultCardProps) {
       </div>
 
       <div className="min-w-0 flex-1 space-y-2">
-        <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground">
+        <h3 className="break-words text-sm font-bold leading-snug text-foreground min-[360px]:line-clamp-2">
           {poll.question}
         </h3>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

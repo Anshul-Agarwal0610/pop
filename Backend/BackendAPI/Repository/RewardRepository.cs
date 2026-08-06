@@ -27,7 +27,7 @@ public sealed class RewardRepository : IRewardRepository
                   ORDER BY Version DESC", new { request.RuleCode, At = request.OccurredAtUtc }, transaction, cancellationToken: cancellationToken));
             if (rule is null) throw new InvalidOperationException($"No active reward rule exists for '{request.RuleCode}'.");
 
-            var existing = await connection.QuerySingleOrDefaultAsync<RewardEvent>(new CommandDefinition(
+            var existing = await connection.QuerySingleOrDefaultAsync<RewardLedgerEvent>(new CommandDefinition(
                 "SELECT * FROM RewardEvents WHERE UserId=@UserId AND SourceKey=@SourceKey",
                 new { request.UserId, SourceKey = sourceKey }, transaction, cancellationToken: cancellationToken));
             if (existing is not null)
@@ -56,7 +56,11 @@ public sealed class RewardRepository : IRewardRepository
             var currentXp = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
                 "UPDATE Users SET Xp=Xp+@Value OUTPUT inserted.Xp WHERE Id=@UserId",
                 new { request.UserId, rule.Value }, transaction, cancellationToken: cancellationToken));
-            var rewardEvent = await connection.QuerySingleAsync<RewardEvent>(new CommandDefinition(
+            await connection.ExecuteAsync(new CommandDefinition(@"INSERT INTO XpEvents
+                (UserId,Amount,SourceType,OccurredAt,IsValid,IsLeaderboardEligible)
+                VALUES(@UserId,@Value,'RewardLedger',@OccurredAt,1,1)",
+                new { request.UserId, rule.Value, OccurredAt = request.OccurredAtUtc }, transaction, cancellationToken: cancellationToken));
+            var rewardEvent = await connection.QuerySingleAsync<RewardLedgerEvent>(new CommandDefinition(
                 "SELECT * FROM RewardEvents WHERE Id=@Id", new { Id=id }, transaction, cancellationToken: cancellationToken));
             transaction.Commit();
             return new(rewardEvent, currentXp, false);
@@ -64,40 +68,44 @@ public sealed class RewardRepository : IRewardRepository
         catch (SqlException ex) when (ex.Number is 2601 or 2627)
         {
             transaction.Rollback();
-            var existing = await connection.QuerySingleAsync<RewardEvent>(new CommandDefinition(
+            var existing = await connection.QuerySingleAsync<RewardLedgerEvent>(new CommandDefinition(
                 "SELECT * FROM RewardEvents WHERE UserId=@UserId AND SourceKey=@SourceKey", new { request.UserId, SourceKey=sourceKey }, cancellationToken:cancellationToken));
             return new(existing, await GetTotalAsync(connection, null, request.UserId, cancellationToken), true);
         }
         catch { transaction.Rollback(); throw; }
     }
 
-    public async Task<RewardEvent> ReverseAsync(long eventId, long actorUserId, string reason, string idempotencyKey, CancellationToken cancellationToken = default)
+    public async Task<RewardLedgerEvent> ReverseAsync(long eventId, long actorUserId, string reason, string idempotencyKey, CancellationToken cancellationToken = default)
     {
         using var connection=_context.CreateConnection(); connection.Open(); using var tx=connection.BeginTransaction(IsolationLevel.Serializable);
         try
         {
-            var original=await connection.QuerySingleOrDefaultAsync<RewardEvent>("SELECT * FROM RewardEvents WITH (UPDLOCK,HOLDLOCK) WHERE Id=@eventId",new{eventId},tx)
+            var original=await connection.QuerySingleOrDefaultAsync<RewardLedgerEvent>("SELECT * FROM RewardEvents WITH (UPDLOCK,HOLDLOCK) WHERE Id=@eventId",new{eventId},tx)
                 ?? throw new KeyNotFoundException("Reward event not found.");
             if(original.EventType!="Grant" || original.Value<=0) throw new InvalidOperationException("Only positive grant events can be reversed.");
             var id=await connection.ExecuteScalarAsync<long>(@"INSERT RewardEvents(UserId,RuleId,RuleCode,RuleVersion,Reason,SourceType,SourceReference,SourceKey,Value,EventType,ReversesEventId,ActorUserId,CreatedAt)
                 VALUES(@UserId,@RuleId,@RuleCode,@RuleVersion,@reason,'admin.reversal',@SourceReference,@SourceKey,@Value,'Reversal',@EventId,@actorUserId,GETUTCDATE()); SELECT CAST(SCOPE_IDENTITY() AS bigint);",
                 new{original.UserId,original.RuleId,original.RuleCode,original.RuleVersion,reason,SourceReference=eventId.ToString(),SourceKey=$"reversal:{idempotencyKey}",Value=-original.Value,EventId=eventId,actorUserId},tx);
             await connection.ExecuteAsync("UPDATE Users SET Xp=Xp-@Value WHERE Id=@UserId",new{Value=original.Value,original.UserId},tx);
-            var result=await connection.QuerySingleAsync<RewardEvent>("SELECT * FROM RewardEvents WHERE Id=@id",new{id},tx); tx.Commit(); return result;
+            await connection.ExecuteAsync(@"INSERT INTO XpEvents(UserId,Amount,SourceType,OccurredAt,IsValid,IsLeaderboardEligible)
+                VALUES(@UserId,@Value,'RewardReversal',GETUTCDATE(),1,1)",new{original.UserId,Value=-original.Value},tx);
+            var result=await connection.QuerySingleAsync<RewardLedgerEvent>("SELECT * FROM RewardEvents WHERE Id=@id",new{id},tx); tx.Commit(); return result;
         } catch {tx.Rollback();throw;}
     }
 
-    public async Task<RewardEvent> AdjustAsync(long userId,int value,long actorUserId,string reason,string idempotencyKey,CancellationToken cancellationToken=default)
+    public async Task<RewardLedgerEvent> AdjustAsync(long userId,int value,long actorUserId,string reason,string idempotencyKey,CancellationToken cancellationToken=default)
     {
         using var connection=_context.CreateConnection(); connection.Open(); using var tx=connection.BeginTransaction();
         try { var id=await connection.ExecuteScalarAsync<long>(@"INSERT RewardEvents(UserId,RuleCode,RuleVersion,Reason,SourceType,SourceReference,SourceKey,Value,EventType,ActorUserId,CreatedAt)
             VALUES(@userId,'admin.manual',1,@reason,'admin.adjustment',@idempotencyKey,@SourceKey,@value,'Adjustment',@actorUserId,GETUTCDATE()); SELECT CAST(SCOPE_IDENTITY() AS bigint);",
             new{userId,value,actorUserId,reason,idempotencyKey,SourceKey=$"adjustment:{idempotencyKey}"},tx); await connection.ExecuteAsync("UPDATE Users SET Xp=Xp+@value WHERE Id=@userId",new{userId,value},tx);
-            var result=await connection.QuerySingleAsync<RewardEvent>("SELECT * FROM RewardEvents WHERE Id=@id",new{id},tx);tx.Commit();return result;} catch{tx.Rollback();throw;}
+            await connection.ExecuteAsync(@"INSERT INTO XpEvents(UserId,Amount,SourceType,OccurredAt,IsValid,IsLeaderboardEligible)
+                VALUES(@userId,@value,'RewardAdjustment',GETUTCDATE(),1,1)",new{userId,value},tx);
+            var result=await connection.QuerySingleAsync<RewardLedgerEvent>("SELECT * FROM RewardEvents WHERE Id=@id",new{id},tx);tx.Commit();return result;} catch{tx.Rollback();throw;}
     }
 
-    public async Task<IEnumerable<RewardEvent>> GetEventsAsync(long? userId,int count,CancellationToken cancellationToken=default)
-    { using var c=_context.CreateConnection(); return await c.QueryAsync<RewardEvent>(new CommandDefinition("SELECT TOP (@Count) * FROM RewardEvents WHERE (@UserId IS NULL OR UserId=@UserId) ORDER BY CreatedAt DESC,Id DESC",new{UserId=userId,Count=Math.Clamp(count,1,200)},cancellationToken:cancellationToken)); }
+    public async Task<IEnumerable<RewardLedgerEvent>> GetEventsAsync(long? userId,int count,CancellationToken cancellationToken=default)
+    { using var c=_context.CreateConnection(); return await c.QueryAsync<RewardLedgerEvent>(new CommandDefinition("SELECT TOP (@Count) * FROM RewardEvents WHERE (@UserId IS NULL OR UserId=@UserId) ORDER BY CreatedAt DESC,Id DESC",new{UserId=userId,Count=Math.Clamp(count,1,200)},cancellationToken:cancellationToken)); }
     public async Task<IEnumerable<RewardRule>> GetActiveRulesAsync(DateTime utcNow,CancellationToken cancellationToken=default)
     { using var c=_context.CreateConnection(); return await c.QueryAsync<RewardRule>(new CommandDefinition("SELECT * FROM RewardRules WHERE IsEnabled=1 AND EffectiveFrom<=@utcNow AND (EffectiveTo IS NULL OR EffectiveTo>@utcNow) ORDER BY Code,Version DESC",new{utcNow},cancellationToken:cancellationToken)); }
     public async Task<IEnumerable<RewardReconciliation>> GetReconciliationAsync(CancellationToken cancellationToken=default)

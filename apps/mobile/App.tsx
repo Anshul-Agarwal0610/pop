@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -22,6 +22,7 @@ import { getExpoPushToken } from './src/lib/pushNotifications';
 import { hasCompletedOnboarding, markOnboardingComplete } from './src/lib/session';
 import type { AuthUser } from './src/types/auth';
 import type { ApiPoll, ApiPollOption, VoteReward } from './src/types/poll';
+import { track } from './src/lib/analytics/client';
 
 type AuthMode = 'login' | 'register';
 type SignedInTab = 'home' | 'profile' | 'leaderboard';
@@ -452,6 +453,7 @@ function SignedInHome() {
   const [error, setError] = useState<string | null>(null);
   const [votingPollId, setVotingPollId] = useState<number | null>(null);
   const [latestReward, setLatestReward] = useState<VoteReward | null>(null);
+  const roundIds = useRef(new Map<number, string>());
 
   const loadLeaderboard = useCallback(async () => {
     setIsLeaderboardLoading(true);
@@ -488,6 +490,12 @@ function SignedInHome() {
   useEffect(() => {
     loadPolls();
   }, [loadPolls]);
+
+  useEffect(() => {
+    const poll = polls[0]; if (!poll) return;
+    let roundId = roundIds.current.get(poll.id); if (!roundId) { roundId = `mobile-${Date.now()}-${poll.id}`; roundIds.current.set(poll.id, roundId); }
+    void track('game_round_started', { round_id: roundId, surface: 'feed', category: poll.category }, `feed:${poll.id}`);
+  }, [polls[0]?.id, polls[0]?.category]);
 
   useEffect(() => {
     let isMounted = true;
@@ -534,6 +542,8 @@ function SignedInHome() {
       );
       setLatestReward(response.reward);
       applyVoteReward(response.reward);
+      let roundId = roundIds.current.get(pollId); if (!roundId) { roundId = `mobile-${Date.now()}-${pollId}`; roundIds.current.set(pollId, roundId); }
+      void track('game_round_completed', { round_id: roundId, surface: 'feed', outcome: 'voted', xp_awarded: response.reward.xpAwarded }, `feed:${pollId}:completed`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not record your vote');
     } finally {
@@ -551,8 +561,8 @@ function SignedInHome() {
 
   if (!user) return null;
 
-  const level = getLevel(user.xp ?? 0);
-  const progress = getLevelProgress(user.xp ?? 0);
+  const level = user.progression.level;
+  const progress = { current: user.progression.xpIntoLevel, percent: user.progression.progressPercent };
 
   return (
     <View style={styles.feedShell}>
@@ -588,7 +598,9 @@ function SignedInHome() {
 
       {latestReward && (
         <View style={styles.rewardBanner}>
-          <Text style={styles.rewardTitle}>+{latestReward.xpAwarded} XP earned</Text>
+          <Text accessibilityLiveRegion="polite" style={styles.rewardTitle}>
+            {latestReward.leveledUp ? `Level up! Level ${latestReward.progression.level}` : `+${latestReward.awardedXp} XP earned`}
+          </Text>
           <Text style={styles.rewardCopy}>
             {latestReward.streakAdvanced
               ? `Daily streak is now ${latestReward.streak}.`
@@ -614,7 +626,7 @@ function SignedInHome() {
               <View style={[styles.progressFill, { width: `${progress.percent}%` }]} />
             </View>
             <Text style={styles.progressCopy}>
-              {progress.current} / 500 XP toward the next level.
+              {progress.current} / {user.progression.xpRequiredForNextLevel} XP toward the next level.
             </Text>
           </View>
 
@@ -790,18 +802,6 @@ function LeaderboardRow({
       </View>
     </View>
   );
-}
-
-function getLevel(xp: number) {
-  return Math.floor(xp / 500) + 1;
-}
-
-function getLevelProgress(xp: number) {
-  const current = xp % 500;
-  return {
-    current,
-    percent: Math.min(100, Math.round((current / 500) * 100)),
-  };
 }
 
 function formatMonth(value: string) {

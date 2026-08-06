@@ -33,7 +33,7 @@ export function AppShell({ children, hideBottomPadding }: AppShellProps) {
   }, [isAuthenticated])
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh min-w-0 bg-background">
       {/* Top Bar */}
       <TopBar
         onProfileClick={() => setIsProfileOpen(true)}
@@ -45,10 +45,10 @@ export function AppShell({ children, hideBottomPadding }: AppShellProps) {
       <Sidebar />
 
       {/* Main Content */}
-      <main className="pt-16 md:pl-64">
+      <main className="min-w-0 pt-16 lg:pl-64">
         <div className={cn(
-          "min-h-[calc(100vh-4rem)]",
-          hideBottomPadding ? "pb-0" : "pb-20 md:pb-6"
+          "min-h-[calc(100dvh-4rem)] min-w-0",
+          hideBottomPadding ? "pb-0" : "safe-bottom lg:pb-6"
         )}>
           {children}
         </div>

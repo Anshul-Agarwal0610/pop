@@ -131,7 +131,7 @@ namespace BackendAPI.Repository
             using var conn = _context.CreateConnection();
             var user = await conn.QueryFirstOrDefaultAsync<UserResponse>(
                 @"SELECT Id, Username, DisplayName, Email, AvatarUrl, AuthProvider,
-                         Xp, Streak, TotalVotes, PollsCreated, LastVoteDate, CreatedAt, IsAdmin
+                         Xp, Streak, LongestStreak, TotalVotes, PollsCreated, LastVoteDate, CreatedAt, IsAdmin
                   FROM Users WHERE Id = @Id",
                 new { Id = id }
             );
