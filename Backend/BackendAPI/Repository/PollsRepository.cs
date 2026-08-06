@@ -1,6 +1,7 @@
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
+using BackendAPI.Services;
 using Dapper;
 
 namespace BackendAPI.Repository
@@ -386,6 +387,8 @@ namespace BackendAPI.Repository
 
         public async Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null)
         {
+            if (request.IsAIGenerated)
+                GeneratedPollContract.EnsureValid(request.Options);
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
@@ -438,8 +441,8 @@ namespace BackendAPI.Repository
                 foreach (var optionText in request.Options)
                 {
                     await conn.ExecuteAsync(
-                        "INSERT INTO PollOptions (PollId, Text, VoteCount) VALUES (@PollId, @Text, 0)",
-                        new { PollId = pollId, Text = optionText },
+                        "INSERT INTO PollOptions (PollId, Text, Side, VoteCount) VALUES (@PollId, @Text, @Side, 0)",
+                        new { PollId = pollId, Text = optionText, Side = request.IsAIGenerated ? optionText : null },
                         transaction
                     );
                 }

@@ -1,5 +1,7 @@
 # Pollify
 
+Generated polls follow the documented [canonical Up/Against API and persistence contract](docs/polls/generated-binary-contract.md).
+
 A gamified public opinion polling platform built with Next.js, TypeScript, and Tailwind CSS.
 
 ## Features

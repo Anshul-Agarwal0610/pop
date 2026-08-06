@@ -53,6 +53,8 @@ namespace BackendAPI.Models
         public long Id { get; set; }
         public long PollId { get; set; }
         public string Text { get; set; } = string.Empty;
+        /// <summary>Stable binary identity. Required for generated polls; null for custom/legacy polls.</summary>
+        public string? Side { get; set; }
         public int VoteCount { get; set; }
         public double VotePercentage { get; set; }
     }
