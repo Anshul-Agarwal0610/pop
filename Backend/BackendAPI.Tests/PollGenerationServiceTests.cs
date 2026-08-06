@@ -57,16 +57,18 @@ public class PollGenerationServiceTests
     }
 
     [Fact]
-    public async Task Ambiguous_topic_is_rejected()
+    public async Task Provider_ambiguity_is_metadata_not_publication_proof()
     {
         var json = Valid.Replace("false,\"ambiguityReason\":null", "true,\"ambiguityReason\":\"Not enough source detail\"");
-        Assert.Null(await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Celebrity news", Category = "Entertainment" }));
+        var result = await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Celebrity news", Category = "Entertainment" });
+        Assert.NotNull(result);
+        Assert.True(result!.Quality.IsAmbiguous);
     }
 
     private static PollGenerationService Create(FakeProvider provider)
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["PollGen:Provider"] = "fake" }).Build();
-        return new PollGenerationService(new[] { provider }, new FakePollsRepository(), config, NullLogger<PollGenerationService>.Instance);
+        return new PollGenerationService(new[] { provider }, config, NullLogger<PollGenerationService>.Instance);
     }
 
     private sealed class FakeProvider(string response) : ILlmProvider

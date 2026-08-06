@@ -73,7 +73,9 @@ namespace BackendAPI.Models
         public string? ThumbnailUrl { get; set; }
         public bool IsAIGenerated { get; set; }
         [System.Text.Json.Serialization.JsonIgnore]
-        public bool AutoPublish { get; set; }
+        public GeneratedPollQualityDecision? QualityDecision { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public long? TrendingTopicId { get; set; }
         public bool IsPrivate { get; set; }
         public bool IsWellness { get; set; }
         public string? ModerationReason { get; set; }

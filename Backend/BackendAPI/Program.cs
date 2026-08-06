@@ -89,6 +89,20 @@ builder.Services.AddScoped<ILlmProvider, OpenAiLlmProvider>();
 builder.Services.AddScoped<ILlmProvider, AnthropicLlmProvider>();
 builder.Services.AddScoped<ILlmProvider, CustomVmLlmProvider>();
 
+builder.Services.AddOptions<PollQualityOptions>()
+    .Bind(builder.Configuration.GetSection(PollQualityOptions.Section))
+    .Validate(o => o.MinimumReviewScore is >= 0 and <= 1 && o.MinimumPublishScore is >= 0 and <= 1 &&
+                   o.MinimumReviewScore <= o.MinimumPublishScore &&
+                   o.SensitiveMinimumReviewScore is >= 0 and <= 1 && o.SensitiveMinimumPublishScore is >= 0 and <= 1 &&
+                   o.SensitiveMinimumReviewScore <= o.SensitiveMinimumPublishScore &&
+                   o.MinimumDimensionScore is >= 0 and <= 1 && o.SensitiveMinimumDimensionScore is >= 0 and <= 1 &&
+                   o.DuplicateSimilarityThreshold is >= 0 and <= 1 && o.DuplicateLookbackCount > 0,
+        "Poll quality thresholds must be within 0..1 and review thresholds must not exceed publish thresholds.")
+    .ValidateOnStart();
+builder.Services.AddScoped<IPropositionQualityEvaluator, PropositionQualityEvaluator>();
+builder.Services.AddScoped<IGeneratedPollDuplicateDetector, GeneratedPollDuplicateDetector>();
+builder.Services.AddScoped<IGeneratedPollQualityGate, GeneratedPollQualityGate>();
+
 // ── Poll Generation Service (US-07 enhanced: multi-provider) ─────────────
 builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
 

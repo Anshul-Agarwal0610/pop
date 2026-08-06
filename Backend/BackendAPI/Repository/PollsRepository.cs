@@ -388,7 +388,17 @@ namespace BackendAPI.Repository
         public async Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null)
         {
             if (request.IsAIGenerated)
+            {
                 GeneratedPollContract.EnsureValid(request.Options);
+                var decision = request.QualityDecision ?? throw new InvalidOperationException("Generated polls require an auditable quality decision.");
+                if (string.IsNullOrWhiteSpace(decision.RulesVersion) || string.IsNullOrWhiteSpace(decision.EvaluatorSchemaVersion) ||
+                    string.IsNullOrWhiteSpace(decision.GenerationSchemaVersion))
+                    throw new InvalidOperationException("Generated poll quality decision is missing version metadata.");
+                if (decision.Disposition == PollQualityDisposition.Accepted && decision.OverallScore < decision.PublishThreshold)
+                    throw new InvalidOperationException("Generated poll does not meet its publication threshold.");
+                if (decision.Disposition == PollQualityDisposition.Rejected)
+                    throw new InvalidOperationException("Rejected generated polls cannot be persisted as polls.");
+            }
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
@@ -396,7 +406,8 @@ namespace BackendAPI.Repository
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
             var pollMode = isWellness ? PollModes.Wellness : PollModes.Public;
-            var moderationStatus = isWellness || (request.IsAIGenerated && request.AutoPublish)
+            var moderationStatus = !request.IsAIGenerated && isWellness ||
+                request.QualityDecision?.Disposition == PollQualityDisposition.Accepted
                 ? PollModerationStatus.Published
                 : PollModerationStatus.PendingReview;
 
@@ -447,6 +458,34 @@ namespace BackendAPI.Repository
                     );
                 }
 
+                if (request.IsAIGenerated && request.QualityDecision is { } quality)
+                {
+                    await conn.ExecuteAsync(@"INSERT INTO GeneratedPollQualityDecisions
+                        (PollId, TrendingTopicId, Disposition, OverallScore, GroundingScore, NeutralityScore,
+                         ClarityScore, AnswerabilityScore, BalancedSidesScore, DuplicationScore, SafetyScore,
+                         IsSensitive, SensitivityPolicyCode, ReasonCodes, GenerationProvider, ProviderConfidence,
+                         GenerationPromptVersion, GenerationSchemaVersion, EvaluatorPromptVersion,
+                         EvaluatorSchemaVersion, RulesVersion, DuplicatePollId, DuplicateSimilarity,
+                         DuplicateMatchType, ExactFingerprint, EvaluatedAt)
+                        VALUES (@PollId, @TrendingTopicId, @Disposition, @OverallScore, @Grounding, @Neutrality,
+                         @Clarity, @Answerability, @BalancedSides, @Duplication, @Safety, @IsSensitive,
+                         @SensitivityPolicyCode, @ReasonCodes, @GenerationProvider, @ProviderConfidence,
+                         @GenerationPromptVersion, @GenerationSchemaVersion, @EvaluatorPromptVersion,
+                         @EvaluatorSchemaVersion, @RulesVersion, @DuplicatePollId, @DuplicateSimilarity,
+                         @DuplicateMatchType, @ExactFingerprint, GETUTCDATE())", new
+                    {
+                        PollId = pollId, request.TrendingTopicId, Disposition = quality.Disposition.ToString(),
+                        quality.OverallScore, quality.Scores.Grounding, quality.Scores.Neutrality,
+                        quality.Scores.Clarity, quality.Scores.Answerability, quality.Scores.BalancedSides,
+                        quality.Scores.Duplication, quality.Scores.Safety, quality.IsSensitive,
+                        quality.SensitivityPolicyCode, ReasonCodes = string.Join(',', quality.ReasonCodes),
+                        quality.GenerationProvider, quality.ProviderConfidence, quality.GenerationPromptVersion,
+                        quality.GenerationSchemaVersion, quality.EvaluatorPromptVersion, quality.EvaluatorSchemaVersion,
+                        quality.RulesVersion, quality.DuplicatePollId, quality.DuplicateSimilarity,
+                        quality.DuplicateMatchType, quality.ExactFingerprint
+                    }, transaction);
+                }
+
                 transaction.Commit();
                 if (createdByUserId != null)
                 {
@@ -459,6 +498,37 @@ namespace BackendAPI.Repository
                 transaction.Rollback();
                 throw;
             }
+        }
+
+        public async Task RecordRejectedQualityDecisionAsync(long trendingTopicId, GeneratedPollQualityDecision quality)
+        {
+            if (quality.Disposition != PollQualityDisposition.Rejected)
+                throw new ArgumentException("Only rejected terminal outcomes may be recorded without a poll.", nameof(quality));
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync(@"INSERT INTO GeneratedPollQualityDecisions
+                (PollId, TrendingTopicId, Disposition, OverallScore, GroundingScore, NeutralityScore,
+                 ClarityScore, AnswerabilityScore, BalancedSidesScore, DuplicationScore, SafetyScore,
+                 IsSensitive, SensitivityPolicyCode, ReasonCodes, GenerationProvider, ProviderConfidence,
+                 GenerationPromptVersion, GenerationSchemaVersion, EvaluatorPromptVersion,
+                 EvaluatorSchemaVersion, RulesVersion, DuplicatePollId, DuplicateSimilarity,
+                 DuplicateMatchType, ExactFingerprint, EvaluatedAt)
+                VALUES (NULL, @TrendingTopicId, @Disposition, @OverallScore, @Grounding, @Neutrality,
+                 @Clarity, @Answerability, @BalancedSides, @Duplication, @Safety, @IsSensitive,
+                 @SensitivityPolicyCode, @ReasonCodes, @GenerationProvider, @ProviderConfidence,
+                 @GenerationPromptVersion, @GenerationSchemaVersion, @EvaluatorPromptVersion,
+                 @EvaluatorSchemaVersion, @RulesVersion, @DuplicatePollId, @DuplicateSimilarity,
+                 @DuplicateMatchType, @ExactFingerprint, GETUTCDATE())", new
+            {
+                TrendingTopicId = trendingTopicId, Disposition = quality.Disposition.ToString(), quality.OverallScore,
+                quality.Scores.Grounding, quality.Scores.Neutrality, quality.Scores.Clarity,
+                quality.Scores.Answerability, quality.Scores.BalancedSides, quality.Scores.Duplication,
+                quality.Scores.Safety, quality.IsSensitive, quality.SensitivityPolicyCode,
+                ReasonCodes = string.Join(',', quality.ReasonCodes), quality.GenerationProvider,
+                quality.ProviderConfidence, quality.GenerationPromptVersion, quality.GenerationSchemaVersion,
+                quality.EvaluatorPromptVersion, quality.EvaluatorSchemaVersion, quality.RulesVersion,
+                quality.DuplicatePollId, quality.DuplicateSimilarity, quality.DuplicateMatchType,
+                quality.ExactFingerprint
+            });
         }
 
         // ── Delete ────────────────────────────────────────────────────────────
