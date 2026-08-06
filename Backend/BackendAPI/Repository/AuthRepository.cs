@@ -131,7 +131,7 @@ namespace BackendAPI.Repository
             using var conn = _context.CreateConnection();
             var user = await conn.QueryFirstOrDefaultAsync<UserResponse>(
                 @"SELECT Id, Username, DisplayName, Email, AvatarUrl, AuthProvider,
-                         Xp, Streak, LongestStreak, TotalVotes, PollsCreated, LastVoteDate, CreatedAt
+                         Xp, Streak, LongestStreak, TotalVotes, PollsCreated, LastVoteDate, CreatedAt, IsAdmin
                   FROM Users WHERE Id = @Id",
                 new { Id = id }
             );
@@ -155,6 +155,7 @@ namespace BackendAPI.Repository
                 new Claim(JwtRegisteredClaimNames.Email, user.Email ?? ""),
                 new Claim("displayName", user.DisplayName),
                 new Claim("authProvider", user.AuthProvider),
+                new Claim(ClaimTypes.Role, user.IsAdmin ? "Admin" : "User"),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             };
 

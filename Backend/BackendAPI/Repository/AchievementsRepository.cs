@@ -110,6 +110,11 @@ public class AchievementsRepository(DapperContext context, IAnalyticsOutbox anal
                         new { UserId = userId, b.RewardXp, BadgeId = b.Id, UtcNow = utcNow,
                             Eligible = b.RuleType != AchievementRuleType.PollCreation }, tx);
                 awarded.Add(new UserBadge { Id=id.Value,UserId=userId,BadgeId=b.Id,Code=b.Code,Name=b.Name,Description=b.Description,Icon=b.Icon,RewardXp=b.RewardXp,RewardTitle=b.RewardTitle,AwardedAt=utcNow });
+                if (b.RewardXp > 0)
+                    await conn.ExecuteAsync(@"INSERT INTO RewardEvents
+                        (UserId,RuleCode,RuleVersion,Reason,SourceType,SourceReference,SourceKey,Value,EventType,CreatedAt)
+                        VALUES(@UserId,@RuleCode,1,@Reason,'achievement',@SourceReference,@SourceKey,@Value,'Grant',@UtcNow)",
+                        new { UserId = userId, RuleCode = $"achievement.{b.Code}", Reason = $"Achievement awarded: {b.Name}", SourceReference = b.Id.ToString(), SourceKey = $"achievement:{b.Id}:award", Value = b.RewardXp, UtcNow = utcNow }, tx);
                 var consent = await conn.ExecuteScalarAsync<string>("SELECT AnalyticsConsent FROM Users WHERE Id=@UserId", new { UserId = userId }, tx);
                 if (consent == "granted")
                     await analytics.EnqueueAsync(conn, tx, new AnalyticsEvent(Guid.NewGuid(), AnalyticsEventNames.AchievementUnlocked, $"usr_{userId}", AnalyticsRedactor.Serialize(new Dictionary<string, object?> { ["achievement_code"] = b.Code, ["reward_xp"] = b.RewardXp }, "achievement_code", "reward_xp"), utcNow, $"achievement:{userId}:{b.Id}"));

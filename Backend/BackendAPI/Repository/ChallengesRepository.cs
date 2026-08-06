@@ -137,6 +137,11 @@ public class ChallengesRepository : IChallengesRepository
                         INSERT INTO XpEvents (UserId, Amount, SourceType, ChallengeId, OccurredAt, IsValid, IsLeaderboardEligible)
                         VALUES (@UserId, @RewardXp, 'Challenge', @ChallengeId, @UtcNow, 1, 1)",
                         new { UserId = userId, challenge.RewardXp, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
+                    if (challenge.RewardXp > 0)
+                        await conn.ExecuteAsync(@"INSERT INTO RewardEvents
+                            (UserId,RuleCode,RuleVersion,Reason,SourceType,SourceReference,SourceKey,Value,EventType,CreatedAt)
+                            VALUES(@UserId,@RuleCode,1,@Reason,'challenge',@SourceReference,@SourceKey,@RewardXp,'Grant',@UtcNow)",
+                            new { UserId = userId, RuleCode = $"challenge.{challenge.Id}", Reason = $"Challenge completed: {challenge.Title}", SourceReference = challenge.Id.ToString(), SourceKey = $"challenge:{challenge.Id}:complete", challenge.RewardXp, UtcNow = utcNow }, transaction);
                     if (challenge.RewardBadgeId.HasValue)
                         await conn.ExecuteAsync(@"IF NOT EXISTS (SELECT 1 FROM UserBadges WHERE UserId=@UserId AND BadgeId=@BadgeId)
                             INSERT UserBadges(UserId, BadgeId, AwardedAt) VALUES(@UserId, @BadgeId, @UtcNow)",

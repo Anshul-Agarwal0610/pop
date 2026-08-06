@@ -24,8 +24,12 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
             var users = (await conn.QueryAsync<User>(
-                "SELECT TOP (@Count) * FROM Users ORDER BY Xp DESC",
-                new { Count = count }
+                @"SELECT TOP (@Count) u.Id,u.Username,u.DisplayName,
+                         CAST(COALESCE(SUM(e.Value),0) AS int) Xp,u.Streak,u.TotalVotes,u.PollsCreated,u.LastVoteDate,u.CreatedAt
+                  FROM Users u LEFT JOIN RewardEvents e ON e.UserId=u.Id
+                  GROUP BY u.Id,u.Username,u.DisplayName,u.Streak,u.TotalVotes,u.PollsCreated,u.LastVoteDate,u.CreatedAt
+                  ORDER BY Xp DESC,u.Id ASC",
+                new { Count = Math.Clamp(count, 1, 100) }
             )).ToList();
 
             var badgesByUser = await _achievementsRepo.GetBadgesForUsersAsync(users.Select(user => user.Id));

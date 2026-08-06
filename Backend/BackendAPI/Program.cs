@@ -49,7 +49,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+    options.AddPolicy("Admin", policy => policy.RequireRole("Admin")));
 
 // ── Dapper context ────────────────────────────────────────────────────────
 builder.Services.AddSingleton<DapperContext>();
@@ -66,6 +67,8 @@ builder.Services.AddScoped<IChallengesRepository,    ChallengesRepository>();
 builder.Services.AddScoped<IBusinessRepository,      BusinessRepository>();
 builder.Services.AddScoped<IWellnessRepository,      WellnessRepository>();
 builder.Services.AddScoped<IAchievementsRepository,  AchievementsRepository>();
+builder.Services.AddScoped<IRewardRepository,        RewardRepository>();
+builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();

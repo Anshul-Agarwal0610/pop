@@ -17,6 +17,7 @@ namespace BackendAPI.Controllers
         private readonly INotificationsRepository _notificationsRepo;
         private readonly IChallengesRepository _challengesRepo;
         private readonly IBusinessRepository _businessRepo;
+        private readonly IRewardService _rewardService;
 
         public VotesController(
             IVotesRepository votesRepo,
@@ -24,7 +25,8 @@ namespace BackendAPI.Controllers
             IPollsRepository pollsRepo,
             INotificationsRepository notificationsRepo,
             IChallengesRepository challengesRepo,
-            IBusinessRepository businessRepo)
+            IBusinessRepository businessRepo,
+            IRewardService rewardService)
         {
             _votesRepo = votesRepo;
             _usersRepo = usersRepo;
@@ -32,6 +34,7 @@ namespace BackendAPI.Controllers
             _notificationsRepo = notificationsRepo;
             _challengesRepo = challengesRepo;
             _businessRepo = businessRepo;
+            _rewardService = rewardService;
         }
 
         // POST /api/votes  (US-15: requires authentication)
@@ -64,19 +67,31 @@ namespace BackendAPI.Controllers
                 return BadRequest(new { message = "Invalid option for this poll." });
 
             var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
-            long voteId;
+            long voteId = 0;
             VoteRewardResult reward;
+            var isReplay = false;
             try
             {
                 (voteId, reward) = await _votesRepo.CastVoteAsync(
-                    request, userId, GamificationRules.VoteXp(poll), DateTime.UtcNow);
+                    request, userId, 0, DateTime.UtcNow);
             }
             catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser") ||
                                         ex.Message.Contains("duplicate key") ||
                                         ex.Message.Contains("UNIQUE"))
             {
-                return Conflict(new { message = "You have already voted on this poll." });
+                isReplay = true;
+                reward = new VoteRewardResult();
             }
+
+            var granted = await _rewardService.GrantAsync(new RewardGrantRequest(
+                userId,
+                poll.IsTrending ? RewardRuleCodes.VoteTrending : RewardRuleCodes.VoteStandard,
+                "vote",
+                $"poll:{poll.Id}",
+                DateTime.UtcNow));
+
+            if (isReplay)
+                return Conflict(new { message = "You have already voted on this poll." });
 
             var challenges = (await _challengesRepo.AdvanceForVoteAsync(userId, voteId, poll, DateTime.UtcNow)).ToList();
 
@@ -85,11 +100,11 @@ namespace BackendAPI.Controllers
             var finalProgression = GamificationRules.FromTotalXp(finalUser?.Xp ?? reward.Xp);
             var events = new List<RewardEvent>
             {
-                new(RewardEventType.Vote, request.PollId.ToString(), GamificationRules.VoteXp(poll), "Vote")
+                new(RewardEventType.Vote, request.PollId.ToString(), granted.IsDuplicate ? 0 : granted.Event.Value, granted.Event.Reason)
             };
             events.AddRange(challenges.Where(challenge => challenge.AwardedXp > 0).Select(challenge =>
                 new RewardEvent(RewardEventType.Challenge, challenge.ChallengeId.ToString(), challenge.AwardedXp, challenge.Title)));
-            var achievementXp = Math.Max(0, reward.XpAwarded - GamificationRules.VoteXp(poll));
+            var achievementXp = Math.Max(0, reward.XpAwarded);
             if (achievementXp > 0)
                 events.Add(new RewardEvent(RewardEventType.Achievement,
                     string.Join(",", reward.AwardedBadges.Select(badge => badge.BadgeId)), achievementXp,
