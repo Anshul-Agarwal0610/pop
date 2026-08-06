@@ -64,10 +64,12 @@ namespace BackendAPI.Controllers
                 return BadRequest(new { message = "Invalid option for this poll." });
 
             var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
+            long voteId;
             VoteRewardResult reward;
             try
             {
-                reward = await _votesRepo.CastVoteAsync(request, userId, GamificationRules.VoteXp(poll), DateTime.UtcNow);
+                (voteId, reward) = await _votesRepo.CastVoteAsync(
+                    request, userId, GamificationRules.VoteXp(poll), DateTime.UtcNow);
             }
             catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser") ||
                                         ex.Message.Contains("duplicate key") ||
@@ -76,7 +78,7 @@ namespace BackendAPI.Controllers
                 return Conflict(new { message = "You have already voted on this poll." });
             }
 
-            var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
+            var challenges = (await _challengesRepo.AdvanceForVoteAsync(userId, voteId, poll, DateTime.UtcNow)).ToList();
 
             if (reward.MilestoneReached.HasValue)
                 await _notificationsRepo.CreateAsync(new CreateNotificationRequest
@@ -122,7 +124,8 @@ namespace BackendAPI.Controllers
             {
                 Poll = updated!,
                 Reward = reward,
-                Challenges = challenges
+                Challenges = challenges,
+                CompletedChallenges = challenges.Where(challenge => challenge.IsCompleted)
             });
         }
 

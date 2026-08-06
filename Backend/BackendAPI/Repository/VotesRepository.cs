@@ -10,21 +10,23 @@ namespace BackendAPI.Repository
     {
         private readonly DapperContext _context;
         private readonly IAchievementsRepository _achievementsRepo;
+
         public VotesRepository(DapperContext context, IAchievementsRepository achievementsRepo)
         {
             _context = context;
             _achievementsRepo = achievementsRepo;
         }
 
-        public async Task<VoteRewardResult> CastVoteAsync(
+        public async Task<(long VoteId, VoteRewardResult Reward)> CastVoteAsync(
             CastVoteRequest request, long userId, int xpAwarded, DateTime utcNow)
         {
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
+            var committed = false;
             try
             {
-                // Serializes all streak transitions for a user, including votes on different polls.
+                // Serialize streak transitions for a user, including votes on different polls.
                 var user = await conn.QuerySingleAsync<User>(
                     @"SELECT Id, Xp, Streak, LongestStreak, TotalVotes, LastVoteDate
                       FROM Users WITH (UPDLOCK, ROWLOCK) WHERE Id = @UserId",
@@ -35,8 +37,10 @@ namespace BackendAPI.Repository
                 var streak = GamificationRules.ApplyDailyStreak(user.Streak, user.LongestStreak,
                     user.LastVoteDate, lastRecoveryAt, utcNow, request.UseStreakRecovery);
 
-                await conn.ExecuteAsync(
-                    "INSERT INTO Votes (PollId, OptionId, UserId, CreatedAt) VALUES (@PollId, @OptionId, @UserId, @UtcNow)",
+                // Keep vote creation, counters, streak, and XP in one transaction.
+                var voteId = await conn.ExecuteScalarAsync<long>(
+                    @"INSERT INTO Votes (PollId, OptionId, UserId, CreatedAt)
+                      OUTPUT inserted.Id VALUES (@PollId, @OptionId, @UserId, @UtcNow)",
                     new { request.PollId, request.OptionId, UserId = userId, UtcNow = utcNow }, transaction);
                 await conn.ExecuteAsync(
                     "UPDATE PollOptions SET VoteCount = VoteCount + 1 WHERE Id = @OptionId AND PollId = @PollId",
@@ -72,6 +76,8 @@ namespace BackendAPI.Repository
                     ? utcNow.AddDays(GamificationRules.RecoveryCooldownDays)
                     : lastRecoveryAt?.AddDays(GamificationRules.RecoveryCooldownDays);
                 transaction.Commit();
+                committed = true;
+
                 var awards = await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
                 result.AwardedBadges = awards.AwardedBadges;
                 if (awards.BonusXpAwarded > 0)
@@ -79,9 +85,13 @@ namespace BackendAPI.Repository
                     result.Xp += awards.BonusXpAwarded;
                     result.XpAwarded += awards.BonusXpAwarded;
                 }
-                return result;
+                return (voteId, result);
             }
-            catch { transaction.Rollback(); throw; }
+            catch
+            {
+                if (!committed) transaction.Rollback();
+                throw;
+            }
         }
 
         public async Task<IEnumerable<Vote>> GetVotesByPollAsync(long pollId)

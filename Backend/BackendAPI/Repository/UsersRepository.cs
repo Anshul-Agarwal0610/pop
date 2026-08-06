@@ -250,5 +250,68 @@ namespace BackendAPI.Repository
                 "DELETE FROM UserCategoryPreferences WHERE UserId = @UserId",
                 new { UserId = userId });
         }
+
+        public async Task<UserProgression?> GetProgressionAsync(long userId, DateTime utcNow)
+        {
+            using var conn = _context.CreateConnection();
+            var user = await conn.QueryFirstOrDefaultAsync<User>(
+                "SELECT Id, Xp, Streak, LastVoteDate FROM Users WHERE Id = @UserId",
+                new { UserId = userId });
+            return user == null ? null : GamificationRules.Progression(user, utcNow);
+        }
+
+        public async Task<WeeklyLeaderboardResponse> GetWeeklyLeaderboardAsync(long userId, int count, DateTime utcNow)
+        {
+            count = Math.Clamp(count, 1, 20);
+            var today = utcNow.Date;
+            var mondayOffset = ((int)today.DayOfWeek + 6) % 7;
+            var weekStart = today.AddDays(-mondayOffset);
+            var weekEnd = weekStart.AddDays(7);
+
+            using var conn = _context.CreateConnection();
+            using var results = await conn.QueryMultipleAsync(
+                @"WITH Scores AS (
+                    SELECT u.Id AS UserId, u.Username, u.DisplayName, COUNT_BIG(v.Id) AS Score
+                    FROM Users u
+                    JOIN Votes v ON v.UserId = u.Id AND v.CreatedAt >= @WeekStart AND v.CreatedAt < @WeekEnd
+                    JOIN Polls p ON p.Id = v.PollId
+                    WHERE COALESCE(p.IsPrivate, 0) = 0 AND COALESCE(p.IsWellness, 0) = 0 AND p.Category <> 'Health'
+                    GROUP BY u.Id, u.Username, u.DisplayName
+                  )
+                  SELECT TOP (@Count) UserId, Username, DisplayName,
+                         CAST(DENSE_RANK() OVER (ORDER BY Score DESC) AS int) AS Rank,
+                         CAST(Score AS int) AS Score
+                  FROM Scores
+                  ORDER BY Rank, UserId;
+
+                  WITH Scores AS (
+                    SELECT u.Id AS UserId, u.Username, u.DisplayName, COUNT_BIG(v.Id) AS Score
+                    FROM Users u
+                    JOIN Votes v ON v.UserId = u.Id AND v.CreatedAt >= @WeekStart AND v.CreatedAt < @WeekEnd
+                    JOIN Polls p ON p.Id = v.PollId
+                    WHERE COALESCE(p.IsPrivate, 0) = 0 AND COALESCE(p.IsWellness, 0) = 0 AND p.Category <> 'Health'
+                    GROUP BY u.Id, u.Username, u.DisplayName
+                  ), Ranked AS (
+                    SELECT UserId, Username, DisplayName,
+                           CAST(DENSE_RANK() OVER (ORDER BY Score DESC) AS int) AS Rank,
+                           CAST(Score AS int) AS Score
+                    FROM Scores
+                  )
+                  SELECT UserId, Username, DisplayName, Rank, Score
+                  FROM Ranked
+                  WHERE UserId = @UserId;",
+                new { WeekStart = weekStart, WeekEnd = weekEnd, Count = count, UserId = userId });
+
+            var entries = (await results.ReadAsync<WeeklyLeaderboardEntry>()).ToList();
+            var currentUser = await results.ReadFirstOrDefaultAsync<WeeklyLeaderboardEntry>();
+
+            return new WeeklyLeaderboardResponse
+            {
+                WeekStart = weekStart,
+                WeekEnd = weekEnd,
+                Entries = entries,
+                CurrentUser = currentUser
+            };
+        }
     }
 }

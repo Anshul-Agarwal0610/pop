@@ -33,5 +33,20 @@ namespace BackendAPI.Controllers
             var challenges = await _challengesRepo.GetActiveForUserAsync(userId.Value, DateTime.UtcNow);
             return Ok(challenges);
         }
+
+        [HttpGet]
+        public async Task<IActionResult> Get([FromQuery] string state = "active")
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+            try
+            {
+                return Ok(await _challengesRepo.GetForUserAsync(userId.Value, DateTime.UtcNow, state));
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
     }
 }

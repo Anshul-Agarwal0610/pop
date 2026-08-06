@@ -66,15 +66,10 @@ function ProfileSkeleton() {
 
 export default function ProfilePage() {
   const router              = useRouter()
-  const { user: authUser, isLoading: authLoading, logout } = useAuth()
+  const { user: authUser, logout } = useAuth()
   const [profile, setProfile]   = useState<ApiUser | null>(null)
   const [history, setHistory]   = useState<ApiVoteHistoryItem[]>([])
   const [loading, setLoading]   = useState(true)
-
-  // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !authUser) router.replace("/login")
-  }, [authLoading, authUser, router])
 
   // Fetch fresh profile (for up-to-date XP) + vote history
   useEffect(() => {
@@ -123,7 +118,7 @@ export default function ProfilePage() {
               variant="ghost"
               size="icon"
               className="absolute right-4 top-4 rounded-xl text-muted-foreground hover:text-foreground"
-              onClick={() => { logout(); router.push("/login") }}
+              onClick={() => { logout(); router.replace("/") }}
             >
               <LogOut className="h-5 w-5" />
               <span className="sr-only">Sign out</span>

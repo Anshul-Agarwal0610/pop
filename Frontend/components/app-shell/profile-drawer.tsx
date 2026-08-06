@@ -16,6 +16,8 @@ import { useTheme } from "next-themes"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
 
 interface ProfileDrawerProps {
   isOpen: boolean
@@ -35,6 +37,8 @@ const menuItems = [
 
 export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
   const { theme, setTheme } = useTheme()
+  const { logout } = useAuth()
+  const router = useRouter()
 
   return (
     <AnimatePresence>
@@ -55,7 +59,7 @@ export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed bottom-0 right-0 top-0 z-50 w-full max-w-sm border-l border-border bg-background shadow-2xl"
+            className="fixed bottom-0 right-0 top-0 z-50 h-dvh w-full max-w-sm border-l border-border bg-background shadow-2xl"
           >
             <div className="flex h-full flex-col">
               {/* Header */}
@@ -78,7 +82,7 @@ export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
               </div>
 
               {/* Content */}
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] min-[375px]:p-4">
                 {/* User info */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -213,6 +217,16 @@ export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
                           ? "text-destructive hover:bg-destructive/10"
                           : "text-foreground hover:bg-secondary"
                       )}
+                      onClick={() => {
+                        if (item.danger) {
+                          logout()
+                          onClose()
+                          router.replace("/")
+                        } else {
+                          router.push(item.href)
+                          onClose()
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-3">
                         <item.icon className="h-5 w-5" />

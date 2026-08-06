@@ -7,7 +7,28 @@ namespace BackendAPI.Services
         public static readonly int[] StreakMilestones = [3, 7, 30, 100];
         public const int RecoveryCooldownDays = 30;
         public const int RecoverableMissedDays = 1;
+        public const int XpPerLevel = 1000;
         public static int VoteXp(Poll poll) => poll.IsTrending ? 35 : 25;
+
+        public static UserProgression Progression(User user, DateTime utcNow)
+        {
+            var level = user.Xp / XpPerLevel + 1;
+            var start = (level - 1) * XpPerLevel;
+            var into = user.Xp - start;
+            return new UserProgression
+            {
+                Xp = user.Xp,
+                Level = level,
+                CurrentLevelStartXp = start,
+                NextLevelXp = start + XpPerLevel,
+                XpIntoLevel = into,
+                XpRequiredForLevel = XpPerLevel,
+                ProgressPercent = into * 100d / XpPerLevel,
+                Streak = user.Streak,
+                TodayActivityComplete = user.LastVoteDate?.Date == utcNow.Date,
+                LastVoteDate = user.LastVoteDate
+            };
+        }
 
         public static StreakUpdate ApplyDailyStreak(
             int currentStreak,
