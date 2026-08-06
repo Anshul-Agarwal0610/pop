@@ -1,27 +1,24 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Moon, Sun, Sparkles } from "lucide-react"
 import { useTheme } from "next-themes"
-import { isNavigationItemActive, navigationItems } from "@/lib/navigation"
+import { isNavigationItemActive, sidebarBottomNavigation, sidebarPrimaryNavigation } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
 export function Sidebar() {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
 
   return (
     <aside className="fixed left-0 top-16 z-30 hidden h-[calc(100dvh-4rem)] w-64 overflow-y-auto border-r border-border/50 bg-sidebar lg:block">
       <div className="flex min-h-full flex-col p-4">
         {/* Navigation */}
         <nav className="flex-1 space-y-1">
-          {navigationItems.map((item, index) => {
+          {sidebarPrimaryNavigation.map((item, index) => {
             const isActive = isNavigationItemActive(pathname, item.href)
             const Icon = item.icon
 
@@ -78,6 +75,29 @@ export function Sidebar() {
 
         {/* Bottom section */}
         <div className="space-y-3 border-t border-sidebar-border pt-4">
+          <nav aria-label="Game navigation" className="space-y-1">
+            {sidebarBottomNavigation.map((item) => {
+              const isActive = isNavigationItemActive(pathname, item.href)
+              const Icon = item.icon
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-4 py-3 font-medium transition-all",
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  )}
+                >
+                  <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5px]")} />
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+          </nav>
+
           {/* Stats card */}
           <motion.div
             className="rounded-2xl bg-gradient-to-br from-primary/10 via-accent/10 to-primary/5 p-4"
@@ -114,7 +134,7 @@ export function Sidebar() {
             </span>
             <div className="flex gap-1">
               <Button
-                variant={mounted && theme === "light" ? "default" : "ghost"}
+                variant={theme === "light" ? "default" : "ghost"}
                 size="icon"
                 className="h-8 w-8 rounded-lg"
                 onClick={() => setTheme("light")}
@@ -123,7 +143,7 @@ export function Sidebar() {
                 <span className="sr-only">Light mode</span>
               </Button>
               <Button
-                variant={mounted && theme === "dark" ? "default" : "ghost"}
+                variant={theme === "dark" ? "default" : "ghost"}
                 size="icon"
                 className="h-8 w-8 rounded-lg"
                 onClick={() => setTheme("dark")}
