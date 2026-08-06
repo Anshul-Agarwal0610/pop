@@ -32,7 +32,7 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(string prompt, CancellationToken ct = default)
+        public async Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var apiKey = _config["PollGen:Anthropic:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
@@ -41,7 +41,8 @@ namespace BackendAPI.Services.Llm
                 return null;
             }
 
-            var model = _config["PollGen:Anthropic:Model"] ?? "claude-haiku-4-5";
+            var model = _config["PollGen:Anthropic:Model"];
+            if (string.IsNullOrWhiteSpace(model)) return null;
 
             var client = _http.CreateClient();
             client.DefaultRequestHeaders.Add("x-api-key", apiKey);
@@ -50,11 +51,12 @@ namespace BackendAPI.Services.Llm
             var body = new
             {
                 model,
-                max_tokens = 512,
-                system     = "You are a poll generation assistant. Always respond with valid JSON only, no markdown, no explanation.",
+                max_tokens = request.MaxOutputTokens,
+                temperature = request.Temperature,
+                system = request.SystemInstruction + " JSON schema: " + request.ResponseSchema,
                 messages   = new[]
                 {
-                    new { role = "user", content = prompt }
+                    new { role = "user", content = request.UserPrompt }
                 }
             };
 

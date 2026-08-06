@@ -76,6 +76,8 @@ namespace BackendAPI.Services
                 var title    = snippet.GetProperty("title").GetString()?.Trim() ?? "";
                 var desc     = snippet.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
                 var category = "Entertainment";
+                var publisher = snippet.TryGetProperty("channelTitle", out var channel) ? channel.GetString() : null;
+                DateTime? publishedAt = snippet.TryGetProperty("publishedAt", out var published) && DateTime.TryParse(published.GetString(), out var date) ? date.ToUniversalTime() : null;
 
                 if (desc.Length > 400) desc = desc[..400];
 
@@ -103,6 +105,8 @@ namespace BackendAPI.Services
                     SourceType   = "youtube",
                     SourceUrl    = $"https://www.youtube.com/watch?v={videoId}",
                     ThumbnailUrl = thumbnail,
+                    Publisher    = publisher,
+                    PublishedAt  = publishedAt,
                     Category     = category
                 });
             }

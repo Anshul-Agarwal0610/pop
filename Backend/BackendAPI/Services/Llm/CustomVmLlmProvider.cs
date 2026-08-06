@@ -33,7 +33,7 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(string prompt, CancellationToken ct = default)
+        public async Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var baseUrl = _config["PollGen:Custom:BaseUrl"];
             if (string.IsNullOrWhiteSpace(baseUrl))
@@ -49,7 +49,7 @@ namespace BackendAPI.Services.Llm
                 client.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 
-            var body    = new { prompt };
+            var body = new { systemInstruction = request.SystemInstruction, prompt = request.UserPrompt, responseSchema = JsonSerializer.Deserialize<JsonElement>(request.ResponseSchema), temperature = request.Temperature, maxOutputTokens = request.MaxOutputTokens };
             var content = new StringContent(
                 JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 

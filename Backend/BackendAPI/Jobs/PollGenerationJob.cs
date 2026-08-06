@@ -72,11 +72,11 @@ namespace BackendAPI.Jobs
                 {
                     var request = new CreatePollRequest
                     {
-                        Question = generated.Question,
+                        Question = generated.Proposition,
                         Description = topic.Summary,
                         Category = generated.Category,
                         ExpiresAt = DateTime.UtcNow.Add(DefaultExpiry),
-                        Options = generated.Options,
+                        Options = new List<string> { "Up", "Against" },
                         SourceType = topic.SourceType,
                         SourceUrl = topic.SourceUrl,
                         ThumbnailUrl = topic.ThumbnailUrl,
@@ -104,7 +104,7 @@ namespace BackendAPI.Jobs
                         "[PollGenerationJob] Failed to save generated poll for topic {TopicId} '{Title}'. Question={Question}. SourceUrl={SourceUrl}",
                         topic.Id,
                         topic.Title,
-                        generated.Question,
+                        generated.Proposition,
                         topic.SourceUrl);
                 }
             }

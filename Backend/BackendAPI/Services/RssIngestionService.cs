@@ -143,6 +143,10 @@ namespace BackendAPI.Services
                         SourceType   = "rss",
                         SourceUrl    = link,
                         ThumbnailUrl = thumbnail,
+                        Publisher    = sourceName,
+                        PublishedAt  = item.PublishDate != DateTimeOffset.MinValue
+                            ? item.PublishDate.UtcDateTime
+                            : item.LastUpdatedTime != DateTimeOffset.MinValue ? item.LastUpdatedTime.UtcDateTime : null,
                         Category     = category
                     });
                 }
