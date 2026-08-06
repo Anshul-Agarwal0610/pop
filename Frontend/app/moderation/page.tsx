@@ -133,7 +133,7 @@ export default function ModerationPage() {
                       </a>
                     )}
                   </div>
-                  <div className="flex w-full gap-2 sm:w-auto">
+                  <div className="flex w-full flex-col gap-2 min-[360px]:flex-row sm:w-auto">
                     <Button
                       className="flex-1 gap-2 sm:flex-none"
                       disabled={actingPollId === poll.id}

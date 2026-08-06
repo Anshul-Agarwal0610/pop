@@ -53,7 +53,7 @@ function LoginContent() {
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl bg-card p-8 shadow-sm ring-1 ring-border/50">
+        <div className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50 sm:p-8">
           {message && (
             <div className="mb-5 rounded-xl bg-primary/10 px-4 py-3 text-sm font-medium text-primary">
               {message}

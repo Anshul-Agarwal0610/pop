@@ -117,7 +117,7 @@ export default function WellnessPage() {
         )}
 
         <section className="mb-5 rounded-lg border border-rose-500/20 bg-rose-500/10 p-4">
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 min-[360px]:flex-row">
             <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-600" />
             <div>
               <h2 className="font-semibold text-foreground">Privacy and consent</h2>
@@ -136,8 +136,8 @@ export default function WellnessPage() {
             Loading wellness mode...
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-            <section className="space-y-4">
+          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <section className="min-w-0 space-y-4">
               {overview?.polls.length ? (
                 overview.polls.map((poll) => (
                   <div className="rounded-lg border border-border/60 bg-card p-4" key={poll.id}>
@@ -152,7 +152,7 @@ export default function WellnessPage() {
                     <div className="grid gap-2 sm:grid-cols-2">
                       {poll.options.map((option) => (
                         <Button
-                          className="min-h-12 justify-start rounded-lg"
+                          className="h-auto min-h-12 whitespace-normal break-words rounded-lg py-3 text-left"
                           disabled={savingOptionId != null}
                           key={option.id}
                           onClick={() => answer(poll, option.id)}
@@ -186,7 +186,7 @@ export default function WellnessPage() {
             <aside className="space-y-4">
               <div className="rounded-lg border border-border/60 bg-card p-4">
                 <h2 className="font-semibold text-foreground">Personal insight</h2>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div className="mt-3 grid grid-cols-1 gap-2 text-sm min-[360px]:grid-cols-2">
                   <Metric label="Check-ins" value={String(checkInCount)} />
                   <Metric
                     label="Common"
