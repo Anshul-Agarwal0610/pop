@@ -32,7 +32,7 @@ export function TopBar({
 
   return (
     <header className="fixed left-0 right-0 top-0 z-40 h-16 border-b border-border/50 bg-background/80 glass">
-      <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4 lg:px-6">
+      <div className="flex h-full w-full items-center justify-between px-4 lg:px-6">
         {/* Logo */}
         <AppLogo />
 
