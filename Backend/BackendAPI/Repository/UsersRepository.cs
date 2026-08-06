@@ -79,7 +79,7 @@ namespace BackendAPI.Repository
             await _achievementsRepo.AwardEligibleBadgesAsync(userId, DateTime.UtcNow);
         }
 
-        public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, int xpToAdd, DateTime utcNow)
+        public async Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, int xpToAdd, DateTime utcNow, long sourceVoteId = 0, bool sociallyEligible = false)
         {
             using var conn = _context.CreateConnection();
             conn.Open();
@@ -121,6 +121,15 @@ namespace BackendAPI.Repository
                 },
                 transaction
             );
+
+            if (sourceVoteId > 0)
+            {
+                await conn.ExecuteAsync(
+                    @"INSERT INTO XpEvents(UserId,Amount,SourceType,SourceId,OccurredAt,IsSociallyEligible)
+                      VALUES(@UserId,@Amount,'Vote',@SourceId,@OccurredAt,@Eligible)",
+                    new { UserId = userId, Amount = xpToAdd, SourceId = sourceVoteId, OccurredAt = utcNow, Eligible = sociallyEligible },
+                    transaction);
+            }
 
             transaction.Commit();
 

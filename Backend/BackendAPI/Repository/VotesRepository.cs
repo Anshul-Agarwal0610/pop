@@ -14,7 +14,7 @@ namespace BackendAPI.Repository
             _context = context;
         }
 
-        public async Task<bool> CastVoteAsync(CastVoteRequest request, long? userId)
+        public async Task<long> CastVoteAsync(CastVoteRequest request, long? userId)
         {
             using var conn = _context.CreateConnection();
             conn.Open();
@@ -23,8 +23,8 @@ namespace BackendAPI.Repository
             try
             {
                 // Record the vote — include UserId when authenticated (US-15)
-                await conn.ExecuteAsync(
-                    "INSERT INTO Votes (PollId, OptionId, UserId, CreatedAt) VALUES (@PollId, @OptionId, @UserId, GETUTCDATE())",
+                var voteId = await conn.ExecuteScalarAsync<long>(
+                    "INSERT INTO Votes (PollId, OptionId, UserId, CreatedAt) OUTPUT inserted.Id VALUES (@PollId, @OptionId, @UserId, GETUTCDATE())",
                     new { request.PollId, request.OptionId, UserId = userId },
                     transaction
                 );
@@ -58,7 +58,7 @@ namespace BackendAPI.Repository
                 );
 
                 transaction.Commit();
-                return true;
+                return voteId;
             }
             catch
             {

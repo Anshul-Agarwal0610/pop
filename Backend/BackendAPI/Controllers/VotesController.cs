@@ -65,7 +65,8 @@ namespace BackendAPI.Controllers
 
             try
             {
-                await _votesRepo.CastVoteAsync(request, userId);
+                var voteId = await _votesRepo.CastVoteAsync(request, userId);
+                HttpContext.Items["VoteId"] = voteId;
             }
             catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser") ||
                                         ex.Message.Contains("duplicate key") ||
@@ -80,7 +81,9 @@ namespace BackendAPI.Controllers
             var reward = await _usersRepo.ApplyVoteRewardAsync(
                 userId,
                 GamificationRules.VoteXp(poll),
-                DateTime.UtcNow);
+                DateTime.UtcNow,
+                (long)HttpContext.Items["VoteId"]!,
+                !poll.IsPrivate && !poll.IsWellness && !poll.Category.Equals("Health", StringComparison.OrdinalIgnoreCase));
             var challenges = await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow);
 
             if (userBeforeReward != null && userBeforeReward.Xp / 1000 < reward.Xp / 1000)

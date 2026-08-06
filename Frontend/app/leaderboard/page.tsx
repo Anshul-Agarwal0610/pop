@@ -7,7 +7,7 @@ import { AppShell } from "@/components/app-shell"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
-import { usersApi, type ApiUser } from "@/lib/api"
+import { socialApi, usersApi, type ApiUser } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 function levelFromXp(xp: number) {
@@ -26,15 +26,25 @@ export default function LeaderboardPage() {
   const [users, setUsers] = useState<ApiUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [scope, setScope] = useState<"global" | "friends">("global")
+  const [weekLabel, setWeekLabel] = useState<string | null>(null)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-    usersApi.getLeaderboard(20)
+    const load = Promise.resolve().then(() => {
+      setLoading(true)
+      setError(null)
+      return scope === "global"
+      ? usersApi.getLeaderboard(20).then(data => { setWeekLabel(null); return data })
+      : socialApi.friendsLeaderboard().then(data => {
+          setWeekLabel(`${new Date(data.weekStartUtc).toLocaleDateString()} – ${new Date(data.weekEndUtc).toLocaleDateString()} (resets Monday 00:00 UTC)`)
+          return data.items.map(entry => ({ ...entry.user, xp: entry.xp, totalVotes: entry.activityCount, level: levelFromXp(entry.xp), streak: 0, pollsCreated: 0, createdAt: "", authProvider: "", badges: [] })) as ApiUser[]
+        })
+    })
+    load
       .then(setUsers)
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [scope])
 
   const currentRank = users.findIndex((user) => user.id === authUser?.id) + 1
 
@@ -53,7 +63,7 @@ export default function LeaderboardPage() {
             <div>
               <h1 className="text-2xl font-bold text-foreground">Leaderboard</h1>
               <p className="text-sm text-muted-foreground">
-                Top users by XP, powered by live backend data
+                {weekLabel ?? "Top users by lifetime XP"}
               </p>
             </div>
           </div>
@@ -64,6 +74,11 @@ export default function LeaderboardPage() {
             </div>
           )}
         </motion.div>
+
+        <div className="mb-5 flex gap-2" aria-label="Leaderboard scope">
+          <Button onClick={() => setScope("global")} variant={scope === "global" ? "default" : "outline"}>Global</Button>
+          <Button disabled={!authUser} onClick={() => setScope("friends")} variant={scope === "friends" ? "default" : "outline"}>Friends this week</Button>
+        </div>
 
         {loading && (
           <div className="flex items-center justify-center gap-2 rounded-2xl bg-card py-20 text-muted-foreground ring-1 ring-border/50">

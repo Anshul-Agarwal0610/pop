@@ -1,4 +1,4 @@
-import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse } from "lucide-react"
+import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse, Users } from "lucide-react"
 
 export const navigationItems = [
   {
@@ -21,6 +21,7 @@ export const navigationItems = [
     href: "/leaderboard",
     icon: Trophy,
   },
+  { label: "Social", href: "/social", icon: Users },
   {
     label: "Notifications",
     href: "/notifications",
