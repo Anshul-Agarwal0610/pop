@@ -87,6 +87,7 @@ public class ChallengesRepository : IChallengesRepository
         conn.Open();
         using var transaction = conn.BeginTransaction(System.Data.IsolationLevel.Serializable);
         var affectedIds = new List<long>();
+        var awardedXp = new Dictionary<long, int>();
         try
         {
             var challenges = (await conn.QueryAsync<Challenge>(@"
@@ -125,6 +126,7 @@ public class ChallengesRepository : IChallengesRepository
                     new { UserId = userId, ChallengeId = challenge.Id, UtcNow = utcNow }, transaction);
                 if (claimed == 1)
                 {
+                    awardedXp[challenge.Id] = challenge.RewardXp;
                     await conn.ExecuteAsync("UPDATE Users SET Xp=Xp+@RewardXp WHERE Id=@UserId",
                         new { challenge.RewardXp, UserId = userId }, transaction);
                     if (challenge.RewardBadgeId.HasValue)
@@ -141,7 +143,10 @@ public class ChallengesRepository : IChallengesRepository
         if (affectedIds.Count == 0) return Array.Empty<UserChallenge>();
         await _achievementsRepo.AwardEligibleBadgesAsync(userId, utcNow);
         var all = await GetForUserAsync(userId, utcNow, "all");
-        return all.Where(x => affectedIds.Contains(x.ChallengeId));
+        var affected = all.Where(x => affectedIds.Contains(x.ChallengeId)).ToList();
+        foreach (var challenge in affected)
+            challenge.AwardedXp = awardedXp.GetValueOrDefault(challenge.ChallengeId);
+        return affected;
     }
 
     private sealed class ChallengeDefinition

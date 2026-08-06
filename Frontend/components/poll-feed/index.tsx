@@ -12,10 +12,12 @@ import { ProgressIndicator } from "./progress-indicator"
 import { Button } from "@/components/ui/button"
 import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
-import { usersApi } from "@/lib/api"
+import { usersApi, type ApiVoteReward } from "@/lib/api"
 import { toast } from "sonner"
+import { useAuth } from "@/contexts/auth-context"
 
 export function PollFeed({ initialCategory }: { initialCategory?: string | null }) {
+  const { applyProgression } = useAuth()
   const normalizedInitial = initialCategory ? normalizeCategoryName(initialCategory) : "All"
   const validInitial = FEED_CATEGORIES.includes(normalizedInitial as (typeof FEED_CATEGORIES)[number]) ? normalizedInitial : "All"
   const [selectedCategory, setSelectedCategory] = useState(validInitial)
@@ -26,11 +28,11 @@ export function PollFeed({ initialCategory }: { initialCategory?: string | null 
   const [longestStreak, setLongestStreak] = useState(0)
   const [todayComplete, setTodayComplete] = useState(false)
   const [recoveryEligible, setRecoveryEligible] = useState(false)
-  const [milestoneReached, setMilestoneReached] = useState<number | null>(null)
   const [voteError, setVoteError] = useState<string | null>(null)
   const [totalXp, setTotalXp]             = useState(1250)
   const [currentVote, setCurrentVote]     = useState<"yes" | "no" | "option" | null>(null)
   const [sessionXp, setSessionXp]         = useState(0)
+  const [reward, setReward]               = useState<ApiVoteReward | null>(null)
 
   const currentPoll: Poll | undefined = polls[currentIndex]
   const hasMorePolls = currentIndex < polls.length
@@ -79,14 +81,15 @@ export function PollFeed({ initialCategory }: { initialCategory?: string | null 
       )
       try {
         const result = await castVote(currentPoll.id, optionId, useRecovery)
+        setReward(result.reward)
         setCurrentVote(feedback)
         setStreak(result.reward.streak)
         setLongestStreak(result.reward.longestStreak)
         setTodayComplete(result.reward.todayComplete)
         setRecoveryEligible(false)
-        setMilestoneReached(result.reward.milestoneReached)
         setTotalXp(result.reward.xp)
         setSessionXp((xp) => xp + result.reward.xpAwarded)
+        applyProgression(result.reward.progression)
         result.challenges.forEach(challenge => toast(challenge.isCompleted
           ? `${challenge.title} completed!`
           : `${challenge.title}: ${challenge.currentVotes}/${challenge.requiredVotes}`))
@@ -95,7 +98,7 @@ export function PollFeed({ initialCategory }: { initialCategory?: string | null 
         toast.error(err instanceof Error ? err.message : "Vote failed")
       }
     },
-    [currentPoll, currentVote, castVote, recoveryEligible]
+    [currentPoll, currentVote, castVote, recoveryEligible, applyProgression]
   )
 
   const handleFeedbackComplete = useCallback(() => {
@@ -246,9 +249,8 @@ export function PollFeed({ initialCategory }: { initialCategory?: string | null 
       {/* Vote Feedback Overlay */}
       <VoteFeedback
         vote={currentVote}
-        xpEarned={currentPoll?.xpReward || 0}
+        reward={reward}
         streakCount={streak}
-        milestoneReached={milestoneReached}
         onComplete={handleFeedbackComplete}
       />
     </div>

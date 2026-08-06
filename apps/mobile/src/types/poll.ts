@@ -28,6 +28,8 @@ export interface ApiPoll {
   userVotedOptionId: number | null;
 }
 
+import type { ProgressionSnapshot } from './auth';
+
 export interface VoteReward {
   xp: number;
   streak: number;
@@ -41,6 +43,12 @@ export interface VoteReward {
   nextRecoveryAt: string | null;
   milestoneReached: number | null;
   lastVoteDate: string | null;
+  awardedXp: number;
+  progression: ProgressionSnapshot;
+  previousLevel: number;
+  leveledUp: boolean;
+  levelsGained: number;
+  events: Array<{ type: 'Vote' | 'Challenge' | 'Achievement'; sourceId: string; awardedXp: number; label: string | null }>;
 }
 
 export interface CastVoteResponse {

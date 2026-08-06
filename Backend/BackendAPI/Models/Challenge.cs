@@ -45,6 +45,7 @@ public class UserChallenge : Challenge
     public bool IsCompleted { get; set; }
     public bool RewardGranted { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public int AwardedXp { get; set; }
     public string State { get; set; } = ChallengeStates.Available;
     public string EligiblePollsUrl { get; set; } = "/polls";
 }

@@ -551,8 +551,8 @@ function SignedInHome() {
 
   if (!user) return null;
 
-  const level = getLevel(user.xp ?? 0);
-  const progress = getLevelProgress(user.xp ?? 0);
+  const level = user.progression.level;
+  const progress = { current: user.progression.xpIntoLevel, percent: user.progression.progressPercent };
 
   return (
     <View style={styles.feedShell}>
@@ -588,7 +588,9 @@ function SignedInHome() {
 
       {latestReward && (
         <View style={styles.rewardBanner}>
-          <Text style={styles.rewardTitle}>+{latestReward.xpAwarded} XP earned</Text>
+          <Text accessibilityLiveRegion="polite" style={styles.rewardTitle}>
+            {latestReward.leveledUp ? `Level up! Level ${latestReward.progression.level}` : `+${latestReward.awardedXp} XP earned`}
+          </Text>
           <Text style={styles.rewardCopy}>
             {latestReward.streakAdvanced
               ? `Daily streak is now ${latestReward.streak}.`
@@ -614,7 +616,7 @@ function SignedInHome() {
               <View style={[styles.progressFill, { width: `${progress.percent}%` }]} />
             </View>
             <Text style={styles.progressCopy}>
-              {progress.current} / 500 XP toward the next level.
+              {progress.current} / {user.progression.xpRequiredForNextLevel} XP toward the next level.
             </Text>
           </View>
 
@@ -790,18 +792,6 @@ function LeaderboardRow({
       </View>
     </View>
   );
-}
-
-function getLevel(xp: number) {
-  return Math.floor(xp / 500) + 1;
-}
-
-function getLevelProgress(xp: number) {
-  const current = xp % 500;
-  return {
-    current,
-    percent: Math.min(100, Math.round((current / 500) * 100)),
-  };
 }
 
 function formatMonth(value: string) {

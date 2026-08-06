@@ -17,6 +17,7 @@ export interface AuthUser {
   lastVoteDate?: string | null
   createdAt: string
   level?: number
+  progression: import("@/lib/api").ApiProgression
   badges?: Array<{
     id: number
     userId: number
@@ -54,6 +55,10 @@ export function getStoredUser(): AuthUser | null {
 export function saveSession(data: AuthResponse) {
   localStorage.setItem(TOKEN_KEY, data.token)
   localStorage.setItem(USER_KEY, JSON.stringify(data.user))
+}
+
+export function saveStoredUser(user: AuthUser) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
 export function clearSession() {

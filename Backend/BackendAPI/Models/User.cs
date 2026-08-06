@@ -12,7 +12,8 @@ namespace BackendAPI.Models
         public int PollsCreated { get; set; }
         public DateTime? LastVoteDate { get; set; }
         public DateTime CreatedAt { get; set; }
-        public int Level => Xp / 1000 + 1;
+        public ProgressionSnapshot Progression => Services.GamificationRules.FromTotalXp(Xp);
+        public int Level => Progression.Level;
         public List<UserBadge> Badges { get; set; } = new();
     }
 
@@ -47,7 +48,7 @@ namespace BackendAPI.Models
         public DateTime? NextRecoveryAt { get; set; }
         public int? MilestoneReached { get; set; }
         public DateTime? LastVoteDate { get; set; }
-        public int Level => Xp / 1000 + 1;
+        public int Level => Services.GamificationRules.FromTotalXp(Xp).Level;
         public IEnumerable<UserBadge> AwardedBadges { get; set; } = Enumerable.Empty<UserBadge>();
     }
 

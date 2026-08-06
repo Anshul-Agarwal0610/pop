@@ -26,6 +26,8 @@ import { pollsApi, votesApi, type ApiPoll, type ApiPollOption } from "@/lib/api"
 import { SOURCE_COLORS, SOURCE_LABELS, type IngestionSource } from "@/lib/poll-data"
 import { pollShareText, resultShareText } from "@/lib/share"
 import { cn } from "@/lib/utils"
+import { VoteFeedback } from "@/components/poll-feed/vote-feedback"
+import type { ApiVoteReward } from "@/lib/api"
 
 interface PollDetailCardProps {
   pollId: string
@@ -95,7 +97,7 @@ function ResultBar({
 export function PollDetailCard({ pollId }: PollDetailCardProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading, applyProgression } = useAuth()
   const [poll, setPoll] = useState<ApiPoll | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -105,6 +107,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   const [votingOptionId, setVotingOptionId] = useState<number | null>(null)
   const [isReporting, setIsReporting] = useState(false)
   const [xpAwarded, setXpAwarded] = useState<number | null>(null)
+  const [reward, setReward] = useState<ApiVoteReward | null>(null)
 
   const loadPoll = useCallback(async () => {
     setLoading(true)
@@ -152,6 +155,8 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
       })
       setPoll(response.poll)
       setXpAwarded(response.reward.xpAwarded)
+      setReward(response.reward)
+      applyProgression(response.reward.progression)
       window.dispatchEvent(new CustomEvent("challenge-progress-updated", { detail: response.challenges }))
     } catch (err) {
       setVoteError(err instanceof Error ? err.message : "Could not record your vote")
@@ -237,6 +242,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   const resultOption = selectedOption ?? leadingOption
 
   return (
+    <>
     <div className="mx-auto w-full max-w-3xl px-4 py-6">
       <Button
         variant="ghost"
@@ -436,5 +442,12 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
         </div>
       </article>
     </div>
+      <VoteFeedback
+        onComplete={() => setReward(null)}
+        reward={reward}
+        streakCount={reward?.streak ?? 0}
+        vote={reward ? "option" : null}
+      />
+    </>
   )
 }

@@ -81,6 +81,20 @@ CREATE TABLE StreakRecoveries (
 CREATE INDEX IX_StreakRecoveries_UserAppliedAt ON StreakRecoveries(UserId, AppliedAt DESC);
 GO
 
+-- Authoritative exactly-once audit ledger for progression awards.
+CREATE TABLE ProgressionRewardEvents (
+    Id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    UserId BIGINT NOT NULL REFERENCES Users(Id),
+    EventType NVARCHAR(32) NOT NULL,
+    SourceId NVARCHAR(128) NOT NULL,
+    AwardedXp INT NOT NULL CHECK (AwardedXp >= 0),
+    TotalXp INT NULL,
+    Level INT NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    CONSTRAINT UQ_ProgressionRewardEvents_Source UNIQUE (UserId, EventType, SourceId)
+);
+GO
+
 -- ============================================================
 -- Indexes
 -- ============================================================

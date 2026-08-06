@@ -126,6 +126,18 @@ export default function HomePage() {
         </motion.div>
 
         {isAuthenticated && (
+          <div className="mb-6 rounded-2xl bg-card p-4 ring-1 ring-border/50">
+            <div className="flex justify-between text-sm">
+              <span className="font-semibold">Level {user?.progression.level}</span>
+              <span className="text-muted-foreground">{user?.progression.totalXp} / {user?.progression.nextLevelXp} XP</span>
+            </div>
+            <div aria-label="Progress to next level" aria-valuemax={100} aria-valuemin={0} aria-valuenow={user?.progression.progressPercent ?? 0} className="mt-2 h-2 overflow-hidden rounded-full bg-secondary" role="progressbar">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${user?.progression.progressPercent ?? 0}%` }} />
+            </div>
+          </div>
+        )}
+
+        {isAuthenticated && (
           <motion.div
             animate={{ opacity: 1, y: 0 }}
             className="mb-6 rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50"

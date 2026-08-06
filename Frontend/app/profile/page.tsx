@@ -26,13 +26,6 @@ import { authApi, usersApi, type ApiUser, type ApiVoteHistoryItem } from "@/lib/
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function xpLevel(xp: number) {
-  const level    = Math.floor(xp / 1000) + 1
-  const progress = ((xp % 1000) / 1000) * 100
-  const nextXp   = level * 1000
-  return { level, progress, nextXp }
-}
-
 function relativeTime(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60_000)
@@ -91,7 +84,7 @@ export default function ProfilePage() {
 
   // Use fresh API data when available, fall back to cached auth user
   const displayUser = profile ?? authUser
-  const { level, progress, nextXp } = xpLevel(displayUser.xp ?? 0)
+  const { level, progressPercent: progress, nextLevelXp: nextXp } = displayUser.progression
   const badges = displayUser.badges ?? []
 
   const stats = [
