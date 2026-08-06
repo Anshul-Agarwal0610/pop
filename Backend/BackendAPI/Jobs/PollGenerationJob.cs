@@ -1,6 +1,7 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
+using Hangfire;
 
 namespace BackendAPI.Jobs
 {
@@ -34,6 +35,7 @@ namespace BackendAPI.Jobs
             _logger = logger;
         }
 
+        [DisableConcurrentExecution(timeoutInSeconds: 600)]
         public async Task RunAsync()
         {
             _logger.LogInformation("[PollGenerationJob] Starting at {Time}", DateTime.UtcNow);
@@ -88,6 +90,9 @@ namespace BackendAPI.Jobs
                         SourceUrl = topic.SourceUrl,
                         ThumbnailUrl = topic.ThumbnailUrl,
                         IsAIGenerated = true,
+                        AutoPublish = !TopicEnrichment.RequiresHumanReview(topic)
+                            && generated.QualityWarnings.All(warning =>
+                                warning.StartsWith("Generated with the deterministic fallback", StringComparison.OrdinalIgnoreCase)),
                         ModerationReason = generated.ReviewNotes
                     };
 

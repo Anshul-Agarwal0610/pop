@@ -396,7 +396,7 @@ namespace BackendAPI.Repository
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
             var pollMode = isWellness ? PollModes.Wellness : PollModes.Public;
-            var moderationStatus = isWellness
+            var moderationStatus = isWellness || (request.IsAIGenerated && request.AutoPublish)
                 ? PollModerationStatus.Published
                 : PollModerationStatus.PendingReview;
 
