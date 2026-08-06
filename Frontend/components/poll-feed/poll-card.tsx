@@ -104,9 +104,9 @@ function VotedResultsBar({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-sm font-medium">
-        <span className={cn("flex min-w-0 items-center gap-1.5", isUserVote ? styles.text : "text-muted-foreground")}>
+        <span className={cn("flex min-w-0 flex-wrap items-center gap-1.5", isUserVote ? styles.text : "text-muted-foreground")}>
           {isUserVote && <CheckCircle2 className="h-4 w-4" />}
-          <span className="truncate">{label}</span>
+          <span className="break-words">{label}</span>
           {isUserVote && <span className="text-xs font-normal opacity-70">(your vote)</span>}
         </span>
         <span className={isUserVote ? styles.text : "text-muted-foreground"}>
@@ -178,7 +178,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
   return (
     <motion.div
       className={cn(
-        "absolute inset-x-4 top-0 h-full md:inset-x-0",
+        "absolute inset-x-2 top-0 h-full min-w-0 sm:inset-x-0",
         !isActive && "pointer-events-none",
         hasVoted || !isBinaryPoll ? "cursor-default" : "cursor-grab active:cursor-grabbing"
       )}
@@ -193,7 +193,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
       {/* Card Container */}
-      <div className="relative h-full overflow-hidden rounded-3xl bg-card shadow-2xl ring-1 ring-border/50">
+      <div className="relative h-full overflow-x-hidden overflow-y-auto overscroll-contain rounded-3xl bg-card shadow-2xl ring-1 ring-border/50">
 
         {/* YES / NO swipe overlays — hidden on voted cards */}
         {!hasVoted && isBinaryPoll && (
@@ -225,7 +225,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
         )}
 
         {/* ── Media Section ─────────────────────────────────────────────────── */}
-        <div className="relative h-[55%] overflow-hidden bg-muted">
+        <div className="relative h-[clamp(11rem,42%,24rem)] min-h-[11rem] overflow-hidden bg-muted">
           {imageUrl ? (
             <img
               src={imageUrl}
@@ -341,7 +341,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
         </div>
 
         {/* ── Content Section ───────────────────────────────────────────────── */}
-        <div className="flex h-[45%] flex-col p-5">
+        <div className="flex min-h-[18rem] flex-col p-4 sm:p-5">
           {/* Category & Time */}
           <div className="mb-3 flex flex-shrink-0 items-center gap-3">
             <CategoryBadge category={poll.category} />
@@ -352,10 +352,10 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
           </div>
 
           {/* Question — clamped with hover tooltip */}
-          <div className="mb-3 min-h-0 flex-1 overflow-hidden">
+          <div className="mb-3 min-h-0 flex-1">
             <Tooltip delayDuration={300}>
               <TooltipTrigger asChild>
-                <h2 className="line-clamp-3 cursor-default text-xl font-bold leading-tight text-foreground md:text-2xl">
+                <h2 className="cursor-default break-words text-lg font-bold leading-tight text-foreground sm:text-xl lg:text-2xl">
                   {poll.question}
                 </h2>
               </TooltipTrigger>
@@ -425,8 +425,8 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    <span className="line-clamp-2">{option.text}</span>
-                    <span className="text-xs opacity-70">+{poll.xpReward} XP</span>
+                    <span className="min-w-0 break-words">{option.text}</span>
+                    <span className="shrink-0 text-xs opacity-70">+{poll.xpReward} XP</span>
                   </motion.button>
                 ))}
               </div>

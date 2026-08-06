@@ -131,7 +131,7 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 20 }}
             transition={{ delay: 0.08 }}
           >
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal className="h-5 w-5 text-primary" />
                 <h2 className="text-lg font-semibold text-foreground">Feed Preferences</h2>
@@ -196,7 +196,7 @@ export default function HomePage() {
                   className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-border/50"
                   key={challenge.challengeId}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-semibold text-foreground">{challenge.title}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
@@ -228,7 +228,7 @@ export default function HomePage() {
 
         <motion.div
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 grid grid-cols-3 gap-3"
+            className="mb-6 grid grid-cols-1 gap-3 min-[360px]:grid-cols-3"
           initial={{ opacity: 0, y: 20 }}
           transition={{ delay: 0.1 }}
         >
@@ -257,7 +257,7 @@ export default function HomePage() {
           initial={{ opacity: 0, y: 20 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold text-foreground">

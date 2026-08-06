@@ -126,7 +126,7 @@ export default function NotificationsPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-4 py-6">
-        <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="mb-6 flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3">
             <div className="relative rounded-2xl bg-primary p-3 text-primary-foreground">
               <Bell className="h-6 w-6" />
@@ -146,7 +146,7 @@ export default function NotificationsPage() {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
             <Button
               aria-label="Refresh notifications"
               onClick={loadNotifications}
@@ -156,7 +156,7 @@ export default function NotificationsPage() {
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button
-              className="gap-2"
+              className="min-w-0 flex-1 gap-2 sm:flex-none"
               disabled={unreadCount === 0}
               onClick={markAllRead}
               variant="outline"
