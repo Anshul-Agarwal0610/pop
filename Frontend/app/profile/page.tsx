@@ -59,15 +59,10 @@ function ProfileSkeleton() {
 
 export default function ProfilePage() {
   const router              = useRouter()
-  const { user: authUser, isLoading: authLoading, logout } = useAuth()
+  const { user: authUser, logout } = useAuth()
   const [profile, setProfile]   = useState<ApiUser | null>(null)
   const [history, setHistory]   = useState<ApiVoteHistoryItem[]>([])
   const [loading, setLoading]   = useState(true)
-
-  // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !authUser) router.replace("/login")
-  }, [authLoading, authUser, router])
 
   // Fetch fresh profile (for up-to-date XP) + vote history
   useEffect(() => {
@@ -96,7 +91,8 @@ export default function ProfilePage() {
     { icon: BarChart3, label: "Polls Created", value: String(displayUser.pollsCreated ?? 0), color: "text-primary"     },
     { icon: Trophy,    label: "Total Votes",   value: String(displayUser.totalVotes ?? 0),    color: "text-amber-500"   },
     { icon: Target,    label: "Total XP",      value: `${displayUser.xp ?? 0}`,               color: "text-emerald-500" },
-    { icon: Flame,     label: "Day Streak",    value: String(displayUser.streak ?? 0),        color: "text-orange-500"  },
+    { icon: Flame,     label: "Current streak", value: String(displayUser.streak ?? 0),       color: "text-orange-500"  },
+    { icon: Award,     label: "Longest streak", value: String(displayUser.longestStreak ?? displayUser.streak ?? 0), color: "text-orange-500" },
   ]
 
   return (
@@ -115,7 +111,7 @@ export default function ProfilePage() {
               variant="ghost"
               size="icon"
               className="absolute right-4 top-4 rounded-xl text-muted-foreground hover:text-foreground"
-              onClick={() => { logout(); router.push("/login") }}
+              onClick={() => { logout(); router.replace("/") }}
             >
               <LogOut className="h-5 w-5" />
               <span className="sr-only">Sign out</span>
@@ -183,7 +179,7 @@ export default function ProfilePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4"
+          className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5"
         >
           {stats.map((stat, index) => (
             <motion.div

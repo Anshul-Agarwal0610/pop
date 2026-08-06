@@ -31,8 +31,14 @@ namespace BackendAPI.Models
         public int LevelsGained => Math.Max(0, Progression.Level - PreviousLevel);
         public IReadOnlyList<RewardEvent> Events { get; set; } = Array.Empty<RewardEvent>();
         public int Streak { get; set; }
+        public int LongestStreak { get; set; }
         public int TotalVotes { get; set; }
         public bool StreakAdvanced { get; set; }
+        public bool TodayComplete { get; set; }
+        public bool RecoveryEligible { get; set; }
+        public bool RecoveryUsed { get; set; }
+        public DateTime? NextRecoveryAt { get; set; }
+        public int? MilestoneReached { get; set; }
         public DateTime? LastVoteDate { get; set; }
         public IEnumerable<UserBadge> AwardedBadges { get; set; } = Enumerable.Empty<UserBadge>();
 

@@ -6,7 +6,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Moon, Sun, Sparkles } from "lucide-react"
 import { useTheme } from "next-themes"
-import { navigationItems } from "@/lib/navigation"
+import { isNavigationItemActive, navigationItems } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -17,12 +17,12 @@ export function Sidebar() {
   useEffect(() => setMounted(true), [])
 
   return (
-    <aside className="fixed left-0 top-16 z-30 hidden h-[calc(100vh-4rem)] w-64 border-r border-border/50 bg-sidebar md:block">
-      <div className="flex h-full flex-col p-4">
+    <aside className="fixed left-0 top-16 z-30 hidden h-[calc(100dvh-4rem)] w-64 overflow-y-auto border-r border-border/50 bg-sidebar lg:block">
+      <div className="flex min-h-full flex-col p-4">
         {/* Navigation */}
         <nav className="flex-1 space-y-1">
           {navigationItems.map((item, index) => {
-            const isActive = pathname === item.href
+            const isActive = isNavigationItemActive(pathname, item.href)
             const Icon = item.icon
 
             return (

@@ -12,6 +12,8 @@ import {
   type AuthUser,
   type AuthResponse,
   getStoredUser,
+  getToken,
+  getCurrentUser,
   saveSession,
   clearSession,
   saveStoredUser,
@@ -33,10 +35,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]         = useState<AuthUser | null>(null)
   const [isLoading, setLoading] = useState(true)
 
-  // Hydrate from localStorage on mount
   useEffect(() => {
-    setUser(getStoredUser())
-    setLoading(false)
+    let active = true
+
+    async function hydrate() {
+      const storedUser = getStoredUser()
+      if (!getToken() || !storedUser) {
+        clearSession()
+        if (active) setLoading(false)
+        return
+      }
+
+      try {
+        const currentUser = await getCurrentUser()
+        if (active) setUser(currentUser)
+      } catch {
+        clearSession()
+        if (active) setUser(null)
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    hydrate()
+    return () => { active = false }
   }, [])
 
   const login = useCallback((data: AuthResponse) => {

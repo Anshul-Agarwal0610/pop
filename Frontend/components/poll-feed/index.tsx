@@ -12,26 +12,45 @@ import { ProgressIndicator } from "./progress-indicator"
 import { Button } from "@/components/ui/button"
 import { usePolls } from "@/hooks/use-polls"
 import type { Poll } from "@/lib/poll-data"
-import type { ApiVoteReward } from "@/lib/api"
+import { usersApi, type ApiVoteReward } from "@/lib/api"
+import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
 
-export function PollFeed() {
-  const { user, applyProgression } = useAuth()
-  const [selectedCategory, setSelectedCategory] = useState("All")
+export function PollFeed({ initialCategory }: { initialCategory?: string | null }) {
+  const { applyProgression } = useAuth()
+  const normalizedInitial = initialCategory ? normalizeCategoryName(initialCategory) : "All"
+  const validInitial = FEED_CATEGORIES.includes(normalizedInitial as (typeof FEED_CATEGORIES)[number]) ? normalizedInitial : "All"
+  const [selectedCategory, setSelectedCategory] = useState(validInitial)
   const feedCategory = selectedCategory === "All" ? undefined : selectedCategory
   const { polls, loading, error, castVote, loadMore, hasMore } = usePolls(feedCategory)
   const [currentIndex, setCurrentIndex]   = useState(0)
   const [streak, setStreak]               = useState(0)
-  const [totalXp, setTotalXp]             = useState(user?.xp ?? 0)
+  const [longestStreak, setLongestStreak] = useState(0)
+  const [todayComplete, setTodayComplete] = useState(false)
+  const [recoveryEligible, setRecoveryEligible] = useState(false)
+  const [voteError, setVoteError] = useState<string | null>(null)
+  const [totalXp, setTotalXp]             = useState(1250)
   const [currentVote, setCurrentVote]     = useState<"yes" | "no" | "option" | null>(null)
   const [sessionXp, setSessionXp]         = useState(0)
   const [reward, setReward]               = useState<ApiVoteReward | null>(null)
-  const [voteError, setVoteError]         = useState<string | null>(null)
 
   const currentPoll: Poll | undefined = polls[currentIndex]
   const hasMorePolls = currentIndex < polls.length
+  const nextUtcMidnight = new Date()
+  nextUtcMidnight.setUTCHours(24, 0, 0, 0)
+  const localResetTime = nextUtcMidnight.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZoneName: "short" })
 
   useEffect(() => {
+    usersApi.getMyStreak().then((status) => {
+      setStreak(status.streak)
+      setLongestStreak(status.longestStreak)
+      setTodayComplete(status.todayComplete)
+      setRecoveryEligible(status.recoveryEligible)
+    }).catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    if (initialCategory) return
     const saved = window.localStorage.getItem("poll-feed-category")
     if (!saved) return
     if (saved === "All") {
@@ -43,7 +62,7 @@ export function PollFeed() {
     if (FEED_CATEGORIES.includes(normalized as (typeof FEED_CATEGORIES)[number])) {
       setSelectedCategory(normalized)
     }
-  }, [])
+  }, [initialCategory])
 
   const handleCategorySelect = useCallback((category: string) => {
     setSelectedCategory(category)
@@ -57,19 +76,29 @@ export function PollFeed() {
       if (!currentPoll || currentVote) return
 
       setVoteError(null)
+      const useRecovery = recoveryEligible && window.confirm(
+        "Use your streak recovery? It restores exactly one missed UTC day and is available once every 30 days."
+      )
       try {
-        const result = await castVote(currentPoll.id, optionId)
+        const result = await castVote(currentPoll.id, optionId, useRecovery)
         setReward(result.reward)
         setCurrentVote(feedback)
         setStreak(result.reward.streak)
-        setTotalXp(result.reward.progression.totalXp)
-        setSessionXp((xp) => xp + result.reward.awardedXp)
+        setLongestStreak(result.reward.longestStreak)
+        setTodayComplete(result.reward.todayComplete)
+        setRecoveryEligible(false)
+        setTotalXp(result.reward.xp)
+        setSessionXp((xp) => xp + result.reward.xpAwarded)
         applyProgression(result.reward.progression)
+        result.challenges.forEach(challenge => toast(challenge.isCompleted
+          ? `${challenge.title} completed!`
+          : `${challenge.title}: ${challenge.currentVotes}/${challenge.requiredVotes}`))
       } catch (err) {
         setVoteError((err as Error).message)
+        toast.error(err instanceof Error ? err.message : "Vote failed")
       }
     },
-    [currentPoll, currentVote, castVote, applyProgression]
+    [currentPoll, currentVote, castVote, recoveryEligible, applyProgression]
   )
 
   const handleFeedbackComplete = useCallback(() => {
@@ -130,12 +159,17 @@ export function PollFeed() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <StreakCounter streak={streak} totalXp={totalXp} />
+        <StreakCounter streak={streak} longestStreak={longestStreak} todayComplete={todayComplete} totalXp={totalXp} />
         <ProgressIndicator current={currentIndex} total={polls.length} />
       </motion.div>
+      <p className="px-4 text-xs text-muted-foreground">
+        Streak days reset at 00:00 UTC ({localResetTime} locally).
+        {recoveryEligible && " One recovery is available for your single missed UTC day; using it starts a 30-day cooldown."}
+      </p>
+      {voteError && <p role="alert" className="px-4 py-1 text-sm text-destructive">Vote failed. Nothing was changed. {voteError}</p>}
 
       {/* Card Stack */}
-      <div className="relative mx-auto flex-1 w-full max-w-md px-0 md:px-4">
+      <div className="relative mx-auto min-h-0 w-full max-w-md flex-1 px-0 sm:px-4">
         <AnimatePresence mode="popLayout">
           {hasMorePolls ? (
             polls.slice(currentIndex, currentIndex + 2)
@@ -219,11 +253,6 @@ export function PollFeed() {
         streakCount={streak}
         onComplete={handleFeedbackComplete}
       />
-      {voteError && (
-        <p className="px-4 pb-2 text-center text-sm text-destructive" role="alert">
-          Vote failed. Your XP was not changed.
-        </p>
-      )}
     </div>
   )
 }

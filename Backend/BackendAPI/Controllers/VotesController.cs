@@ -63,84 +63,76 @@ namespace BackendAPI.Controllers
             if (!validOption)
                 return BadRequest(new { message = "Invalid option for this poll." });
 
+            var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
+            long voteId;
+            VoteRewardResult reward;
             try
             {
-                await _votesRepo.CastVoteAsync(request, userId);
+                (voteId, reward) = await _votesRepo.CastVoteAsync(
+                    request, userId, GamificationRules.VoteXp(poll), DateTime.UtcNow);
             }
             catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser") ||
                                         ex.Message.Contains("duplicate key") ||
                                         ex.Message.Contains("UNIQUE"))
             {
-                var currentUser = await _usersRepo.GetByIdAsync(userId);
-                var progression = GamificationRules.FromTotalXp(currentUser?.Xp ?? 0);
-                return Conflict(new
-                {
-                    message = "You have already voted on this poll.",
-                    reward = new ProgressionReward
-                    {
-                        AwardedXp = 0,
-                        Progression = progression,
-                        PreviousLevel = progression.Level,
-                        Streak = currentUser?.Streak ?? 0,
-                        TotalVotes = currentUser?.TotalVotes ?? 0,
-                        LastVoteDate = currentUser?.LastVoteDate
-                    }
-                });
+                return Conflict(new { message = "You have already voted on this poll." });
             }
 
-            var userBeforeReward = await _usersRepo.GetByIdAsync(userId);
+            var challenges = (await _challengesRepo.AdvanceForVoteAsync(userId, voteId, poll, DateTime.UtcNow)).ToList();
 
-            // US-50: Award XP and apply daily streak rules after a unique vote.
-            var voteReward = await _usersRepo.ApplyVoteRewardAsync(
-                userId,
-                GamificationRules.VoteXp(poll),
-                DateTime.UtcNow);
-            var challenges = (await _challengesRepo.AdvanceForVoteAsync(userId, poll, DateTime.UtcNow)).ToList();
             var finalUser = await _usersRepo.GetByIdAsync(userId);
             var previousProgression = GamificationRules.FromTotalXp(userBeforeReward?.Xp ?? 0);
-            var finalProgression = GamificationRules.FromTotalXp(finalUser?.Xp ?? voteReward.Xp);
+            var finalProgression = GamificationRules.FromTotalXp(finalUser?.Xp ?? reward.Xp);
             var events = new List<RewardEvent>
             {
                 new(RewardEventType.Vote, request.PollId.ToString(), GamificationRules.VoteXp(poll), "Vote")
             };
-            events.AddRange(challenges
-                .Where(challenge => challenge.AwardedXp > 0)
-                .Select(challenge => new RewardEvent(
-                    RewardEventType.Challenge,
-                    challenge.ChallengeId.ToString(),
-                    challenge.AwardedXp,
-                    challenge.Title)));
-            var achievementXp = Math.Max(0, voteReward.XpAwarded - GamificationRules.VoteXp(poll));
+            events.AddRange(challenges.Where(challenge => challenge.AwardedXp > 0).Select(challenge =>
+                new RewardEvent(RewardEventType.Challenge, challenge.ChallengeId.ToString(), challenge.AwardedXp, challenge.Title)));
+            var achievementXp = Math.Max(0, reward.XpAwarded - GamificationRules.VoteXp(poll));
             if (achievementXp > 0)
-            {
-                events.Add(new RewardEvent(
-                    RewardEventType.Achievement,
-                    string.Join(",", voteReward.AwardedBadges.Select(badge => badge.BadgeId)),
-                    achievementXp,
-                    string.Join(", ", voteReward.AwardedBadges.Select(badge => badge.Name))));
-            }
+                events.Add(new RewardEvent(RewardEventType.Achievement,
+                    string.Join(",", reward.AwardedBadges.Select(badge => badge.BadgeId)), achievementXp,
+                    string.Join(", ", reward.AwardedBadges.Select(badge => badge.Name))));
 
-            var reward = new ProgressionReward
+            var progressionReward = new ProgressionReward
             {
                 AwardedXp = Math.Max(0, finalProgression.TotalXp - previousProgression.TotalXp),
                 Progression = finalProgression,
                 PreviousLevel = previousProgression.Level,
                 Events = events,
-                Streak = voteReward.Streak,
-                TotalVotes = voteReward.TotalVotes,
-                StreakAdvanced = voteReward.StreakAdvanced,
-                LastVoteDate = voteReward.LastVoteDate,
-                AwardedBadges = voteReward.AwardedBadges
+                Streak = reward.Streak,
+                LongestStreak = reward.LongestStreak,
+                TotalVotes = reward.TotalVotes,
+                StreakAdvanced = reward.StreakAdvanced,
+                TodayComplete = reward.TodayComplete,
+                RecoveryEligible = reward.RecoveryEligible,
+                RecoveryUsed = reward.RecoveryUsed,
+                NextRecoveryAt = reward.NextRecoveryAt,
+                MilestoneReached = reward.MilestoneReached,
+                LastVoteDate = reward.LastVoteDate,
+                AwardedBadges = reward.AwardedBadges
             };
 
-            if (reward.LeveledUp)
+            if (reward.MilestoneReached.HasValue)
+                await _notificationsRepo.CreateAsync(new CreateNotificationRequest
+                {
+                    UserId = userId,
+                    Type = NotificationType.StreakMilestone,
+                    Title = $"{reward.MilestoneReached}-day streak",
+                    Body = "Nice consistency. Your vote completed today's streak day.",
+                    PollId = poll.Id,
+                    DedupKey = $"streak:{userId}:{reward.MilestoneReached}"
+                });
+
+            if (progressionReward.LeveledUp)
             {
                 await _notificationsRepo.CreateAsync(new CreateNotificationRequest
                 {
                     UserId = userId,
                     Type = NotificationType.LevelUp,
                     Title = "Level up!",
-                    Body = $"You reached level {reward.Level} with {reward.Xp:N0} XP.",
+                    Body = $"You reached level {progressionReward.Level} with {progressionReward.Xp:N0} XP.",
                     PollId = null
                 });
             }
@@ -164,8 +156,9 @@ namespace BackendAPI.Controllers
             return Ok(new CastVoteResponse
             {
                 Poll = updated!,
-                Reward = reward,
-                Challenges = challenges
+                Reward = progressionReward,
+                Challenges = challenges,
+                CompletedChallenges = challenges.Where(challenge => challenge.IsCompleted)
             });
         }
 

@@ -41,6 +41,7 @@ namespace BackendAPI.Models
         public string AuthProvider { get; set; } = "local";
         public int Xp { get; set; }
         public int Streak { get; set; }
+        public int LongestStreak { get; set; }
         public int TotalVotes { get; set; }
         public int PollsCreated { get; set; }
         public DateTime? LastVoteDate { get; set; }

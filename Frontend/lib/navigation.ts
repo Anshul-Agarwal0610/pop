@@ -1,6 +1,11 @@
-import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse } from "lucide-react"
+import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse, Gamepad2, Target } from "lucide-react"
 
 export const navigationItems = [
+  {
+    label: "Play",
+    href: "/play",
+    icon: Gamepad2,
+  },
   {
     label: "Home",
     href: "/",
@@ -10,6 +15,11 @@ export const navigationItems = [
     label: "Polls",
     href: "/polls",
     icon: BarChart2,
+  },
+  {
+    label: "Challenges",
+    href: "/challenges",
+    icon: Target,
   },
   {
     label: "Create Poll",
@@ -43,4 +53,15 @@ export const navigationItems = [
   },
 ] as const
 
+export const mobileNavigationItems = navigationItems.filter(item =>
+  ["/", "/play", "/polls", "/create", "/profile"].includes(item.href)
+)
+
 export type NavigationItem = (typeof navigationItems)[number]
+
+export const mobilePrimaryNavigation = navigationItems.slice(0, 4)
+export const mobileSecondaryNavigation = navigationItems.slice(4)
+
+export function isNavigationItemActive(pathname: string, href: string) {
+  return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
+}

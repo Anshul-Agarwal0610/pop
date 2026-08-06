@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
 
 interface ProfileDrawerProps {
   isOpen: boolean
@@ -36,7 +37,8 @@ const menuItems = [
 
 export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
   const { theme, setTheme } = useTheme()
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const router = useRouter()
 
   return (
     <AnimatePresence>
@@ -220,6 +222,16 @@ export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
                           ? "text-destructive hover:bg-destructive/10"
                           : "text-foreground hover:bg-secondary"
                       )}
+                      onClick={() => {
+                        if (item.danger) {
+                          logout()
+                          onClose()
+                          router.replace("/")
+                        } else {
+                          router.push(item.href)
+                          onClose()
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-3">
                         <item.icon className="h-5 w-5" />

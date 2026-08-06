@@ -242,7 +242,7 @@ namespace BackendAPI.Repository
                 RetentionInsertSql(
                     NotificationType.ChallengeAvailable,
                     @"SELECT u.Id AS UserId,
-                             NULL AS PollId,
+                             eligible.Id AS PollId,
                              CONCAT('challenge:', c.Id, ':available:', CONVERT(char(8), @UtcNow, 112)) AS DedupKey,
                              'Daily challenge is live' AS Title,
                              CONCAT(c.Title, ' is available now. Vote ', c.RequiredVotes, ' times before it ends for +', c.RewardXp, ' XP.') AS Body
@@ -266,9 +266,20 @@ namespace BackendAPI.Repository
                     @"SELECT u.Id AS UserId,
                              NULL AS PollId,
                              CONCAT('streak:', u.Id, ':', CONVERT(char(8), @UtcNow, 112)) AS DedupKey,
-                             'Keep your streak alive' AS Title,
-                             CONCAT('Your ', u.Streak, '-day streak is waiting. Vote once today to keep it going.') AS Body
+                             'A poll for today' AS Title,
+                             'You haven''t voted today. Here''s a poll if you''d like to continue your streak.' AS Body
                       FROM Users u
+                      CROSS APPLY (
+                          SELECT TOP (1) p.Id
+                          FROM Polls p
+                          WHERE p.IsActive = 1 AND p.ModerationStatus = 'Published'
+                            AND p.ExpiresAt > @UtcNow AND COALESCE(p.IsPrivate, 0) = 0
+                            AND COALESCE(p.IsWellness, 0) = 0 AND p.Category <> 'Health'
+                            AND NOT EXISTS (SELECT 1 FROM Votes v WHERE v.UserId = u.Id AND v.PollId = p.Id)
+                          ORDER BY CASE WHEN EXISTS (SELECT 1 FROM UserCategoryPreferences pref
+                              WHERE pref.UserId = u.Id AND pref.Category = p.Category) THEN 0 ELSE 1 END,
+                              p.IsTrending DESC, p.TotalVotes DESC, p.CreatedAt DESC
+                      ) eligible
                       WHERE u.Streak > 0
                         AND CONVERT(date, u.LastVoteDate) = DATEADD(day, -1, CONVERT(date, @UtcNow))"),
                 new { UtcNow = utcNow, Type = NotificationType.StreakReminder.ToString() });

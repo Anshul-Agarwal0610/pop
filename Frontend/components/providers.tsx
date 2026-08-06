@@ -1,9 +1,11 @@
 "use client"
 
+import { Suspense } from "react"
 import { GoogleOAuthProvider } from "@react-oauth/google"
 import { AuthProvider } from "@/contexts/auth-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
+import { AuthRouteGuard } from "@/components/auth/auth-route-guard"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -17,7 +19,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <Suspense fallback={null}>
+            <AuthRouteGuard>{children}</AuthRouteGuard>
+          </Suspense>
           <Toaster />
         </ThemeProvider>
       </AuthProvider>

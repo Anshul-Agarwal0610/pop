@@ -53,6 +53,35 @@ namespace BackendAPI.Controllers
             return Ok(history);
         }
 
+        [HttpGet("me/streak")]
+        [Authorize]
+        public async Task<IActionResult> GetMyStreak()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            var status = await _usersRepo.GetStreakStatusAsync(userId.Value, DateTime.UtcNow);
+            return status == null ? NotFound() : Ok(status);
+        }
+
+        [HttpGet("me/progression")]
+        [Authorize]
+        public async Task<IActionResult> GetMyProgression()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            var progression = await _usersRepo.GetProgressionAsync(userId.Value, DateTime.UtcNow);
+            return progression == null ? NotFound() : Ok(progression);
+        }
+
+        [HttpGet("leaderboard/weekly")]
+        [Authorize]
+        public async Task<IActionResult> GetWeeklyLeaderboard([FromQuery] int count = 5)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            return Ok(await _usersRepo.GetWeeklyLeaderboardAsync(userId.Value, count, DateTime.UtcNow));
+        }
+
         // GET /api/users/me/preferences/categories
         [HttpGet("me/preferences/categories")]
         [Authorize]
