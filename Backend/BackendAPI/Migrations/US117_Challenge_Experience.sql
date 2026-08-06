@@ -27,6 +27,7 @@ IF COL_LENGTH('dbo.Challenges', 'RequirementText') IS NULL ALTER TABLE dbo.Chall
 IF COL_LENGTH('dbo.Challenges', 'RewardBadgeId') IS NULL ALTER TABLE dbo.Challenges ADD RewardBadgeId BIGINT NULL;
 IF COL_LENGTH('dbo.Challenges', 'AllowPrivateVotes') IS NULL ALTER TABLE dbo.Challenges ADD AllowPrivateVotes BIT NOT NULL CONSTRAINT DF_Challenges_Private DEFAULT 0;
 IF COL_LENGTH('dbo.Challenges', 'AllowWellnessVotes') IS NULL ALTER TABLE dbo.Challenges ADD AllowWellnessVotes BIT NOT NULL CONSTRAINT DF_Challenges_Wellness DEFAULT 0;
+GO
 
 IF OBJECT_ID('dbo.ChallengeProgressEvents', 'U') IS NULL
 BEGIN
