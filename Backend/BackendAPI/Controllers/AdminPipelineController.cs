@@ -29,7 +29,7 @@ public sealed class AdminPipelineController : ControllerBase
         var control=await _topics.GetControlStateAsync();
         var backlog=await _topics.GetBacklogAsync();
         _metrics.UpdateGenerationState(control.GenerationPaused,backlog);
-        var providers=new[]{"openai","anthropic","custom"}.Select(name=>_health.GetGeneration(name,IsEnabled(name),IsConfigured(name))).ToArray();
+        var providers=new[]{"gemini","openai","anthropic","groq"}.Select(name=>_health.GetGeneration(name,IsEnabled(name),IsConfigured(name))).ToArray();
         var recordedIngestion=_health.Ingestion.ToDictionary(x=>x.Provider,StringComparer.OrdinalIgnoreCase);
         var ingestionProviders=new[]{"rss","youtube","gnews"}.Select(name=>recordedIngestion.TryGetValue(name,out var value)?value:ConfiguredIngestion(name)).ToArray();
         return Ok(new { ingestion=new { providers=ingestionProviders }, generation=new { paused=control.GenerationPaused,backlog,providers } });
@@ -67,16 +67,16 @@ public sealed class AdminPipelineController : ControllerBase
     private async Task<IActionResult> SetPaused(bool paused) { await _topics.SetGenerationPausedAsync(paused,Actor()); Audit(paused?"generation.pause":"generation.resume",null,null,null); return Ok(new{generationPaused=paused}); }
     private string Actor()=>User.FindFirstValue(ClaimTypes.NameIdentifier)??User.FindFirstValue("sub")??"unknown";
     private void Audit(string action,int? bound,string? jobId,string? correlationId)=>_logger.LogInformation("Pipeline operator action {Action} by {OperatorId}; bound={Bound}; job={JobId}; correlation={CorrelationId}",action,Actor(),bound,jobId,correlationId);
-    private bool IsEnabled(string name)=>!_configuration.GetValue($"PollGen:{Name(name)}:Disabled",false);
-    private bool IsConfigured(string name)=>name switch { "openai"=>Present("OpenAI","ApiKey")&&Present("OpenAI","Model"),"anthropic"=>Present("Anthropic","ApiKey")&&Present("Anthropic","Model"),"custom"=>Uri.TryCreate(_configuration["PollGen:Custom:BaseUrl"],UriKind.Absolute,out _),_=>false };
-    private bool Present(string provider,string key)=>!string.IsNullOrWhiteSpace(_configuration[$"PollGen:{provider}:{key}"]);
+    private bool IsEnabled(string name)=>_configuration.GetValue($"PollGen:Providers:{name}:Enabled",false);
+    private bool IsConfigured(string name)=>!string.IsNullOrWhiteSpace(_configuration[$"PollGen:Providers:{name}:ApiKey"])
+        && !string.IsNullOrWhiteSpace(_configuration[$"PollGen:Providers:{name}:Model"])
+        && Uri.TryCreate(_configuration[$"PollGen:Providers:{name}:Endpoint"],UriKind.Absolute,out _);
     private ProviderHealth ConfiguredIngestion(string name)
     {
         var disabled=_configuration.GetValue($"Ingestion:{name}:Disabled",false);
         var configured=name=="rss" || !string.IsNullOrWhiteSpace(_configuration[$"{(name=="youtube"?"YouTube":"GNews")}:ApiKey"]);
         return new(name,disabled?ProviderOperationalState.Disabled:configured?ProviderOperationalState.Enabled:ProviderOperationalState.Misconfigured,disabled?"disabled":configured?null:"missing_api_key",null,null,null,null);
     }
-    private static string Name(string value)=>value=="openai"?"OpenAI":char.ToUpperInvariant(value[0])+value[1..];
 }
 
 public sealed record IngestionRunRequest(string Source,int MaxTopics=100);

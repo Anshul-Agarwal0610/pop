@@ -1,106 +1,86 @@
 using BackendAPI.Interfaces;
+using BackendAPI.Models;
+using Microsoft.Extensions.Options;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
-namespace BackendAPI.Services.Llm
+namespace BackendAPI.Services.Llm;
+
+internal static class LlmHttpFailure
 {
-    /// <summary>
-    /// Calls the OpenAI Chat Completions API (GPT-4o, GPT-4o mini, etc.).
-    /// Also works with any OpenAI-compatible API such as Groq (free).
-    ///
-    /// Config keys:
-    ///   PollGen:OpenAI:ApiKey   — sk-...  (OpenAI) or gsk_... (Groq)
-    ///   PollGen:OpenAI:Model    — "gpt-4o-mini" (OpenAI) | "llama-3.3-70b-versatile" (Groq)
-    ///   PollGen:OpenAI:BaseUrl  — optional, overrides endpoint (e.g. https://api.groq.com/openai/v1)
-    ///
-    /// To use Groq (free): set BaseUrl = https://api.groq.com/openai/v1
-    ///                           ApiKey = your Groq key (gsk_...)
-    ///                           Model  = llama-3.3-70b-versatile
-    /// </summary>
-    public class OpenAiLlmProvider : ILlmProvider
+    public static LlmProviderOutcome Classify(HttpStatusCode status) =>
+        status is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)status >= 500
+            ? LlmProviderOutcome.TransientFailure : LlmProviderOutcome.PermanentFailure;
+}
+
+public abstract class OpenAiCompatibleLlmProvider : ILlmProvider
+{
+    private readonly IHttpClientFactory _http;
+    private readonly IOptionsMonitor<PollGenerationOptions> _options;
+    private readonly ILogger _logger;
+    public abstract string ProviderName { get; }
+
+    protected OpenAiCompatibleLlmProvider(IHttpClientFactory http, IOptionsMonitor<PollGenerationOptions> options, ILogger logger)
+        => (_http, _options, _logger) = (http, options, logger);
+
+    public async Task<LlmProviderResult> GenerateAsync(LlmGenerationRequest request, CancellationToken ct = default)
     {
-        public string ProviderName => "openai";
-
-        private const string DefaultEndpoint = "https://api.openai.com/v1/chat/completions";
-
-        private readonly IHttpClientFactory _http;
-        private readonly IConfiguration _config;
-        private readonly ILogger<OpenAiLlmProvider> _logger;
-
-        public OpenAiLlmProvider(
-            IHttpClientFactory http,
-            IConfiguration config,
-            ILogger<OpenAiLlmProvider> logger)
+        var config = _options.CurrentValue.Providers[ProviderName];
+        using var message = new HttpRequestMessage(HttpMethod.Post, config.Endpoint);
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
+        message.Content = new StringContent(JsonSerializer.Serialize(new
         {
-            _http   = http;
-            _config = config;
-            _logger = logger;
-        }
-
-        public async Task<LlmCompletionResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
-        {
-            var apiKey = _config["PollGen:OpenAI:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                _logger.LogWarning("[OpenAI] PollGen:OpenAI:ApiKey not configured");
-                return LlmCompletionResult.Misconfigured(ProviderName);
-            }
-
-            var model = _config["PollGen:OpenAI:Model"];
-            if (string.IsNullOrWhiteSpace(model)) return LlmCompletionResult.Misconfigured(ProviderName);
-            var baseUrl  = _config["PollGen:OpenAI:BaseUrl"];
-            var endpoint = string.IsNullOrWhiteSpace(baseUrl)
-                ? DefaultEndpoint
-                : $"{baseUrl.TrimEnd('/')}/chat/completions";
-
-            var client = _http.CreateClient();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            var body = new
-            {
-                model,
-                messages = new[]
-                {
-                    new { role = "system", content = request.SystemInstruction },
-                    new { role = "user", content = request.UserPrompt }
-                },
-                temperature = request.Temperature,
-                max_tokens = request.MaxOutputTokens,
-                response_format = new { type = "json_schema", json_schema = new { name = "binary_proposition", strict = true, schema = JsonSerializer.Deserialize<JsonElement>(request.ResponseSchema) } }
-            };
-
-            var content = new StringContent(
-                JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-
-            try
-            {
-                using var response = await client.PostAsync(endpoint, content, ct);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var status=(int)response.StatusCode;
-                    _logger.LogWarning("[OpenAI] HTTP {Status}", status);
-                    return new(ProviderName, model, false, null, status, status==429?"rate_limited":"http_error", status==429 || status>=500, status==429, RetryAfter: response.Headers.RetryAfter?.Date);
-                }
-
-                var json = await response.Content.ReadAsStringAsync(ct);
-                using var doc = JsonDocument.Parse(json);
-
-                // Extract content from choices[0].message.content
-                var text = doc.RootElement
-                    .GetProperty("choices")[0]
-                    .GetProperty("message")
-                    .GetProperty("content")
-                    .GetString();
-                long? input=null, output=null;
-                if (doc.RootElement.TryGetProperty("usage", out var usage)) { if (usage.TryGetProperty("prompt_tokens", out var i)) input=i.GetInt64(); if (usage.TryGetProperty("completion_tokens", out var o)) output=o.GetInt64(); }
-                return new(ProviderName, model, true, text, (int)response.StatusCode, null, false, false, input, output);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[OpenAI] Request failed");
-                return new(ProviderName, model, false, null, null, ex is OperationCanceledException ? "timeout" : "transport_error", true, false);
-            }
-        }
+            model = config.Model,
+            messages = new[] { new { role = "system", content = request.SystemInstruction }, new { role = "user", content = request.UserPrompt } },
+            temperature = request.Temperature,
+            max_tokens = request.MaxTokens,
+            response_format = new { type = "json_object" }
+        }), Encoding.UTF8, "application/json");
+        return await SendAsync(message, config, request, ct);
     }
+
+    private async Task<LlmProviderResult> SendAsync(HttpRequestMessage message, LlmProviderOptions config, LlmGenerationRequest request, CancellationToken ct)
+    {
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(config.TimeoutSeconds));
+            using var response = await _http.CreateClient(ProviderName).SendAsync(message, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                var failureClass = LlmHttpFailureClassifier.Classify(response.StatusCode, body);
+                var outcome = failureClass is LlmFailureClass.RateLimited or LlmFailureClass.Timeout or LlmFailureClass.TransientServer
+                    ? LlmProviderOutcome.TransientFailure : LlmProviderOutcome.PermanentFailure;
+                var retryAt = LlmHttpFailureClassifier.GetRetryAt(response, DateTimeOffset.UtcNow, TimeSpan.FromHours(1));
+                _logger.LogWarning("LLM request failed. Provider={Provider} Model={Model} Status={Status} Outcome={Outcome}", ProviderName, config.Model, (int)response.StatusCode, outcome);
+                return new(outcome, null, $"HTTP {(int)response.StatusCode}", ProviderName, config.Model, failureClass, (int)response.StatusCode, retryAt);
+            }
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            var content = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+            return string.IsNullOrWhiteSpace(content)
+                ? new(LlmProviderOutcome.PermanentFailure, null, "Provider returned empty content.", ProviderName, config.Model)
+                : new(LlmProviderOutcome.Success, content, null, ProviderName, config.Model);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        { return new(LlmProviderOutcome.TransientFailure, null, "Provider request timed out.", ProviderName, config.Model, LlmFailureClass.Timeout); }
+        catch (HttpRequestException ex)
+        { _logger.LogWarning("LLM network failure. Provider={Provider} Model={Model} Error={ErrorType}", ProviderName, config.Model, ex.GetType().Name); return new(LlmProviderOutcome.TransientFailure, null, "Provider network failure.", ProviderName, config.Model, LlmFailureClass.TransientServer); }
+        catch (JsonException)
+        { return new(LlmProviderOutcome.PermanentFailure, null, "Malformed provider response envelope.", ProviderName, config.Model); }
+    }
+}
+
+public sealed class OpenAiLlmProvider : OpenAiCompatibleLlmProvider
+{
+    public override string ProviderName => LlmProviderNames.OpenAi;
+    public OpenAiLlmProvider(IHttpClientFactory h, IOptionsMonitor<PollGenerationOptions> o, ILogger<OpenAiLlmProvider> l) : base(h, o, l) { }
+}
+
+public sealed class GroqLlmProvider : OpenAiCompatibleLlmProvider
+{
+    public override string ProviderName => LlmProviderNames.Groq;
+    public GroqLlmProvider(IHttpClientFactory h, IOptionsMonitor<PollGenerationOptions> o, ILogger<GroqLlmProvider> l) : base(h, o, l) { }
 }

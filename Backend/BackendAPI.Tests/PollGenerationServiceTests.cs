@@ -1,8 +1,10 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
+using BackendAPI.Services.Llm;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace BackendAPI.Tests;
@@ -38,10 +40,10 @@ public class PollGenerationServiceTests
     public async Task Valid_contract_returns_structured_result()
     {
         var result = await Create(new FakeProvider(Valid)).GenerateAsync(new TrendingTopic { Title = "Law", Summary = "Parliament considers privacy law", Category = "Technology" });
-        Assert.NotNull(result);
-        Assert.Equal("Should Parliament adopt the proposed data privacy law?", result!.Proposition);
-        Assert.True(result.Quality.IsGrounded);
-        Assert.NotEmpty(result.Grounding.Evidence);
+        Assert.Equal(GenerationOutcome.Succeeded, result.Outcome);
+        Assert.Equal("Should Parliament adopt the proposed data privacy law?", result.Poll!.Proposition);
+        Assert.Equal(GenerationMethods.Llm, result.Poll.GenerationMethod);
+        Assert.Equal(new[] { "Up", "Against" }, result.Poll.Options);
     }
 
     [Theory]
@@ -53,44 +55,74 @@ public class PollGenerationServiceTests
     public async Task Malformed_legacy_or_invalid_contract_is_rejected(string json)
     {
         var result = await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Topic", Summary = "Detail", Category = "General" });
-        Assert.Null(result);
+        Assert.NotEqual(GenerationOutcome.Succeeded, result.Outcome);
     }
 
     [Fact]
     public async Task Ambiguous_topic_is_rejected()
     {
         var json = Valid.Replace("false,\"ambiguityReason\":null", "true,\"ambiguityReason\":\"Not enough source detail\"");
-        Assert.Null(await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Celebrity news", Category = "Entertainment" }));
+        Assert.NotEqual(GenerationOutcome.Succeeded, (await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Celebrity news", Category = "Entertainment" })).Outcome);
     }
 
     [Fact]
-    public async Task Retryable_primary_failure_fails_over_to_next_provider()
+    public async Task Transient_failure_uses_safe_fallback_only_for_convertible_topic()
     {
-        var first=new OutcomeProvider("first",new("first","m",false,null,429,"rate_limited",true,true));
-        var second=new OutcomeProvider("second",new("second","m",true,Valid,200,null,false,false));
-        var config=new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["PollGeneration:Providers:0"]="first",["PollGeneration:Providers:1"]="second" }).Build();
-        var service=new PollGenerationService(new ILlmProvider[]{first,second},new FakePollsRepository(),config,NullLogger<PollGenerationService>.Instance);
-        var outcome=await service.GenerateWithOutcomeAsync(new TrendingTopic{Title="Law",Summary="Parliament considers privacy law",Category="Technology"});
-        Assert.Equal(PollGenerationOutcomeKind.Converted,outcome.Kind);
-        Assert.Equal(1,first.Calls); Assert.Equal(1,second.Calls);
+        var service = Create(new OutcomeProvider(LlmProviderResult.Transient("timeout")));
+        var result = await service.GenerateAsync(new TrendingTopic { Title = "Council bans cars from the city centre", Summary = "The council plan would ban cars from the city centre on weekdays.", Category = "General" });
+        Assert.Equal(GenerationOutcome.Succeeded, result.Outcome);
+        Assert.Equal(GenerationMethods.DeterministicFallback, result.Poll!.GenerationMethod);
+        Assert.Equal(new[] { "Up", "Against" }, result.Poll.Options);
+    }
+
+    [Fact]
+    public async Task Transient_failure_retains_ambiguous_topic_for_retry()
+    {
+        var result = await Create(new OutcomeProvider(LlmProviderResult.Transient("timeout"))).GenerateAsync(
+            new TrendingTopic { Title = "Major changes may be coming", Summary = "Officials discussed possibilities without announcing an action.", Category = "General" });
+        Assert.Equal(GenerationOutcome.ProviderTransientFailure, result.Outcome);
+        Assert.Null(result.Poll);
     }
 
     private static PollGenerationService Create(FakeProvider provider)
+        => Create((ILlmProvider)provider);
+
+    private static PollGenerationService Create(ILlmProvider provider)
     {
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["PollGen:Provider"] = "fake" }).Build();
-        return new PollGenerationService(new[] { provider }, new FakePollsRepository(), config, NullLogger<PollGenerationService>.Instance);
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+        var options = new PollGenerationOptions
+        {
+            ProviderOrder = [LlmProviderNames.OpenAi],
+            Providers = new(StringComparer.OrdinalIgnoreCase)
+            {
+                [LlmProviderNames.OpenAi] = new() { Enabled = true, Model = "fake-model", Endpoint = "https://example.test", TimeoutSeconds = 5, ApiKey = "test-key" }
+            }
+        };
+        var monitor = new TestMonitor(options);
+        return new PollGenerationService(new[] { provider }, new FakePollsRepository(), config,
+            NullLogger<PollGenerationService>.Instance, new DeterministicPollConverter(), monitor,
+            new LlmProviderReadinessService(monitor),
+            new ProviderResilienceCoordinator(Microsoft.Extensions.Options.Options.Create(options), TimeProvider.System));
+    }
+
+    private sealed class OutcomeProvider(LlmProviderResult result) : ILlmProvider
+    {
+        public string ProviderName => LlmProviderNames.OpenAi;
+        public Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) => Task.FromResult(result);
     }
 
     private sealed class FakeProvider(string response) : ILlmProvider
     {
-        public string ProviderName => "fake";
+        public string ProviderName => LlmProviderNames.OpenAi;
         public LlmGenerationRequest? Request { get; private set; }
-        public Task<LlmCompletionResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) { Request = request; return Task.FromResult(new LlmCompletionResult(ProviderName,"fake-model",true,response,200,null,false,false,10,20)); }
+        public Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) { Request = request; return Task.FromResult(LlmProviderResult.Succeeded(response)); }
     }
-    private sealed class OutcomeProvider(string name,LlmCompletionResult outcome):ILlmProvider
+
+    private sealed class TestMonitor(PollGenerationOptions value) : IOptionsMonitor<PollGenerationOptions>
     {
-        public string ProviderName=>name; public int Calls {get;private set;}
-        public Task<LlmCompletionResult> CompleteAsync(LlmGenerationRequest request,CancellationToken ct=default){Calls++;return Task.FromResult(outcome);}
+        public PollGenerationOptions CurrentValue => value;
+        public PollGenerationOptions Get(string? name) => value;
+        public IDisposable? OnChange(Action<PollGenerationOptions, string?> listener) => null;
     }
 
     private sealed class FakePollsRepository : IPollsRepository

@@ -70,7 +70,7 @@ namespace BackendAPI.Jobs
                 return;
             }
 
-            var saved=await _repo.SaveBatchAsync(allTopics,correlationId);
+            var saved=await _repo.SaveBatchWithResultAsync(allTopics,correlationId);
             _metrics.Ingestion("queued",saved.Inserted,"all");
             _metrics.Ingestion("deduplicated",saved.Deduplicated,"all");
             _logger.LogInformation("Ingestion saved {Queued} topics and deduplicated {Deduplicated}",saved.Inserted,saved.Deduplicated);
