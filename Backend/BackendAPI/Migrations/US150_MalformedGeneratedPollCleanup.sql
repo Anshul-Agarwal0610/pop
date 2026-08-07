@@ -1,5 +1,8 @@
 -- US150: auditable, idempotent malformed generated-poll cleanup.
 -- Apply only after US148_GeneratedPollQualityGate.sql and its publication gate are deployed.
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 CREATE TABLE GeneratedPollCleanupRecords (
     Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     PollId BIGINT NOT NULL,

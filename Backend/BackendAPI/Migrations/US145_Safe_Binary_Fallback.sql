@@ -1,7 +1,11 @@
 -- US145: safe deterministic fallback, generation provenance, and retry workflow.
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 IF COL_LENGTH('Polls', 'GenerationMethod') IS NULL
     ALTER TABLE Polls ADD GenerationMethod varchar(32) NOT NULL CONSTRAINT DF_Polls_GenerationMethod DEFAULT 'ManualReview';
 IF COL_LENGTH('Polls', 'TrendingTopicId') IS NULL ALTER TABLE Polls ADD TrendingTopicId bigint NULL;
+GO
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name='CK_Polls_GenerationMethod')
     ALTER TABLE Polls ADD CONSTRAINT CK_Polls_GenerationMethod CHECK (GenerationMethod IN ('Llm','DeterministicFallback','ManualReview'));
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_Polls_TrendingTopicId' AND object_id=OBJECT_ID('Polls'))
@@ -15,6 +19,7 @@ IF COL_LENGTH('TrendingTopics', 'LastFailureKind') IS NULL ALTER TABLE TrendingT
 IF COL_LENGTH('TrendingTopics', 'LastFailureReason') IS NULL ALTER TABLE TrendingTopics ADD LastFailureReason nvarchar(1000) NULL;
 IF COL_LENGTH('TrendingTopics', 'LastGenerationMethod') IS NULL ALTER TABLE TrendingTopics ADD LastGenerationMethod varchar(32) NULL;
 IF COL_LENGTH('TrendingTopics', 'GeneratedPollId') IS NULL ALTER TABLE TrendingTopics ADD GeneratedPollId bigint NULL;
+GO
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name='CK_TrendingTopics_ConversionStatus')
     ALTER TABLE TrendingTopics ADD CONSTRAINT CK_TrendingTopics_ConversionStatus CHECK (ConversionStatus IN ('Pending','RetryPending','Converted','NeedsReview','Unconvertible'));
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_TrendingTopics_ConversionEligibility' AND object_id=OBJECT_ID('TrendingTopics'))
