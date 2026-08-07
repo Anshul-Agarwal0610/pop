@@ -1,6 +1,7 @@
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
+using BackendAPI.Services;
 using Dapper;
 
 namespace BackendAPI.Repository
@@ -337,7 +338,7 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
             return await conn.QueryAsync<Poll>(
-                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated
+                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated, GenerationProvider, GenerationModel
                   FROM Polls
                   WHERE IsAIGenerated = 1
                   ORDER BY CreatedAt DESC",
@@ -386,6 +387,9 @@ namespace BackendAPI.Repository
 
         public async Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null)
         {
+            var generated = request.GenerationMethod is GenerationMethods.Llm or GenerationMethods.DeterministicFallback;
+            if (generated)
+                GeneratedPollContract.EnsureValid(request.Options);
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
@@ -393,7 +397,7 @@ namespace BackendAPI.Repository
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
             var pollMode = isWellness ? PollModes.Wellness : PollModes.Public;
-            var moderationStatus = isWellness
+            var moderationStatus = isWellness || (request.IsAIGenerated && request.AutoPublish)
                 ? PollModerationStatus.Published
                 : PollModerationStatus.PendingReview;
 
@@ -403,13 +407,13 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated,
+                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated,
+                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
@@ -423,6 +427,10 @@ namespace BackendAPI.Repository
                         request.SourceUrl,
                         request.ThumbnailUrl,
                         request.IsAIGenerated,
+                        GenerationMethod = generated ? request.GenerationMethod : GenerationMethods.ManualReview,
+                        request.TrendingTopicId,
+                        GenerationProvider = generated ? request.GenerationProvider : null,
+                        GenerationModel = generated ? request.GenerationModel : null,
                         IsPrivate = isPrivate,
                         IsWellness = isWellness,
                         PollMode = pollMode,
@@ -438,8 +446,8 @@ namespace BackendAPI.Repository
                 foreach (var optionText in request.Options)
                 {
                     await conn.ExecuteAsync(
-                        "INSERT INTO PollOptions (PollId, Text, VoteCount) VALUES (@PollId, @Text, 0)",
-                        new { PollId = pollId, Text = optionText },
+                        "INSERT INTO PollOptions (PollId, Text, Side, VoteCount) VALUES (@PollId, @Text, @Side, 0)",
+                        new { PollId = pollId, Text = optionText, Side = generated ? optionText : null },
                         transaction
                     );
                 }
@@ -467,13 +475,13 @@ namespace BackendAPI.Repository
                 var existing = await conn.QuerySingleOrDefaultAsync<long?>(
                     "SELECT Id FROM Polls WITH (UPDLOCK,HOLDLOCK) WHERE SourceTopicId=@TopicId", new { TopicId=topicId }, tx);
                 var pollId = existing ?? await conn.ExecuteScalarAsync<long>(@"INSERT INTO Polls
-                    (Question,Description,Category,ExpiresAt,IsActive,IsTrending,CreatedAt,TotalVotes,SourceType,SourceUrl,ThumbnailUrl,IsAIGenerated,SourceTopicId,ModerationStatus,ReportCount)
-                    VALUES (@Question,@Description,@Category,@ExpiresAt,1,0,GETUTCDATE(),0,@SourceType,@SourceUrl,@ThumbnailUrl,1,@TopicId,'PendingReview',0);
+                    (Question,Description,Category,ExpiresAt,IsActive,IsTrending,CreatedAt,TotalVotes,SourceType,SourceUrl,ThumbnailUrl,IsAIGenerated,GenerationMethod,TrendingTopicId,GenerationProvider,GenerationModel,SourceTopicId,ModerationStatus,ReportCount)
+                    VALUES (@Question,@Description,@Category,@ExpiresAt,1,0,GETUTCDATE(),0,@SourceType,@SourceUrl,@ThumbnailUrl,1,@GenerationMethod,@TopicId,@GenerationProvider,@GenerationModel,@TopicId,'PendingReview',0);
                     SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
-                    new { request.Question,request.Description,Category=CategoryCatalog.NormalizeName(request.Category),request.ExpiresAt,request.SourceType,request.SourceUrl,request.ThumbnailUrl,TopicId=topicId }, tx);
+                    new { request.Question,request.Description,Category=CategoryCatalog.NormalizeName(request.Category),request.ExpiresAt,request.SourceType,request.SourceUrl,request.ThumbnailUrl,request.GenerationMethod,request.GenerationProvider,request.GenerationModel,TopicId=topicId }, tx);
                 if (!existing.HasValue)
                     foreach (var option in request.Options)
-                        await conn.ExecuteAsync("INSERT INTO PollOptions(PollId,Text,VoteCount) VALUES(@PollId,@Text,0)", new { PollId=pollId,Text=option }, tx);
+                        await conn.ExecuteAsync("INSERT INTO PollOptions(PollId,Text,Side,VoteCount) VALUES(@PollId,@Text,@Side,0)", new { PollId=pollId,Text=option,Side=option }, tx);
                 var updated = await conn.ExecuteAsync(@"UPDATE TrendingTopics SET GenerationStatus='Completed',IsProcessed=1,
                     ProcessedAt=GETUTCDATE(),LeaseId=NULL,LeaseExpiresAtUtc=NULL WHERE Id=@TopicId AND LeaseId=@LeaseId",
                     new { TopicId=topicId,LeaseId=leaseId }, tx);

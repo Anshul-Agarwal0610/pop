@@ -1,11 +1,12 @@
-IF COL_LENGTH('TrendingTopics','GenerationStatus') IS NULL
-BEGIN
-  ALTER TABLE TrendingTopics ADD GenerationStatus varchar(20) NOT NULL CONSTRAINT DF_TrendingTopics_GenerationStatus DEFAULT 'Pending',
-    AttemptCount int NOT NULL CONSTRAINT DF_TrendingTopics_AttemptCount DEFAULT 0, NextAttemptAtUtc datetime2 NULL,
-    LastFailureClass varchar(40) NULL, LastFailureProvider varchar(80) NULL, LastFailureAtUtc datetime2 NULL,
-    LastFailureDetail nvarchar(500) NULL, LeaseId uniqueidentifier NULL, LeaseExpiresAtUtc datetime2 NULL,
-    TerminalDecision nvarchar(500) NULL;
-END;
+IF COL_LENGTH('TrendingTopics','GenerationStatus') IS NULL ALTER TABLE TrendingTopics ADD GenerationStatus varchar(20) NOT NULL CONSTRAINT DF_TrendingTopics_GenerationStatus DEFAULT 'Pending';
+IF COL_LENGTH('TrendingTopics','NextAttemptAtUtc') IS NULL ALTER TABLE TrendingTopics ADD NextAttemptAtUtc datetime2 NULL;
+IF COL_LENGTH('TrendingTopics','LastFailureClass') IS NULL ALTER TABLE TrendingTopics ADD LastFailureClass varchar(40) NULL;
+IF COL_LENGTH('TrendingTopics','LastFailureProvider') IS NULL ALTER TABLE TrendingTopics ADD LastFailureProvider varchar(80) NULL;
+IF COL_LENGTH('TrendingTopics','LastFailureAtUtc') IS NULL ALTER TABLE TrendingTopics ADD LastFailureAtUtc datetime2 NULL;
+IF COL_LENGTH('TrendingTopics','LastFailureDetail') IS NULL ALTER TABLE TrendingTopics ADD LastFailureDetail nvarchar(500) NULL;
+IF COL_LENGTH('TrendingTopics','LeaseId') IS NULL ALTER TABLE TrendingTopics ADD LeaseId uniqueidentifier NULL;
+IF COL_LENGTH('TrendingTopics','LeaseExpiresAtUtc') IS NULL ALTER TABLE TrendingTopics ADD LeaseExpiresAtUtc datetime2 NULL;
+IF COL_LENGTH('TrendingTopics','TerminalDecision') IS NULL ALTER TABLE TrendingTopics ADD TerminalDecision nvarchar(500) NULL;
 
 IF COL_LENGTH('Polls','SourceTopicId') IS NULL ALTER TABLE Polls ADD SourceTopicId bigint NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_Polls_SourceTopicId')

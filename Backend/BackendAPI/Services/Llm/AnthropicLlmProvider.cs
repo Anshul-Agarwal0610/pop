@@ -1,22 +1,29 @@
 using BackendAPI.Interfaces;
+using BackendAPI.Models;
 using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
 
 namespace BackendAPI.Services.Llm;
 
-public sealed class AnthropicLlmProvider(IHttpClientFactory http, IConfiguration config,
-    IOptions<PollGenerationOptions> options, ILogger<AnthropicLlmProvider> logger) : ILlmProvider
+public sealed class AnthropicLlmProvider : ILlmProvider
 {
-    public string ProviderName => "anthropic";
-    public Task<LlmProviderResult> CompleteAsync(string prompt, CancellationToken ct = default)
+    public string ProviderName => LlmProviderNames.Anthropic;
+    private readonly IHttpClientFactory _http; private readonly IOptionsMonitor<PollGenerationOptions> _options;
+    public AnthropicLlmProvider(IHttpClientFactory h, IOptionsMonitor<PollGenerationOptions> o) => (_http, _options) = (h, o);
+    public async Task<LlmProviderResult> GenerateAsync(LlmGenerationRequest request, CancellationToken ct = default)
     {
-        var key = config["PollGen:Anthropic:ApiKey"];
-        if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(LlmProviderResult.Failure(ProviderName, LlmFailureClass.Configuration));
-        var body = new { model = config["PollGen:Anthropic:Model"] ?? "claude-haiku-4-5", max_tokens = 512, messages = new[] { new { role = "user", content = prompt } } };
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages") { Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json") };
-        request.Headers.Add("x-api-key", key); request.Headers.Add("anthropic-version", "2023-06-01");
-        return LlmProviderHttp.SendAsync(ProviderName, http.CreateClient(ProviderName), request, json =>
-        { using var doc = JsonDocument.Parse(json); return doc.RootElement.GetProperty("content")[0].GetProperty("text").GetString(); }, logger, TimeSpan.FromSeconds(options.Value.MaxRetryDelaySeconds), ct);
+        var c = _options.CurrentValue.Providers[ProviderName];
+        using var msg = new HttpRequestMessage(HttpMethod.Post, c.Endpoint);
+        msg.Headers.Add("x-api-key", c.ApiKey); msg.Headers.Add("anthropic-version", "2023-06-01");
+        msg.Content = new StringContent(JsonSerializer.Serialize(new { model = c.Model, max_tokens = request.MaxTokens, system = request.SystemInstruction, messages = new[] { new { role = "user", content = request.UserPrompt } } }), Encoding.UTF8, "application/json");
+        return await Send(msg, c, ct);
+    }
+    private async Task<LlmProviderResult> Send(HttpRequestMessage msg, LlmProviderOptions c, CancellationToken ct)
+    {
+        try { using var t = CancellationTokenSource.CreateLinkedTokenSource(ct); t.CancelAfter(TimeSpan.FromSeconds(c.TimeoutSeconds)); using var r = await _http.CreateClient(ProviderName).SendAsync(msg, t.Token); if (!r.IsSuccessStatusCode) { var body=await r.Content.ReadAsStringAsync(ct); var kind=LlmHttpFailureClassifier.Classify(r.StatusCode,body); var outcome=kind is LlmFailureClass.RateLimited or LlmFailureClass.Timeout or LlmFailureClass.TransientServer ? LlmProviderOutcome.TransientFailure : LlmProviderOutcome.PermanentFailure; return new(outcome,null,$"HTTP {(int)r.StatusCode}",ProviderName,c.Model,kind,(int)r.StatusCode,LlmHttpFailureClassifier.GetRetryAt(r,DateTimeOffset.UtcNow,TimeSpan.FromHours(1))); } using var d = JsonDocument.Parse(await r.Content.ReadAsStringAsync(ct)); var x = d.RootElement.GetProperty("content")[0].GetProperty("text").GetString(); return string.IsNullOrWhiteSpace(x) ? new(LlmProviderOutcome.PermanentFailure, null, "Provider returned empty content.", ProviderName, c.Model) : new(LlmProviderOutcome.Success, x, null, ProviderName, c.Model); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return new(LlmProviderOutcome.TransientFailure, null, "Provider request timed out.", ProviderName, c.Model, LlmFailureClass.Timeout); }
+        catch (HttpRequestException) { return new(LlmProviderOutcome.TransientFailure, null, "Provider network failure.", ProviderName, c.Model, LlmFailureClass.TransientServer); }
+        catch (JsonException) { return new(LlmProviderOutcome.PermanentFailure, null, "Malformed provider response envelope.", ProviderName, c.Model); }
     }
 }

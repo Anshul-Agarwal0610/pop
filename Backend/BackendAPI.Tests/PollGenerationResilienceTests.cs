@@ -1,5 +1,6 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Jobs;
+using BackendAPI.Models;
 using BackendAPI.Services.Llm;
 using Hangfire;
 using Microsoft.Extensions.Options;

@@ -22,7 +22,9 @@ CREATE TABLE Polls (
     ExpiresAt   DATETIME2       NOT NULL,
     CreatedAt   DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
     TotalVotes  INT             NOT NULL DEFAULT 0,
-    CreatedByUserId BIGINT      NULL
+    CreatedByUserId BIGINT      NULL,
+    GenerationProvider NVARCHAR(50) NULL,
+    GenerationModel NVARCHAR(200) NULL
 );
 GO
 
@@ -33,21 +35,26 @@ CREATE TABLE PollOptions (
     Id             BIGINT IDENTITY(1,1) PRIMARY KEY,
     PollId         BIGINT          NOT NULL REFERENCES Polls(Id) ON DELETE CASCADE,
     Text           NVARCHAR(300)   NOT NULL,
+    Side           NVARCHAR(16)    NULL CHECK (Side IS NULL OR Side IN ('Up', 'Against')),
     VoteCount      INT             NOT NULL DEFAULT 0,
     VotePercentage FLOAT           NOT NULL DEFAULT 0
 );
 GO
+CREATE UNIQUE INDEX UX_PollOptions_PollId_Side ON PollOptions(PollId, Side) WHERE Side IS NOT NULL;
+ALTER TABLE PollOptions ADD CONSTRAINT UQ_PollOptions_PollId_Id UNIQUE (PollId, Id);
 
 -- ============================================================
 -- Votes
 -- ============================================================
 CREATE TABLE Votes (
     Id        BIGINT IDENTITY(1,1) PRIMARY KEY,
-    PollId    BIGINT    NOT NULL REFERENCES Polls(Id),
-    OptionId  BIGINT    NOT NULL REFERENCES PollOptions(Id),
+    PollId    BIGINT    NOT NULL,
+    OptionId  BIGINT    NOT NULL,
     CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
 );
 GO
+ALTER TABLE Votes ADD CONSTRAINT FK_Votes_PollOptions
+    FOREIGN KEY (PollId, OptionId) REFERENCES PollOptions(PollId, Id);
 
 -- ============================================================
 -- Users

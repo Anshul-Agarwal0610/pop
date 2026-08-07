@@ -1,62 +1,70 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
+using BackendAPI.Services;
 using BackendAPI.Services.Llm;
 using Hangfire;
-using Microsoft.Extensions.Options;
 
 namespace BackendAPI.Jobs;
 
-public sealed class PollGenerationJob(
-    ITrendingTopicRepository topics,
-    IPollsRepository polls,
-    IPollGenerationService generator,
-    IRetryDelayPolicy retryPolicy,
-    IOptions<PollGenerationOptions> options,
-    TimeProvider time,
-    ILogger<PollGenerationJob> logger)
+public class PollGenerationJob
 {
+    private readonly ITrendingTopicRepository _topics;
+    private readonly IPollsRepository _polls;
+    private readonly IPollGenerationService _generator;
+    private readonly IConfiguration _config;
+    private readonly ILogger<PollGenerationJob> _logger;
+    private readonly IRetryDelayPolicy _retryPolicy;
+    private readonly TimeProvider _time;
+
+    public PollGenerationJob(ITrendingTopicRepository topics, IPollsRepository polls, IPollGenerationService generator,
+        IConfiguration config, ILogger<PollGenerationJob> logger, IRetryDelayPolicy retryPolicy, TimeProvider time)
+        => (_topics, _polls, _generator, _config, _logger, _retryPolicy, _time) = (topics, polls, generator, config, logger, retryPolicy, time);
+
+    [DisableConcurrentExecution(timeoutInSeconds: 600)]
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync()
     {
-        var claimed = await topics.ClaimDueAsync(5, TimeSpan.FromSeconds(options.Value.TopicLeaseSeconds));
-        foreach (var topic in claimed)
+        var limit = Math.Max(1, _config.GetValue("PollGen:RetryLimit", 3));
+        var delay = TimeSpan.FromSeconds(Math.Max(1, _config.GetValue("PollGen:RetryBaseDelaySeconds", 900)));
+        foreach (var topic in await _topics.GetEligibleAsync(5, limit))
         {
-            if (topic.LeaseId is not { } leaseId) continue;
-            try
+            var outcome = await _generator.GenerateAsync(topic);
+            var method = outcome.AttemptedMethod ?? GenerationMethods.ManualReview;
+            if (outcome.Outcome == GenerationOutcome.Succeeded && outcome.Poll is not null)
             {
-                var outcome = await generator.GenerateAsync(topic);
-                switch (outcome.Kind)
+                if (!BinaryPublicationValidator.Validate(outcome.Poll, topic, out var gateReason))
                 {
-                    case GenerationOutcomeKind.Poll:
-                        var generated = outcome.Poll!;
-                        await polls.CompleteGeneratedPollAsync(topic.Id, leaseId, new CreatePollRequest
-                        {
-                            Question=generated.Question, Description=topic.Summary, Category=generated.Category,
-                            ExpiresAt=time.GetUtcNow().UtcDateTime.AddHours(48), Options=generated.Options,
-                            SourceType=topic.SourceType,SourceUrl=topic.SourceUrl,ThumbnailUrl=topic.ThumbnailUrl,
-                            SourceTopicId=topic.Id,IsAIGenerated=true,ModerationReason=generated.ReviewNotes
-                        });
-                        break;
-                    case GenerationOutcomeKind.TerminalContentDecision:
-                    case GenerationOutcomeKind.TerminalFailure:
-                        await topics.MarkTerminalAsync(topic.Id, leaseId, outcome.Reason ?? outcome.FailureClass.ToString());
-                        break;
-                    default:
-                        if (topic.AttemptCount >= options.Value.MaxAttemptsPerTopic)
-                            await topics.MarkTerminalAsync(topic.Id, leaseId, $"Retry exhausted: {outcome.Reason}");
-                        else
-                            await topics.ScheduleRetryAsync(topic.Id, leaseId,
-                                retryPolicy.GetNextAttempt(topic.AttemptCount, time.GetUtcNow(), outcome.RetryAtUtc),
-                                outcome.FailureClass, outcome.Provider, outcome.Reason);
-                        break;
+                    await _topics.MarkUnconvertibleAsync(topic.Id, gateReason, method);
+                    continue;
                 }
+                try
+                {
+                    var pollId = await _polls.CreateAsync(new CreatePollRequest
+                    {
+                        Question = outcome.Poll.Proposition, Description = topic.Summary, Category = outcome.Poll.Category,
+                        ExpiresAt = DateTime.UtcNow.AddHours(48), Options = outcome.Poll.Options, SourceType = topic.SourceType,
+                        SourceUrl = topic.SourceUrl, ThumbnailUrl = topic.ThumbnailUrl,
+                        IsAIGenerated = outcome.Poll.GenerationMethod == GenerationMethods.Llm,
+                        GenerationMethod = outcome.Poll.GenerationMethod, TrendingTopicId = topic.Id,
+                        GenerationProvider = outcome.Poll.GenerationProvider, GenerationModel = outcome.Poll.GenerationModel,
+                        ModerationReason = outcome.Poll.ReviewNotes
+                    });
+                    await _topics.MarkConvertedAsync(topic.Id, pollId, outcome.Poll.GenerationMethod);
+                }
+                catch (Exception ex) { _logger.LogError(ex, "Failed to persist poll for topic {TopicId}; topic remains eligible", topic.Id); throw; }
             }
-            catch (Exception ex)
+            else if (outcome.Outcome == GenerationOutcome.ProviderTransientFailure)
             {
-                var next = retryPolicy.GetNextAttempt(topic.AttemptCount, time.GetUtcNow());
-                await topics.ScheduleRetryAsync(topic.Id, leaseId, next, LlmFailureClass.TransientServer, null, "Persistence or orchestration failure");
-                logger.LogError(ex, "Poll generation failed for topic {TopicId}; retry at {NextAttempt}", topic.Id, next);
+                var now = _time.GetUtcNow();
+                var next = _retryPolicy.GetNextAttempt(topic.AttemptCount + 1, now, outcome.RetryAtUtc);
+                var retryDelay = next - now;
+                await _topics.RecordTransientFailureAsync(topic.Id, limit, retryDelay > delay ? retryDelay : delay,
+                    outcome.Reason ?? "Transient provider failure", method);
             }
+            else if (outcome.Outcome == GenerationOutcome.ProviderPermanentFailure)
+                await _topics.MarkNeedsReviewAsync(topic.Id, outcome.Reason ?? "Permanent provider failure", method);
+            else
+                await _topics.MarkUnconvertibleAsync(topic.Id, outcome.Reason ?? "No defensible proposition", method);
         }
     }
 }

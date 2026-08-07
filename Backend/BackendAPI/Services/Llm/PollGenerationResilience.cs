@@ -1,27 +1,11 @@
 using BackendAPI.Interfaces;
+using BackendAPI.Models;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 
 namespace BackendAPI.Services.Llm;
-
-public sealed class PollGenerationOptions
-{
-    public const string Section = "PollGen";
-    public string Provider { get; set; } = "custom";
-    public string[] Providers { get; set; } = Array.Empty<string>();
-    public int HttpTimeoutSeconds { get; set; } = 30;
-    public int MaxAttemptsPerTopic { get; set; } = 8;
-    public int BaseRetryDelaySeconds { get; set; } = 30;
-    public int MaxRetryDelaySeconds { get; set; } = 3600;
-    public double JitterPercentage { get; set; } = .2;
-    public int CircuitFailureThreshold { get; set; } = 3;
-    public int CircuitCooldownSeconds { get; set; } = 120;
-    public int MaxProviderConcurrency { get; set; } = 2;
-    public int TopicLeaseSeconds { get; set; } = 300;
-    public IReadOnlyList<string> ProviderChain => Providers.Length > 0 ? Providers : new[] { Provider };
-}
 
 public interface IJitterSource { double Next(); }
 public sealed class RandomJitterSource : IJitterSource { public double Next() => Random.Shared.NextDouble(); }

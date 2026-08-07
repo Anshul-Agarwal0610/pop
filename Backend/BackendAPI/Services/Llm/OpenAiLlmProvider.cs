@@ -1,25 +1,86 @@
 using BackendAPI.Interfaces;
+using BackendAPI.Models;
 using Microsoft.Extensions.Options;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
 namespace BackendAPI.Services.Llm;
 
-public sealed class OpenAiLlmProvider(IHttpClientFactory http, IConfiguration config,
-    IOptions<PollGenerationOptions> options, ILogger<OpenAiLlmProvider> logger) : ILlmProvider
+internal static class LlmHttpFailure
 {
-    public string ProviderName => "openai";
-    public Task<LlmProviderResult> CompleteAsync(string prompt, CancellationToken ct = default)
+    public static LlmProviderOutcome Classify(HttpStatusCode status) =>
+        status is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)status >= 500
+            ? LlmProviderOutcome.TransientFailure : LlmProviderOutcome.PermanentFailure;
+}
+
+public abstract class OpenAiCompatibleLlmProvider : ILlmProvider
+{
+    private readonly IHttpClientFactory _http;
+    private readonly IOptionsMonitor<PollGenerationOptions> _options;
+    private readonly ILogger _logger;
+    public abstract string ProviderName { get; }
+
+    protected OpenAiCompatibleLlmProvider(IHttpClientFactory http, IOptionsMonitor<PollGenerationOptions> options, ILogger logger)
+        => (_http, _options, _logger) = (http, options, logger);
+
+    public async Task<LlmProviderResult> GenerateAsync(LlmGenerationRequest request, CancellationToken ct = default)
     {
-        var key = config["PollGen:OpenAI:ApiKey"];
-        if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(LlmProviderResult.Failure(ProviderName, LlmFailureClass.Configuration));
-        var baseUrl = config["PollGen:OpenAI:BaseUrl"];
-        var endpoint = string.IsNullOrWhiteSpace(baseUrl) ? "https://api.openai.com/v1/chat/completions" : $"{baseUrl.TrimEnd('/')}/chat/completions";
-        var body = new { model = config["PollGen:OpenAI:Model"] ?? "gpt-4o-mini", messages = new[] { new { role = "user", content = prompt } }, temperature = .7, max_tokens = 1024, response_format = new { type = "json_object" } };
-        var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json") };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-        return LlmProviderHttp.SendAsync(ProviderName, http.CreateClient(ProviderName), request, json =>
-        { using var doc = JsonDocument.Parse(json); return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(); }, logger, TimeSpan.FromSeconds(options.Value.MaxRetryDelaySeconds), ct);
+        var config = _options.CurrentValue.Providers[ProviderName];
+        using var message = new HttpRequestMessage(HttpMethod.Post, config.Endpoint);
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
+        message.Content = new StringContent(JsonSerializer.Serialize(new
+        {
+            model = config.Model,
+            messages = new[] { new { role = "system", content = request.SystemInstruction }, new { role = "user", content = request.UserPrompt } },
+            temperature = request.Temperature,
+            max_tokens = request.MaxTokens,
+            response_format = new { type = "json_object" }
+        }), Encoding.UTF8, "application/json");
+        return await SendAsync(message, config, request, ct);
     }
+
+    private async Task<LlmProviderResult> SendAsync(HttpRequestMessage message, LlmProviderOptions config, LlmGenerationRequest request, CancellationToken ct)
+    {
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(config.TimeoutSeconds));
+            using var response = await _http.CreateClient(ProviderName).SendAsync(message, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                var failureClass = LlmHttpFailureClassifier.Classify(response.StatusCode, body);
+                var outcome = failureClass is LlmFailureClass.RateLimited or LlmFailureClass.Timeout or LlmFailureClass.TransientServer
+                    ? LlmProviderOutcome.TransientFailure : LlmProviderOutcome.PermanentFailure;
+                var retryAt = LlmHttpFailureClassifier.GetRetryAt(response, DateTimeOffset.UtcNow, TimeSpan.FromHours(1));
+                _logger.LogWarning("LLM request failed. Provider={Provider} Model={Model} Status={Status} Outcome={Outcome}", ProviderName, config.Model, (int)response.StatusCode, outcome);
+                return new(outcome, null, $"HTTP {(int)response.StatusCode}", ProviderName, config.Model, failureClass, (int)response.StatusCode, retryAt);
+            }
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            var content = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+            return string.IsNullOrWhiteSpace(content)
+                ? new(LlmProviderOutcome.PermanentFailure, null, "Provider returned empty content.", ProviderName, config.Model)
+                : new(LlmProviderOutcome.Success, content, null, ProviderName, config.Model);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        { return new(LlmProviderOutcome.TransientFailure, null, "Provider request timed out.", ProviderName, config.Model, LlmFailureClass.Timeout); }
+        catch (HttpRequestException ex)
+        { _logger.LogWarning("LLM network failure. Provider={Provider} Model={Model} Error={ErrorType}", ProviderName, config.Model, ex.GetType().Name); return new(LlmProviderOutcome.TransientFailure, null, "Provider network failure.", ProviderName, config.Model, LlmFailureClass.TransientServer); }
+        catch (JsonException)
+        { return new(LlmProviderOutcome.PermanentFailure, null, "Malformed provider response envelope.", ProviderName, config.Model); }
+    }
+}
+
+public sealed class OpenAiLlmProvider : OpenAiCompatibleLlmProvider
+{
+    public override string ProviderName => LlmProviderNames.OpenAi;
+    public OpenAiLlmProvider(IHttpClientFactory h, IOptionsMonitor<PollGenerationOptions> o, ILogger<OpenAiLlmProvider> l) : base(h, o, l) { }
+}
+
+public sealed class GroqLlmProvider : OpenAiCompatibleLlmProvider
+{
+    public override string ProviderName => LlmProviderNames.Groq;
+    public GroqLlmProvider(IHttpClientFactory h, IOptionsMonitor<PollGenerationOptions> o, ILogger<GroqLlmProvider> l) : base(h, o, l) { }
 }

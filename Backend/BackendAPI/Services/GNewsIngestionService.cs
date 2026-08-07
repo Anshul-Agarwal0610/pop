@@ -66,10 +66,12 @@ namespace BackendAPI.Services
 
             foreach (var article in articles.EnumerateArray())
             {
-                var title = article.TryGetProperty("title", out var t) ? t.GetString()?.Trim() ?? "" : "";
-                var desc  = article.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+                var title = TopicEnrichment.CleanText(article.TryGetProperty("title", out var t) ? t.GetString() : "");
+                var desc  = TopicEnrichment.CleanText(article.TryGetProperty("description", out var d) ? d.GetString() : "");
                 var url   = article.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
                 var img   = article.TryGetProperty("image", out var i) ? i.GetString() : null;
+                var publisher = article.TryGetProperty("source", out var source) && source.TryGetProperty("name", out var name) ? name.GetString() : null;
+                DateTime? publishedAt = article.TryGetProperty("publishedAt", out var published) && DateTime.TryParse(published.GetString(), out var date) ? date.ToUniversalTime() : null;
 
                 if (desc.Length > 500) desc = desc[..500];
                 if (string.IsNullOrWhiteSpace(title)) continue;
@@ -81,7 +83,9 @@ namespace BackendAPI.Services
                     SourceType   = "gnews",
                     SourceUrl    = url,
                     ThumbnailUrl = img,
-                    Category     = "General"
+                    Publisher    = publisher,
+                    PublishedAt  = publishedAt,
+                    Category     = TopicEnrichment.Classify(title, desc)
                 });
             }
 

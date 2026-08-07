@@ -13,6 +13,9 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
 using BackendAPI.Analytics;
+using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -75,12 +78,6 @@ builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
-builder.Services.AddOptions<PollGenerationOptions>().Bind(builder.Configuration.GetSection(PollGenerationOptions.Section))
-    .Validate(o => o.MaxAttemptsPerTopic > 0 && o.BaseRetryDelaySeconds > 0 && o.MaxRetryDelaySeconds >= o.BaseRetryDelaySeconds,
-        "Poll generation retry settings are invalid").ValidateOnStart();
-var llmTimeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("PollGen:HttpTimeoutSeconds", 30));
-foreach (var provider in new[] { "openai", "anthropic", "custom" })
-    builder.Services.AddHttpClient(provider, client => client.Timeout = llmTimeout);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IJitterSource, RandomJitterSource>();
 builder.Services.AddSingleton<IRetryDelayPolicy, RetryDelayPolicy>();
@@ -97,10 +94,17 @@ builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();
 // ── LLM Providers — all registered; active one chosen via PollGen:Provider config ─
 builder.Services.AddScoped<ILlmProvider, OpenAiLlmProvider>();
 builder.Services.AddScoped<ILlmProvider, AnthropicLlmProvider>();
-builder.Services.AddScoped<ILlmProvider, CustomVmLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, GeminiLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, GroqLlmProvider>();
+builder.Services.AddOptions<PollGenerationOptions>().Bind(builder.Configuration.GetSection("PollGen"));
+builder.Services.AddSingleton<IValidateOptions<PollGenerationOptions>, PollGenerationOptionsValidator>();
+builder.Services.AddSingleton<LlmProviderReadinessService>();
+builder.Services.AddHostedService<LlmReadinessStartupReporter>();
+builder.Services.AddHealthChecks().AddCheck<LlmProviderReadinessService>("llm");
 
 // ── Poll Generation Service (US-07 enhanced: multi-provider) ─────────────
 builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
+builder.Services.AddSingleton<IDeterministicPollConverter, DeterministicPollConverter>();
 
 // ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
 builder.Services.AddScoped<IngestionJob>();
@@ -164,6 +168,21 @@ app.UseCors("FrontendPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health/llm", new HealthCheckOptions
+{
+    Predicate = registration => registration.Name == "llm",
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var entry = report.Entries["llm"];
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new
+        {
+            status = entry.Status.ToString(),
+            description = entry.Description,
+            providers = entry.Data
+        }));
+    }
+});
 
 // ── Register recurring jobs (US-06, US-08) ───────────────────────────────
 // Jobs are registered after the app is built so IRecurringJobManager is available.
@@ -175,14 +194,19 @@ using (var scope = app.Services.CreateScope())
     recurringJobs.AddOrUpdate<IngestionJob>(
         "ingest-trending-topics",
         job => job.RunAsync(),
-        "*/30 * * * *");
+        builder.Configuration["Ingestion:Cron"] ?? "*/30 * * * *");
 
     // US-08: Generate polls from unprocessed topics every 35 minutes
     // (offset by 5 min so ingestion always runs first)
     recurringJobs.AddOrUpdate<PollGenerationJob>(
         "generate-polls-from-topics",
         job => job.RunAsync(),
-        "*/5 * * * *");
+        builder.Configuration["PollGeneration:Cron"] ?? "5/35 * * * *");
+
+    if (builder.Configuration.GetValue<bool>("PollGeneration:RunOnStartup"))
+    {
+        BackgroundJob.Enqueue<PollGenerationJob>(job => job.RunAsync());
+    }
 
     recurringJobs.AddOrUpdate<RetentionNotificationJob>(
         "create-retention-notifications",
