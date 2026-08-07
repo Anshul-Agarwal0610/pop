@@ -51,23 +51,22 @@ namespace BackendAPI.Services
 
         public async Task<IEnumerable<TrendingTopic>> FetchAsync()
         {
-            var results = new List<TrendingTopic>();
-
-            foreach (var (name, url, category) in Feeds)
+            var tasks = Feeds.Select(async feed =>
             {
                 try
                 {
-                    var items = await FetchFeedAsync(name, url, category);
-                    results.AddRange(items);
-                    _logger.LogInformation("RSS [{Source}]: fetched {Count} items", name, items.Count);
+                    var items = await FetchFeedAsync(feed.Name, feed.Url, feed.Category);
+                    _logger.LogInformation("RSS [{Source}]: fetched {Count} items", feed.Name, items.Count);
+                    return items;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "RSS [{Source}]: failed to fetch", name);
+                    _logger.LogWarning(ex, "RSS [{Source}]: failed to fetch", feed.Name);
+                    return new List<TrendingTopic>();
                 }
-            }
+            });
 
-            return results;
+            return (await Task.WhenAll(tasks)).SelectMany(items => items);
         }
 
         private async Task<List<TrendingTopic>> FetchFeedAsync(
@@ -116,7 +115,7 @@ namespace BackendAPI.Services
                         .Trim();
                     if (summary.Length > 500) summary = summary[..500];
 
-                    var title = item.Title?.Text?.Trim() ?? "";
+                    var title = TopicEnrichment.CleanText(item.Title?.Text);
                     if (string.IsNullOrWhiteSpace(title)) continue;
 
                     // Try to extract thumbnail from media:thumbnail or media:content extensions
@@ -143,7 +142,11 @@ namespace BackendAPI.Services
                         SourceType   = "rss",
                         SourceUrl    = link,
                         ThumbnailUrl = thumbnail,
-                        Category     = category
+                        Publisher    = sourceName,
+                        PublishedAt  = item.PublishDate != DateTimeOffset.MinValue
+                            ? item.PublishDate.UtcDateTime
+                            : item.LastUpdatedTime != DateTimeOffset.MinValue ? item.LastUpdatedTime.UtcDateTime : null,
+                        Category     = TopicEnrichment.Classify(title, summary, category)
                     });
                 }
 

@@ -3,10 +3,12 @@ type ShareablePoll = {
   question: string
   category?: string | null
   totalVotes?: number
+  isAIGenerated?: boolean
 }
 
 type ShareableOption = {
   text: string
+  side?: "Up" | "Against" | null
   votePercentage?: number | null
 }
 
@@ -41,5 +43,6 @@ export function resultShareText(poll: ShareablePoll, option?: ShareableOption | 
   if (!option) return pollShareText(poll)
 
   const percentage = Math.round(option.votePercentage ?? 0)
-  return `${poll.question} Result: ${option.text} is at ${percentage}%`
+  const label = poll.isAIGenerated ? (option.side ?? "Invalid choice") : option.text
+  return `${poll.question} Result: ${label} is at ${percentage}%`
 }

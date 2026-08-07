@@ -98,6 +98,7 @@ namespace BackendAPI.Controllers
         {
             var userId = CurrentUserId();
             if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
             if (!CurrentUserCanModerate(userId.Value)) return Forbid();
 
             var polls = await _pollsRepo.GetModerationQueueAsync(status, Math.Clamp(count, 1, 100));
@@ -128,6 +129,9 @@ namespace BackendAPI.Controllers
         {
             var userId = CurrentUserId();
             if (userId == null) return Unauthorized(new { message = "Invalid token." });
+
+            // AI generation is an internal capability; public clients always create custom polls.
+            request.IsAIGenerated = false;
 
             if (request.Options.Count < 2)
                 return BadRequest(new { message = "A poll must have at least 2 options." });

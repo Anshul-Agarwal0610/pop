@@ -1,6 +1,7 @@
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
+using BackendAPI.Services;
 using Dapper;
 
 namespace BackendAPI.Repository
@@ -386,6 +387,9 @@ namespace BackendAPI.Repository
 
         public async Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null)
         {
+            var generated = request.GenerationMethod is GenerationMethods.Llm or GenerationMethods.DeterministicFallback;
+            if (generated)
+                GeneratedPollContract.EnsureValid(request.Options);
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
@@ -393,7 +397,7 @@ namespace BackendAPI.Repository
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
             var pollMode = isWellness ? PollModes.Wellness : PollModes.Public;
-            var moderationStatus = isWellness
+            var moderationStatus = isWellness || (request.IsAIGenerated && request.AutoPublish)
                 ? PollModerationStatus.Published
                 : PollModerationStatus.PendingReview;
 
@@ -403,17 +407,15 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated,
+                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
-                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
-                         GenerationProvider, GenerationModel)
+                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated,
+                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
-                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
-                         @GenerationProvider, @GenerationModel);
+                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     new
                     {
@@ -425,8 +427,10 @@ namespace BackendAPI.Repository
                         request.SourceUrl,
                         request.ThumbnailUrl,
                         request.IsAIGenerated,
-                        GenerationProvider = request.IsAIGenerated ? request.GenerationProvider : null,
-                        GenerationModel = request.IsAIGenerated ? request.GenerationModel : null,
+                        GenerationMethod = generated ? request.GenerationMethod : GenerationMethods.ManualReview,
+                        request.TrendingTopicId,
+                        GenerationProvider = generated ? request.GenerationProvider : null,
+                        GenerationModel = generated ? request.GenerationModel : null,
                         IsPrivate = isPrivate,
                         IsWellness = isWellness,
                         PollMode = pollMode,
@@ -442,8 +446,8 @@ namespace BackendAPI.Repository
                 foreach (var optionText in request.Options)
                 {
                     await conn.ExecuteAsync(
-                        "INSERT INTO PollOptions (PollId, Text, VoteCount) VALUES (@PollId, @Text, 0)",
-                        new { PollId = pollId, Text = optionText },
+                        "INSERT INTO PollOptions (PollId, Text, Side, VoteCount) VALUES (@PollId, @Text, @Side, 0)",
+                        new { PollId = pollId, Text = optionText, Side = generated ? optionText : null },
                         transaction
                     );
                 }

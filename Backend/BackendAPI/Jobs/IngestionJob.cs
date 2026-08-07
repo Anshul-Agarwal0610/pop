@@ -1,4 +1,5 @@
 using BackendAPI.Interfaces;
+using Hangfire;
 
 namespace BackendAPI.Jobs
 {
@@ -29,6 +30,7 @@ namespace BackendAPI.Jobs
             _logger  = logger;
         }
 
+        [DisableConcurrentExecution(timeoutInSeconds: 600)]
         public async Task RunAsync()
         {
             _logger.LogInformation("[IngestionJob] Starting ingestion run at {Time}", DateTime.UtcNow);
