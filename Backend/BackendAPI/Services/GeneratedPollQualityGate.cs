@@ -60,7 +60,7 @@ public sealed class GeneratedPollQualityGate(
             EvaluatorSchemaVersion = _options.EvaluatorSchemaVersion,
             GenerationPromptVersion = PollGenerationService.GenerationPromptVersion,
             GenerationSchemaVersion = PollGenerationService.GenerationSchemaVersion,
-            GenerationProvider = candidate.ProviderName, ProviderConfidence = candidate.Quality?.Confidence,
+            GenerationProvider = candidate.GenerationProvider, ProviderConfidence = candidate.Quality?.Confidence,
             DuplicatePollId = duplicate?.PollId, DuplicateSimilarity = duplicate?.Similarity,
             DuplicateMatchType = duplicate?.MatchType, ExactFingerprint = fingerprint
         };

@@ -1,0 +1,25 @@
+using BackendAPI.Interfaces;
+using BackendAPI.Models;
+using Microsoft.Extensions.Options;
+using System.Text;
+using System.Text.Json;
+
+namespace BackendAPI.Services.Llm;
+
+public sealed class GeminiLlmProvider : ILlmProvider
+{
+    public string ProviderName => LlmProviderNames.Gemini;
+    private readonly IHttpClientFactory _http; private readonly IOptionsMonitor<PollGenerationOptions> _options;
+    public GeminiLlmProvider(IHttpClientFactory h, IOptionsMonitor<PollGenerationOptions> o) => (_http, _options) = (h, o);
+    public async Task<LlmProviderResult> GenerateAsync(LlmGenerationRequest request, CancellationToken ct = default)
+    {
+        var c = _options.CurrentValue.Providers[ProviderName];
+        using var msg = new HttpRequestMessage(HttpMethod.Post, c.Endpoint);
+        msg.Headers.Add("x-goog-api-key", c.ApiKey);
+        msg.Content = new StringContent(JsonSerializer.Serialize(new { systemInstruction = new { parts = new[] { new { text = request.SystemInstruction } } }, contents = new[] { new { role = "user", parts = new[] { new { text = request.UserPrompt } } } }, generationConfig = new { temperature = request.Temperature, maxOutputTokens = request.MaxTokens, responseMimeType = "application/json" } }), Encoding.UTF8, "application/json");
+        try { using var t = CancellationTokenSource.CreateLinkedTokenSource(ct); t.CancelAfter(TimeSpan.FromSeconds(c.TimeoutSeconds)); using var r = await _http.CreateClient(ProviderName).SendAsync(msg, t.Token); if (!r.IsSuccessStatusCode) { var body=await r.Content.ReadAsStringAsync(ct); var kind=LlmHttpFailureClassifier.Classify(r.StatusCode,body); var outcome=kind is LlmFailureClass.RateLimited or LlmFailureClass.Timeout or LlmFailureClass.TransientServer ? LlmProviderOutcome.TransientFailure : LlmProviderOutcome.PermanentFailure; return new(outcome,null,$"HTTP {(int)r.StatusCode}",ProviderName,c.Model,kind,(int)r.StatusCode,LlmHttpFailureClassifier.GetRetryAt(r,DateTimeOffset.UtcNow,TimeSpan.FromHours(1))); } using var d = JsonDocument.Parse(await r.Content.ReadAsStringAsync(ct)); var x = d.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString(); return string.IsNullOrWhiteSpace(x) ? new(LlmProviderOutcome.PermanentFailure, null, "Provider returned empty content.", ProviderName, c.Model) : new(LlmProviderOutcome.Success, x, null, ProviderName, c.Model); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return new(LlmProviderOutcome.TransientFailure, null, "Provider request timed out.", ProviderName, c.Model, LlmFailureClass.Timeout); }
+        catch (HttpRequestException) { return new(LlmProviderOutcome.TransientFailure, null, "Provider network failure.", ProviderName, c.Model, LlmFailureClass.TransientServer); }
+        catch (JsonException) { return new(LlmProviderOutcome.PermanentFailure, null, "Malformed provider response envelope.", ProviderName, c.Model); }
+    }
+}

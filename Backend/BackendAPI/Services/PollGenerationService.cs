@@ -2,17 +2,24 @@ using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BackendAPI.Services.Llm;
+using Microsoft.Extensions.Options;
 
 namespace BackendAPI.Services;
 
 public class PollGenerationService : IPollGenerationService
 {
-    private readonly IEnumerable<ILlmProvider> _providers;
-    private readonly IConfiguration _config;
-    private readonly ILogger<PollGenerationService> _logger;
-
     public const string GenerationPromptVersion = "generation-prompt-v1";
     public const string GenerationSchemaVersion = "generation-schema-v1";
+    private readonly IEnumerable<ILlmProvider> _providers;
+    private readonly IPollsRepository _pollsRepo;
+    private readonly IConfiguration _config;
+    private readonly ILogger<PollGenerationService> _logger;
+    private readonly IDeterministicPollConverter _fallback;
+    private readonly IOptionsMonitor<PollGenerationOptions> _options;
+    private readonly LlmProviderReadinessService _readiness;
+    private readonly IProviderResilienceCoordinator _resilience;
+
     internal const string ResponseSchema = """
     {"type":"object","additionalProperties":false,"required":["proposition","category","sourceGrounding","quality"],"properties":{"proposition":{"type":"string"},"category":{"type":"string"},"sourceGrounding":{"type":"object","additionalProperties":false,"required":["rationale","evidence"],"properties":{"rationale":{"type":"string"},"evidence":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string"}}}},"quality":{"type":"object","additionalProperties":false,"required":["isSelfContained","isNeutral","isBinary","isGrounded","confidence","isAmbiguous","ambiguityReason"],"properties":{"isSelfContained":{"type":"boolean"},"isNeutral":{"type":"boolean"},"isBinary":{"type":"boolean"},"isGrounded":{"type":"boolean"},"confidence":{"type":"number","minimum":0,"maximum":1},"isAmbiguous":{"type":"boolean"},"ambiguityReason":{"type":["string","null"]}}}}}
     """;
@@ -24,41 +31,98 @@ public class PollGenerationService : IPollGenerationService
         NumberHandling = JsonNumberHandling.Strict
     };
 
-    public PollGenerationService(IEnumerable<ILlmProvider> providers, IConfiguration config,
-        ILogger<PollGenerationService> logger)
-        => (_providers, _config, _logger) = (providers, config, logger);
+    public PollGenerationService(IEnumerable<ILlmProvider> providers, IPollsRepository pollsRepo,
+        IConfiguration config, ILogger<PollGenerationService> logger, IDeterministicPollConverter fallback,
+        IOptionsMonitor<PollGenerationOptions> options, LlmProviderReadinessService readiness,
+        IProviderResilienceCoordinator resilience)
+        => (_providers, _pollsRepo, _config, _logger, _fallback, _options, _readiness, _resilience) =
+            (providers, pollsRepo, config, logger, fallback, options, readiness, resilience);
 
-    public async Task<PropositionGenerationResult?> GenerateAsync(TrendingTopic topic)
+    public async Task<PollGenerationOutcome> GenerateAsync(TrendingTopic topic)
     {
-        var providerName = _config["PollGen:Provider"]?.ToLowerInvariant() ?? "custom";
-        var provider = _providers.FirstOrDefault(p => p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
-        if (provider is null) return null;
+        var mode = _config["PollGen:Mode"] ?? "LlmWithFallback";
+        if (mode.Equals("FallbackOnly", StringComparison.OrdinalIgnoreCase))
+            return Fallback(topic, GenerationOutcome.Unconvertible);
 
         var request = BuildRequest(topic);
-        var raw = await provider.CompleteAsync(request);
-        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var configured = _options.CurrentValue;
+        if (!configured.Enabled)
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase)
+                ? new(GenerationOutcome.ProviderPermanentFailure, Reason: "LLM generation is disabled", AttemptedMethod: GenerationMethods.Llm)
+                : Fallback(topic, GenerationOutcome.ProviderPermanentFailure, "LLM generation is disabled");
+
+        var available = _readiness.GetStatus()
+            .Where(x => x.State == LlmProviderReadinessState.Available)
+            .Select(x => x.Provider).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var providers = _providers.ToDictionary(x => x.ProviderName, StringComparer.OrdinalIgnoreCase);
+        LlmProviderResult? providerResult = null;
+        foreach (var providerName in configured.ProviderOrder)
+        {
+            if (!available.Contains(providerName) || !providers.TryGetValue(providerName, out var provider)) continue;
+            await using var permit = await _resilience.TryAcquireAsync(providerName, CancellationToken.None);
+            if (permit is null) continue;
+            providerResult = await provider.GenerateAsync(request);
+            if (providerResult.Outcome == LlmProviderOutcome.Success) _resilience.RecordSuccess(providerName);
+            else _resilience.RecordFailure(providerName, providerResult);
+            _logger.LogInformation("[PollGen] Provider attempt completed. Provider={Provider} Model={Model} Outcome={Outcome}",
+                providerResult.Provider, providerResult.Model, providerResult.Outcome);
+            if (providerResult.Outcome == LlmProviderOutcome.TransientFailure) continue;
+            break;
+        }
+
+        if (providerResult is null)
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase)
+                ? new(GenerationOutcome.ProviderPermanentFailure, Reason: "No configured LLM provider is available", AttemptedMethod: GenerationMethods.Llm)
+                : Fallback(topic, GenerationOutcome.ProviderPermanentFailure, "No configured LLM provider is available");
+        if (providerResult.Outcome != LlmProviderOutcome.Success)
+        {
+            var failure = providerResult.Outcome == LlmProviderOutcome.TransientFailure ? GenerationOutcome.ProviderTransientFailure : GenerationOutcome.ProviderPermanentFailure;
+            if (mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase))
+                return new(failure, Reason: providerResult.Reason, AttemptedMethod: GenerationMethods.Llm,
+                    FailureClass: providerResult.FailureClass, Provider: providerResult.Provider, RetryAtUtc: providerResult.RetryAtUtc);
+            var fallback = Fallback(topic, failure, providerResult.Reason);
+            return fallback with { FailureClass = providerResult.FailureClass, Provider = providerResult.Provider, RetryAtUtc = providerResult.RetryAtUtc };
+        }
 
         PropositionGenerationResult? result;
-        try { result = JsonSerializer.Deserialize<PropositionGenerationResult>(raw, JsonOptions); }
+        try { result = JsonSerializer.Deserialize<PropositionGenerationResult>(providerResult.Content!, JsonOptions); }
         catch (JsonException ex)
         {
             _logger.LogWarning("[PollGen] Invalid structured response for topic {TopicId}: {Reason}", topic.Id, ex.Message);
-            return null;
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(GenerationOutcome.ContentRejected, Reason: ex.Message, AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, GenerationOutcome.ContentRejected, ex.Message);
         }
 
         var reason = "response was null";
         if (result is null || !Validate(result, out reason))
         {
             _logger.LogWarning("[PollGen] Rejected proposition for topic {TopicId}: {Reason}", topic.Id, reason);
-            return null;
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(GenerationOutcome.ContentRejected, Reason: reason, AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, GenerationOutcome.ContentRejected, reason);
         }
 
-        if (!IsKnownCategory(result.Category)) return null;
+        if (!IsKnownCategory(result.Category)) return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(GenerationOutcome.ContentRejected, Reason: "unknown category", AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, GenerationOutcome.ContentRejected, "unknown category");
         result.Category = CategoryCatalog.NormalizeName(result.Category);
         result.SourceTitle = topic.Title;
         result.SourceUrl = topic.SourceUrl;
-        result.ProviderName = provider.ProviderName;
-        return result;
+        result.GenerationProvider = providerResult.Provider;
+        result.GenerationModel = providerResult.Model;
+        var similar = await FindSimilarPollAsync(result.Proposition, topic.SourceUrl);
+        if (similar is not null)
+        {
+            result.SimilarPollId = similar.Id;
+            result.QualityWarnings.Add($"Similar generated poll detected: #{similar.Id}.");
+        }
+        result.GenerationMethod = GenerationMethods.Llm;
+        if (!BinaryPublicationValidator.Validate(result, topic, out reason)) return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(GenerationOutcome.ContentRejected, Reason: reason, AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, GenerationOutcome.ContentRejected, reason);
+        return new(GenerationOutcome.Succeeded, result, AttemptedMethod: GenerationMethods.Llm);
+    }
+
+    private PollGenerationOutcome Fallback(TrendingTopic topic, GenerationOutcome failure, string? providerReason = null)
+    {
+        var converted = _fallback.TryConvert(topic);
+        if (converted.Succeeded) return new(GenerationOutcome.Succeeded, converted.Poll, AttemptedMethod: GenerationMethods.DeterministicFallback);
+        var reason = string.Join("; ", new[] { providerReason, converted.Reason }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        return new(failure == GenerationOutcome.ProviderTransientFailure ? failure : GenerationOutcome.Unconvertible,
+            Reason: reason, AttemptedMethod: GenerationMethods.DeterministicFallback);
     }
 
     internal static LlmGenerationRequest BuildRequest(TrendingTopic topic)
@@ -91,8 +155,31 @@ public class PollGenerationService : IPollGenerationService
         reason = "";
         if (string.IsNullOrWhiteSpace(r.Proposition) || r.Proposition.Length is < 20 or > 160 || !r.Proposition.EndsWith('?')) reason = "invalid proposition length or form";
         else if (r.Grounding is null || string.IsNullOrWhiteSpace(r.Grounding.Rationale) || r.Grounding.Rationale.Length > 300 || r.Grounding.Evidence is null || r.Grounding.Evidence.Count is < 1 or > 3 || r.Grounding.Evidence.Any(e => string.IsNullOrWhiteSpace(e) || e.Length > 240)) reason = "invalid source grounding";
-        else if (r.Quality is null || r.Quality.Confidence is < 0 or > 1) reason = "invalid provider metadata";
+        else if (r.Quality is null || r.Quality.Confidence is < 0 or > 1 || r.Quality.IsAmbiguous || !r.Quality.IsSelfContained || !r.Quality.IsNeutral || !r.Quality.IsBinary || !r.Quality.IsGrounded) reason = "negative or ambiguous quality metadata";
+        else if (ContainsForbiddenFraming(r.Proposition)) reason = "survey, preference, or prediction framing";
+        else if (r.Proposition.Count(c => c == '?') != 1 || r.Proposition.Contains(" and should ", StringComparison.OrdinalIgnoreCase)) reason = "compound proposition";
         return reason.Length == 0;
     }
+
+    private static bool ContainsForbiddenFraming(string value)
+    {
+        var text = value.ToLowerInvariant();
+        return new[] { "which ", "favorite", "favourite", "most important", "choose ", "who will", "what will", "will it", "will the" }.Any(text.Contains);
+    }
+
+    private async Task<Poll?> FindSimilarPollAsync(string proposition, string? sourceUrl)
+    {
+        var recent = await _pollsRepo.GetRecentGeneratedAsync();
+        var normalized = NormalizeText(proposition);
+        return recent.FirstOrDefault(p => (!string.IsNullOrWhiteSpace(sourceUrl) && sourceUrl.Equals(p.SourceUrl, StringComparison.OrdinalIgnoreCase)) || Similarity(normalized, NormalizeText(p.Question)) >= .72);
+    }
+
+    private static double Similarity(string a, string b)
+    {
+        var x = a.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        var y = b.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        return x.Count == 0 || y.Count == 0 ? 0 : (double)x.Intersect(y).Count() / x.Union(y).Count();
+    }
+    private static string NormalizeText(string value) => string.Join(' ', new string(value.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : ' ').ToArray()).Split(' ', StringSplitOptions.RemoveEmptyEntries));
     private static bool IsKnownCategory(string? value) => !string.IsNullOrWhiteSpace(value) && CategoryCatalog.All.Any(c => c.Name.Equals(value, StringComparison.OrdinalIgnoreCase) || c.Slug.Equals(value, StringComparison.OrdinalIgnoreCase));
 }

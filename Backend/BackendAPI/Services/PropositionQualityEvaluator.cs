@@ -25,7 +25,7 @@ public sealed class PropositionQualityEvaluator(
     public async Task<PollQualityScores?> EvaluateAsync(TrendingTopic topic, PropositionGenerationResult candidate,
         CancellationToken ct = default)
     {
-        var providerName = configuration["PollQuality:EvaluatorProvider"] ?? configuration["PollGen:Provider"] ?? "custom";
+        var providerName = configuration["PollQuality:EvaluatorProvider"] ?? "gemini";
         var provider = providers.FirstOrDefault(p => p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
         if (provider is null) return null;
         var source = JsonSerializer.Serialize(new { topic.Title, topic.Summary, topic.Category, candidate.Proposition,
@@ -36,9 +36,9 @@ public sealed class PropositionQualityEvaluator(
             ResponseSchema, 0, 350);
         try
         {
-            var raw = await provider.CompleteAsync(request, ct);
-            if (string.IsNullOrWhiteSpace(raw)) return null;
-            var scores = JsonSerializer.Deserialize<PollQualityScores>(raw, JsonOptions);
+            var response = await provider.GenerateAsync(request, ct);
+            if (response.Outcome != LlmProviderOutcome.Success || string.IsNullOrWhiteSpace(response.Content)) return null;
+            var scores = JsonSerializer.Deserialize<PollQualityScores>(response.Content, JsonOptions);
             return scores is not null && scores.Values().All(v => v is >= 0 and <= 1) ? scores : null;
         }
         catch (Exception ex) when (ex is JsonException or OperationCanceledException or TimeoutException)
