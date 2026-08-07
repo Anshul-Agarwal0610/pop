@@ -1,6 +1,7 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
+using BackendAPI.Services.Llm;
 using Hangfire;
 
 namespace BackendAPI.Jobs;
@@ -12,11 +13,15 @@ public class PollGenerationJob
     private readonly IPollGenerationService _generator;
     private readonly IConfiguration _config;
     private readonly ILogger<PollGenerationJob> _logger;
+    private readonly IRetryDelayPolicy _retryPolicy;
+    private readonly TimeProvider _time;
 
     public PollGenerationJob(ITrendingTopicRepository topics, IPollsRepository polls, IPollGenerationService generator,
-        IConfiguration config, ILogger<PollGenerationJob> logger) => (_topics, _polls, _generator, _config, _logger) = (topics, polls, generator, config, logger);
+        IConfiguration config, ILogger<PollGenerationJob> logger, IRetryDelayPolicy retryPolicy, TimeProvider time)
+        => (_topics, _polls, _generator, _config, _logger, _retryPolicy, _time) = (topics, polls, generator, config, logger, retryPolicy, time);
 
     [DisableConcurrentExecution(timeoutInSeconds: 600)]
+    [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync()
     {
         var limit = Math.Max(1, _config.GetValue("PollGen:RetryLimit", 3));
@@ -49,7 +54,13 @@ public class PollGenerationJob
                 catch (Exception ex) { _logger.LogError(ex, "Failed to persist poll for topic {TopicId}; topic remains eligible", topic.Id); throw; }
             }
             else if (outcome.Outcome == GenerationOutcome.ProviderTransientFailure)
-                await _topics.RecordTransientFailureAsync(topic.Id, limit, delay, outcome.Reason ?? "Transient provider failure", method);
+            {
+                var now = _time.GetUtcNow();
+                var next = _retryPolicy.GetNextAttempt(topic.AttemptCount + 1, now, outcome.RetryAtUtc);
+                var retryDelay = next - now;
+                await _topics.RecordTransientFailureAsync(topic.Id, limit, retryDelay > delay ? retryDelay : delay,
+                    outcome.Reason ?? "Transient provider failure", method);
+            }
             else if (outcome.Outcome == GenerationOutcome.ProviderPermanentFailure)
                 await _topics.MarkNeedsReviewAsync(topic.Id, outcome.Reason ?? "Permanent provider failure", method);
             else

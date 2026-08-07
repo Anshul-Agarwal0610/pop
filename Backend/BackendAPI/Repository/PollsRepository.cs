@@ -466,6 +466,31 @@ namespace BackendAPI.Repository
             }
         }
 
+        public async Task<long> CompleteGeneratedPollAsync(long topicId, Guid leaseId, CreatePollRequest request)
+        {
+            using var conn = _context.CreateConnection(); conn.Open();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                var existing = await conn.QuerySingleOrDefaultAsync<long?>(
+                    "SELECT Id FROM Polls WITH (UPDLOCK,HOLDLOCK) WHERE SourceTopicId=@TopicId", new { TopicId=topicId }, tx);
+                var pollId = existing ?? await conn.ExecuteScalarAsync<long>(@"INSERT INTO Polls
+                    (Question,Description,Category,ExpiresAt,IsActive,IsTrending,CreatedAt,TotalVotes,SourceType,SourceUrl,ThumbnailUrl,IsAIGenerated,GenerationMethod,TrendingTopicId,GenerationProvider,GenerationModel,SourceTopicId,ModerationStatus,ReportCount)
+                    VALUES (@Question,@Description,@Category,@ExpiresAt,1,0,GETUTCDATE(),0,@SourceType,@SourceUrl,@ThumbnailUrl,1,@GenerationMethod,@TopicId,@GenerationProvider,@GenerationModel,@TopicId,'PendingReview',0);
+                    SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
+                    new { request.Question,request.Description,Category=CategoryCatalog.NormalizeName(request.Category),request.ExpiresAt,request.SourceType,request.SourceUrl,request.ThumbnailUrl,request.GenerationMethod,request.GenerationProvider,request.GenerationModel,TopicId=topicId }, tx);
+                if (!existing.HasValue)
+                    foreach (var option in request.Options)
+                        await conn.ExecuteAsync("INSERT INTO PollOptions(PollId,Text,Side,VoteCount) VALUES(@PollId,@Text,@Side,0)", new { PollId=pollId,Text=option,Side=option }, tx);
+                var updated = await conn.ExecuteAsync(@"UPDATE TrendingTopics SET GenerationStatus='Completed',IsProcessed=1,
+                    ProcessedAt=GETUTCDATE(),LeaseId=NULL,LeaseExpiresAtUtc=NULL WHERE Id=@TopicId AND LeaseId=@LeaseId",
+                    new { TopicId=topicId,LeaseId=leaseId }, tx);
+                if (updated != 1) throw new InvalidOperationException("Topic lease was lost before poll completion.");
+                tx.Commit(); return pollId;
+            }
+            catch { tx.Rollback(); throw; }
+        }
+
         // ── Delete ────────────────────────────────────────────────────────────
 
         public async Task<bool> ReportAsync(long pollId, long reportedByUserId, string reason)

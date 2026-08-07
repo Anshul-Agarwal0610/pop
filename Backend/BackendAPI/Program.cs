@@ -78,6 +78,10 @@ builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IJitterSource, RandomJitterSource>();
+builder.Services.AddSingleton<IRetryDelayPolicy, RetryDelayPolicy>();
+builder.Services.AddSingleton<IProviderResilienceCoordinator, ProviderResilienceCoordinator>();
 builder.Services.Configure<AnalyticsOptions>(builder.Configuration.GetSection(AnalyticsOptions.Section));
 builder.Services.AddSingleton<IAnalyticsOutbox, AnalyticsOutbox>();
 builder.Services.AddSingleton<IFeatureFlagService, FeatureFlagService>();

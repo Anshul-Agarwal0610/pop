@@ -50,9 +50,13 @@ public abstract class OpenAiCompatibleLlmProvider : ILlmProvider
             using var response = await _http.CreateClient(ProviderName).SendAsync(message, timeout.Token);
             if (!response.IsSuccessStatusCode)
             {
-                var outcome = LlmHttpFailure.Classify(response.StatusCode);
+                var body = await response.Content.ReadAsStringAsync(ct);
+                var failureClass = LlmHttpFailureClassifier.Classify(response.StatusCode, body);
+                var outcome = failureClass is LlmFailureClass.RateLimited or LlmFailureClass.Timeout or LlmFailureClass.TransientServer
+                    ? LlmProviderOutcome.TransientFailure : LlmProviderOutcome.PermanentFailure;
+                var retryAt = LlmHttpFailureClassifier.GetRetryAt(response, DateTimeOffset.UtcNow, TimeSpan.FromHours(1));
                 _logger.LogWarning("LLM request failed. Provider={Provider} Model={Model} Status={Status} Outcome={Outcome}", ProviderName, config.Model, (int)response.StatusCode, outcome);
-                return new(outcome, null, $"HTTP {(int)response.StatusCode}", ProviderName, config.Model);
+                return new(outcome, null, $"HTTP {(int)response.StatusCode}", ProviderName, config.Model, failureClass, (int)response.StatusCode, retryAt);
             }
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             var content = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
@@ -61,9 +65,9 @@ public abstract class OpenAiCompatibleLlmProvider : ILlmProvider
                 : new(LlmProviderOutcome.Success, content, null, ProviderName, config.Model);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        { return new(LlmProviderOutcome.TransientFailure, null, "Provider request timed out.", ProviderName, config.Model); }
+        { return new(LlmProviderOutcome.TransientFailure, null, "Provider request timed out.", ProviderName, config.Model, LlmFailureClass.Timeout); }
         catch (HttpRequestException ex)
-        { _logger.LogWarning("LLM network failure. Provider={Provider} Model={Model} Error={ErrorType}", ProviderName, config.Model, ex.GetType().Name); return new(LlmProviderOutcome.TransientFailure, null, "Provider network failure.", ProviderName, config.Model); }
+        { _logger.LogWarning("LLM network failure. Provider={Provider} Model={Model} Error={ErrorType}", ProviderName, config.Model, ex.GetType().Name); return new(LlmProviderOutcome.TransientFailure, null, "Provider network failure.", ProviderName, config.Model, LlmFailureClass.TransientServer); }
         catch (JsonException)
         { return new(LlmProviderOutcome.PermanentFailure, null, "Malformed provider response envelope.", ProviderName, config.Model); }
     }

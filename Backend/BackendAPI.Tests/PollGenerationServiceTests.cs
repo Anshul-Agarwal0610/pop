@@ -101,7 +101,8 @@ public class PollGenerationServiceTests
         var monitor = new TestMonitor(options);
         return new PollGenerationService(new[] { provider }, new FakePollsRepository(), config,
             NullLogger<PollGenerationService>.Instance, new DeterministicPollConverter(), monitor,
-            new LlmProviderReadinessService(monitor));
+            new LlmProviderReadinessService(monitor),
+            new ProviderResilienceCoordinator(Microsoft.Extensions.Options.Options.Create(options), TimeProvider.System));
     }
 
     private sealed class OutcomeProvider(LlmProviderResult result) : ILlmProvider

@@ -7,7 +7,8 @@ namespace BackendAPI.Interfaces;
 public enum GenerationOutcome { Succeeded, ProviderTransientFailure, ProviderPermanentFailure, ContentRejected, Unconvertible }
 
 public sealed record PollGenerationOutcome(GenerationOutcome Outcome, PropositionGenerationResult? Poll = null,
-    string? Reason = null, string? AttemptedMethod = null);
+    string? Reason = null, string? AttemptedMethod = null, LlmFailureClass FailureClass = LlmFailureClass.None,
+    string? Provider = null, DateTimeOffset? RetryAtUtc = null);
 
 public interface IPollGenerationService { Task<PollGenerationOutcome> GenerateAsync(TrendingTopic topic); }
 

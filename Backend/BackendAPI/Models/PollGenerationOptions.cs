@@ -13,9 +13,18 @@ public static class LlmProviderNames
 
 public sealed class PollGenerationOptions
 {
+    public const string Section = "PollGen";
     public bool Enabled { get; set; } = true;
     public List<string> ProviderOrder { get; set; } = [LlmProviderNames.Gemini, LlmProviderNames.OpenAi, LlmProviderNames.Anthropic, LlmProviderNames.Groq];
     public Dictionary<string, LlmProviderOptions> Providers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public int MaxAttemptsPerTopic { get; set; } = 8;
+    public int BaseRetryDelaySeconds { get; set; } = 30;
+    public int MaxRetryDelaySeconds { get; set; } = 3600;
+    public double JitterPercentage { get; set; } = .2;
+    public int CircuitFailureThreshold { get; set; } = 3;
+    public int CircuitCooldownSeconds { get; set; } = 120;
+    public int MaxProviderConcurrency { get; set; } = 2;
+    public int TopicLeaseSeconds { get; set; } = 300;
 }
 
 public sealed class LlmProviderOptions

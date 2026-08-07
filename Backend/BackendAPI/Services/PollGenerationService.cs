@@ -16,6 +16,7 @@ public class PollGenerationService : IPollGenerationService
     private readonly IDeterministicPollConverter _fallback;
     private readonly IOptionsMonitor<PollGenerationOptions> _options;
     private readonly LlmProviderReadinessService _readiness;
+    private readonly IProviderResilienceCoordinator _resilience;
 
     internal const string ResponseSchema = """
     {"type":"object","additionalProperties":false,"required":["proposition","category","sourceGrounding","quality"],"properties":{"proposition":{"type":"string"},"category":{"type":"string"},"sourceGrounding":{"type":"object","additionalProperties":false,"required":["rationale","evidence"],"properties":{"rationale":{"type":"string"},"evidence":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string"}}}},"quality":{"type":"object","additionalProperties":false,"required":["isSelfContained","isNeutral","isBinary","isGrounded","confidence","isAmbiguous","ambiguityReason"],"properties":{"isSelfContained":{"type":"boolean"},"isNeutral":{"type":"boolean"},"isBinary":{"type":"boolean"},"isGrounded":{"type":"boolean"},"confidence":{"type":"number","minimum":0,"maximum":1},"isAmbiguous":{"type":"boolean"},"ambiguityReason":{"type":["string","null"]}}}}}
@@ -30,9 +31,10 @@ public class PollGenerationService : IPollGenerationService
 
     public PollGenerationService(IEnumerable<ILlmProvider> providers, IPollsRepository pollsRepo,
         IConfiguration config, ILogger<PollGenerationService> logger, IDeterministicPollConverter fallback,
-        IOptionsMonitor<PollGenerationOptions> options, LlmProviderReadinessService readiness)
-        => (_providers, _pollsRepo, _config, _logger, _fallback, _options, _readiness) =
-            (providers, pollsRepo, config, logger, fallback, options, readiness);
+        IOptionsMonitor<PollGenerationOptions> options, LlmProviderReadinessService readiness,
+        IProviderResilienceCoordinator resilience)
+        => (_providers, _pollsRepo, _config, _logger, _fallback, _options, _readiness, _resilience) =
+            (providers, pollsRepo, config, logger, fallback, options, readiness, resilience);
 
     public async Task<PollGenerationOutcome> GenerateAsync(TrendingTopic topic)
     {
@@ -55,7 +57,11 @@ public class PollGenerationService : IPollGenerationService
         foreach (var providerName in configured.ProviderOrder)
         {
             if (!available.Contains(providerName) || !providers.TryGetValue(providerName, out var provider)) continue;
+            await using var permit = await _resilience.TryAcquireAsync(providerName, CancellationToken.None);
+            if (permit is null) continue;
             providerResult = await provider.GenerateAsync(request);
+            if (providerResult.Outcome == LlmProviderOutcome.Success) _resilience.RecordSuccess(providerName);
+            else _resilience.RecordFailure(providerName, providerResult);
             _logger.LogInformation("[PollGen] Provider attempt completed. Provider={Provider} Model={Model} Outcome={Outcome}",
                 providerResult.Provider, providerResult.Model, providerResult.Outcome);
             if (providerResult.Outcome == LlmProviderOutcome.TransientFailure) continue;
@@ -69,7 +75,11 @@ public class PollGenerationService : IPollGenerationService
         if (providerResult.Outcome != LlmProviderOutcome.Success)
         {
             var failure = providerResult.Outcome == LlmProviderOutcome.TransientFailure ? GenerationOutcome.ProviderTransientFailure : GenerationOutcome.ProviderPermanentFailure;
-            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(failure, Reason: providerResult.Reason, AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, failure, providerResult.Reason);
+            if (mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase))
+                return new(failure, Reason: providerResult.Reason, AttemptedMethod: GenerationMethods.Llm,
+                    FailureClass: providerResult.FailureClass, Provider: providerResult.Provider, RetryAtUtc: providerResult.RetryAtUtc);
+            var fallback = Fallback(topic, failure, providerResult.Reason);
+            return fallback with { FailureClass = providerResult.FailureClass, Provider = providerResult.Provider, RetryAtUtc = providerResult.RetryAtUtc };
         }
 
         PropositionGenerationResult? result;
