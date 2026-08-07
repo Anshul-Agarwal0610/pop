@@ -1,5 +1,7 @@
 using BackendAPI.Models;
 using BackendAPI.Services.Llm;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -15,6 +17,28 @@ public class LlmReadinessTests
         Assert.True(result.Failed);
         Assert.Contains(result.Failures, x => x.Contains("duplicates"));
         Assert.Contains(result.Failures, x => x.Contains("Unknown"));
+    }
+
+    [Fact]
+    public void Configuration_binding_does_not_duplicate_provider_order()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["PollGen:ProviderOrder:0"] = "gemini",
+            ["PollGen:ProviderOrder:1"] = "openai"
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddOptions<PollGenerationOptions>()
+            .Bind(configuration.GetSection(PollGenerationOptions.Section))
+            .PostConfigure(options =>
+            {
+                if (options.ProviderOrder.Length == 0)
+                    options.ProviderOrder = LlmProviderNames.All.ToArray();
+            });
+
+        var options = services.BuildServiceProvider().GetRequiredService<IOptions<PollGenerationOptions>>().Value;
+
+        Assert.Equal(["gemini", "openai"], options.ProviderOrder);
     }
 
     [Fact]
