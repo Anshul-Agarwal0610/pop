@@ -1,4 +1,7 @@
 -- US149: durable source-to-poll lifecycle and shared generation controls (idempotent)
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 IF COL_LENGTH('dbo.TrendingTopics','ProcessingStatus') IS NULL ALTER TABLE dbo.TrendingTopics ADD ProcessingStatus varchar(20) NOT NULL CONSTRAINT DF_TrendingTopics_ProcessingStatus DEFAULT 'Queued';
 IF COL_LENGTH('dbo.TrendingTopics','AttemptCount') IS NULL ALTER TABLE dbo.TrendingTopics ADD AttemptCount int NOT NULL CONSTRAINT DF_TrendingTopics_AttemptCount DEFAULT 0;
 IF COL_LENGTH('dbo.TrendingTopics','NextAttemptAt') IS NULL ALTER TABLE dbo.TrendingTopics ADD NextAttemptAt datetime2 NULL;

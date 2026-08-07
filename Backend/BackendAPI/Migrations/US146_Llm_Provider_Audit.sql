@@ -1,3 +1,6 @@
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 IF COL_LENGTH('dbo.Polls', 'GenerationProvider') IS NULL
     ALTER TABLE dbo.Polls ADD GenerationProvider NVARCHAR(50) NULL;
 GO

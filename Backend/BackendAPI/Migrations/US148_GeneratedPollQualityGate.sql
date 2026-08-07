@@ -1,4 +1,7 @@
 -- US148: auditable, provider-independent generated-poll quality decisions.
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 IF OBJECT_ID('dbo.GeneratedPollQualityDecisions', 'U') IS NULL
 BEGIN
 CREATE TABLE GeneratedPollQualityDecisions (
