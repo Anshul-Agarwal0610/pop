@@ -41,6 +41,7 @@ public class PollGenerationJob
                         SourceUrl = topic.SourceUrl, ThumbnailUrl = topic.ThumbnailUrl,
                         IsAIGenerated = outcome.Poll.GenerationMethod == GenerationMethods.Llm,
                         GenerationMethod = outcome.Poll.GenerationMethod, TrendingTopicId = topic.Id,
+                        GenerationProvider = outcome.Poll.GenerationProvider, GenerationModel = outcome.Poll.GenerationModel,
                         ModerationReason = outcome.Poll.ReviewNotes
                     });
                     await _topics.MarkConvertedAsync(topic.Id, pollId, outcome.Poll.GenerationMethod);

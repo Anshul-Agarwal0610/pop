@@ -2,6 +2,8 @@ using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BackendAPI.Services.Llm;
+using Microsoft.Extensions.Options;
 
 namespace BackendAPI.Services;
 
@@ -12,6 +14,8 @@ public class PollGenerationService : IPollGenerationService
     private readonly IConfiguration _config;
     private readonly ILogger<PollGenerationService> _logger;
     private readonly IDeterministicPollConverter _fallback;
+    private readonly IOptionsMonitor<PollGenerationOptions> _options;
+    private readonly LlmProviderReadinessService _readiness;
 
     internal const string ResponseSchema = """
     {"type":"object","additionalProperties":false,"required":["proposition","category","sourceGrounding","quality"],"properties":{"proposition":{"type":"string"},"category":{"type":"string"},"sourceGrounding":{"type":"object","additionalProperties":false,"required":["rationale","evidence"],"properties":{"rationale":{"type":"string"},"evidence":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string"}}}},"quality":{"type":"object","additionalProperties":false,"required":["isSelfContained","isNeutral","isBinary","isGrounded","confidence","isAmbiguous","ambiguityReason"],"properties":{"isSelfContained":{"type":"boolean"},"isNeutral":{"type":"boolean"},"isBinary":{"type":"boolean"},"isGrounded":{"type":"boolean"},"confidence":{"type":"number","minimum":0,"maximum":1},"isAmbiguous":{"type":"boolean"},"ambiguityReason":{"type":["string","null"]}}}}}
@@ -25,8 +29,10 @@ public class PollGenerationService : IPollGenerationService
     };
 
     public PollGenerationService(IEnumerable<ILlmProvider> providers, IPollsRepository pollsRepo,
-        IConfiguration config, ILogger<PollGenerationService> logger, IDeterministicPollConverter fallback)
-        => (_providers, _pollsRepo, _config, _logger, _fallback) = (providers, pollsRepo, config, logger, fallback);
+        IConfiguration config, ILogger<PollGenerationService> logger, IDeterministicPollConverter fallback,
+        IOptionsMonitor<PollGenerationOptions> options, LlmProviderReadinessService readiness)
+        => (_providers, _pollsRepo, _config, _logger, _fallback, _options, _readiness) =
+            (providers, pollsRepo, config, logger, fallback, options, readiness);
 
     public async Task<PollGenerationOutcome> GenerateAsync(TrendingTopic topic)
     {
@@ -34,14 +40,32 @@ public class PollGenerationService : IPollGenerationService
         if (mode.Equals("FallbackOnly", StringComparison.OrdinalIgnoreCase))
             return Fallback(topic, GenerationOutcome.Unconvertible);
 
-        var providerName = _config["PollGen:Provider"]?.ToLowerInvariant() ?? "custom";
-        var provider = _providers.FirstOrDefault(p => p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
-        if (provider is null) return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase)
-            ? new(GenerationOutcome.ProviderPermanentFailure, Reason: $"Unsupported provider '{providerName}'", AttemptedMethod: GenerationMethods.Llm)
-            : Fallback(topic, GenerationOutcome.ProviderPermanentFailure, $"Unsupported provider '{providerName}'");
-
         var request = BuildRequest(topic);
-        var providerResult = await provider.CompleteAsync(request);
+        var configured = _options.CurrentValue;
+        if (!configured.Enabled)
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase)
+                ? new(GenerationOutcome.ProviderPermanentFailure, Reason: "LLM generation is disabled", AttemptedMethod: GenerationMethods.Llm)
+                : Fallback(topic, GenerationOutcome.ProviderPermanentFailure, "LLM generation is disabled");
+
+        var available = _readiness.GetStatus()
+            .Where(x => x.State == LlmProviderReadinessState.Available)
+            .Select(x => x.Provider).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var providers = _providers.ToDictionary(x => x.ProviderName, StringComparer.OrdinalIgnoreCase);
+        LlmProviderResult? providerResult = null;
+        foreach (var providerName in configured.ProviderOrder)
+        {
+            if (!available.Contains(providerName) || !providers.TryGetValue(providerName, out var provider)) continue;
+            providerResult = await provider.GenerateAsync(request);
+            _logger.LogInformation("[PollGen] Provider attempt completed. Provider={Provider} Model={Model} Outcome={Outcome}",
+                providerResult.Provider, providerResult.Model, providerResult.Outcome);
+            if (providerResult.Outcome == LlmProviderOutcome.TransientFailure) continue;
+            break;
+        }
+
+        if (providerResult is null)
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase)
+                ? new(GenerationOutcome.ProviderPermanentFailure, Reason: "No configured LLM provider is available", AttemptedMethod: GenerationMethods.Llm)
+                : Fallback(topic, GenerationOutcome.ProviderPermanentFailure, "No configured LLM provider is available");
         if (providerResult.Outcome != LlmProviderOutcome.Success)
         {
             var failure = providerResult.Outcome == LlmProviderOutcome.TransientFailure ? GenerationOutcome.ProviderTransientFailure : GenerationOutcome.ProviderPermanentFailure;
@@ -67,6 +91,8 @@ public class PollGenerationService : IPollGenerationService
         result.Category = CategoryCatalog.NormalizeName(result.Category);
         result.SourceTitle = topic.Title;
         result.SourceUrl = topic.SourceUrl;
+        result.GenerationProvider = providerResult.Provider;
+        result.GenerationModel = providerResult.Model;
         var similar = await FindSimilarPollAsync(result.Proposition, topic.SourceUrl);
         if (similar is not null)
         {

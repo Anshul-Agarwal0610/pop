@@ -338,7 +338,7 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
             return await conn.QueryAsync<Poll>(
-                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated
+                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated, GenerationProvider, GenerationModel
                   FROM Polls
                   WHERE IsAIGenerated = 1
                   ORDER BY CreatedAt DESC",
@@ -407,13 +407,13 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated, GenerationMethod, TrendingTopicId,
+                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated, @GenerationMethod, @TrendingTopicId,
+                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
@@ -429,6 +429,8 @@ namespace BackendAPI.Repository
                         request.IsAIGenerated,
                         GenerationMethod = generated ? request.GenerationMethod : GenerationMethods.ManualReview,
                         request.TrendingTopicId,
+                        GenerationProvider = generated ? request.GenerationProvider : null,
+                        GenerationModel = generated ? request.GenerationModel : null,
                         IsPrivate = isPrivate,
                         IsWellness = isWellness,
                         PollMode = pollMode,

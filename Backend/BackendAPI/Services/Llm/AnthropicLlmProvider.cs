@@ -1,105 +1,29 @@
 using BackendAPI.Interfaces;
+using BackendAPI.Models;
+using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
 
-namespace BackendAPI.Services.Llm
+namespace BackendAPI.Services.Llm;
+
+public sealed class AnthropicLlmProvider : ILlmProvider
 {
-    /// <summary>
-    /// Calls the Anthropic Messages API (Claude Haiku, Sonnet, etc.).
-    ///
-    /// Config keys:
-    ///   PollGen:Anthropic:ApiKey  — sk-ant-...
-    ///   PollGen:Anthropic:Model   — "claude-haiku-4-5" (default) | "claude-sonnet-4-5"
-    /// </summary>
-    public class AnthropicLlmProvider : ILlmProvider
+    public string ProviderName => LlmProviderNames.Anthropic;
+    private readonly IHttpClientFactory _http; private readonly IOptionsMonitor<PollGenerationOptions> _options;
+    public AnthropicLlmProvider(IHttpClientFactory h, IOptionsMonitor<PollGenerationOptions> o) => (_http, _options) = (h, o);
+    public async Task<LlmProviderResult> GenerateAsync(LlmGenerationRequest request, CancellationToken ct = default)
     {
-        public string ProviderName => "anthropic";
-
-        private const string Endpoint        = "https://api.anthropic.com/v1/messages";
-        private const string AnthropicVersion = "2023-06-01";
-
-        private readonly IHttpClientFactory _http;
-        private readonly IConfiguration _config;
-        private readonly ILogger<AnthropicLlmProvider> _logger;
-
-        public AnthropicLlmProvider(
-            IHttpClientFactory http,
-            IConfiguration config,
-            ILogger<AnthropicLlmProvider> logger)
-        {
-            _http   = http;
-            _config = config;
-            _logger = logger;
-        }
-
-        public async Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
-        {
-            var apiKey = _config["PollGen:Anthropic:ApiKey"];
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                _logger.LogWarning("[Anthropic] PollGen:Anthropic:ApiKey not configured");
-                return LlmProviderResult.Permanent("PollGen:Anthropic:ApiKey not configured");
-            }
-
-            var model = _config["PollGen:Anthropic:Model"];
-            if (string.IsNullOrWhiteSpace(model)) return LlmProviderResult.Permanent("PollGen:Anthropic:Model not configured");
-
-            var client = _http.CreateClient();
-            client.DefaultRequestHeaders.Add("x-api-key", apiKey);
-            client.DefaultRequestHeaders.Add("anthropic-version", AnthropicVersion);
-
-            var body = new
-            {
-                model,
-                max_tokens = request.MaxOutputTokens,
-                temperature = request.Temperature,
-                system = request.SystemInstruction + " JSON schema: " + request.ResponseSchema,
-                messages   = new[]
-                {
-                    new { role = "user", content = request.UserPrompt }
-                }
-            };
-
-            var content = new StringContent(
-                JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-
-            try
-            {
-                using var response = await client.PostAsync(Endpoint, content, ct);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var err = await response.Content.ReadAsStringAsync(ct);
-                    _logger.LogWarning("[Anthropic] HTTP {Status}: {Error}", (int)response.StatusCode, err);
-                    return IsTransient(response.StatusCode) ? LlmProviderResult.Transient($"HTTP {(int)response.StatusCode}") : LlmProviderResult.Permanent($"HTTP {(int)response.StatusCode}");
-                }
-
-                var json = await response.Content.ReadAsStringAsync(ct);
-                using var doc = JsonDocument.Parse(json);
-
-                // Extract text from content[0].text
-                var text = doc.RootElement
-                    .GetProperty("content")[0]
-                    .GetProperty("text")
-                    .GetString();
-                return string.IsNullOrWhiteSpace(text) ? LlmProviderResult.Permanent("provider returned empty content") : LlmProviderResult.Succeeded(text);
-            }
-            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
-            {
-                _logger.LogWarning(ex, "[Anthropic] Request timed out");
-                return LlmProviderResult.Transient("request timed out");
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError(ex, "[Anthropic] Request failed");
-                return LlmProviderResult.Transient(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Anthropic] Invalid provider response");
-                return LlmProviderResult.Permanent(ex.Message);
-            }
-        }
-        private static bool IsTransient(System.Net.HttpStatusCode status) => status is System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests || (int)status >= 500;
+        var c = _options.CurrentValue.Providers[ProviderName];
+        using var msg = new HttpRequestMessage(HttpMethod.Post, c.Endpoint);
+        msg.Headers.Add("x-api-key", c.ApiKey); msg.Headers.Add("anthropic-version", "2023-06-01");
+        msg.Content = new StringContent(JsonSerializer.Serialize(new { model = c.Model, max_tokens = request.MaxTokens, system = request.SystemInstruction, messages = new[] { new { role = "user", content = request.UserPrompt } } }), Encoding.UTF8, "application/json");
+        return await Send(msg, c, ct);
+    }
+    private async Task<LlmProviderResult> Send(HttpRequestMessage msg, LlmProviderOptions c, CancellationToken ct)
+    {
+        try { using var t = CancellationTokenSource.CreateLinkedTokenSource(ct); t.CancelAfter(TimeSpan.FromSeconds(c.TimeoutSeconds)); using var r = await _http.CreateClient(ProviderName).SendAsync(msg, t.Token); if (!r.IsSuccessStatusCode) return new(LlmHttpFailure.Classify(r.StatusCode), null, $"HTTP {(int)r.StatusCode}", ProviderName, c.Model); using var d = JsonDocument.Parse(await r.Content.ReadAsStringAsync(ct)); var x = d.RootElement.GetProperty("content")[0].GetProperty("text").GetString(); return string.IsNullOrWhiteSpace(x) ? new(LlmProviderOutcome.PermanentFailure, null, "Provider returned empty content.", ProviderName, c.Model) : new(LlmProviderOutcome.Success, x, null, ProviderName, c.Model); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return new(LlmProviderOutcome.TransientFailure, null, "Provider request timed out.", ProviderName, c.Model); }
+        catch (HttpRequestException) { return new(LlmProviderOutcome.TransientFailure, null, "Provider network failure.", ProviderName, c.Model); }
+        catch (JsonException) { return new(LlmProviderOutcome.PermanentFailure, null, "Malformed provider response envelope.", ProviderName, c.Model); }
     }
 }

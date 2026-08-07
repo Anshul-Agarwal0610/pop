@@ -13,6 +13,9 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
 using BackendAPI.Analytics;
+using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -87,7 +90,13 @@ builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();
 // ── LLM Providers — all registered; active one chosen via PollGen:Provider config ─
 builder.Services.AddScoped<ILlmProvider, OpenAiLlmProvider>();
 builder.Services.AddScoped<ILlmProvider, AnthropicLlmProvider>();
-builder.Services.AddScoped<ILlmProvider, CustomVmLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, GeminiLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, GroqLlmProvider>();
+builder.Services.AddOptions<PollGenerationOptions>().Bind(builder.Configuration.GetSection("PollGen"));
+builder.Services.AddSingleton<IValidateOptions<PollGenerationOptions>, PollGenerationOptionsValidator>();
+builder.Services.AddSingleton<LlmProviderReadinessService>();
+builder.Services.AddHostedService<LlmReadinessStartupReporter>();
+builder.Services.AddHealthChecks().AddCheck<LlmProviderReadinessService>("llm");
 
 // ── Poll Generation Service (US-07 enhanced: multi-provider) ─────────────
 builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
@@ -155,6 +164,21 @@ app.UseCors("FrontendPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health/llm", new HealthCheckOptions
+{
+    Predicate = registration => registration.Name == "llm",
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var entry = report.Entries["llm"];
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new
+        {
+            status = entry.Status.ToString(),
+            description = entry.Description,
+            providers = entry.Data
+        }));
+    }
+});
 
 // ── Register recurring jobs (US-06, US-08) ───────────────────────────────
 // Jobs are registered after the app is built so IRecurringJobManager is available.

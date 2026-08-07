@@ -1,8 +1,10 @@
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
 using BackendAPI.Services;
+using BackendAPI.Services.Llm;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace BackendAPI.Tests;
@@ -87,21 +89,39 @@ public class PollGenerationServiceTests
 
     private static PollGenerationService Create(ILlmProvider provider)
     {
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["PollGen:Provider"] = "fake" }).Build();
-        return new PollGenerationService(new[] { provider }, new FakePollsRepository(), config, NullLogger<PollGenerationService>.Instance, new DeterministicPollConverter());
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+        var options = new PollGenerationOptions
+        {
+            ProviderOrder = [LlmProviderNames.OpenAi],
+            Providers = new(StringComparer.OrdinalIgnoreCase)
+            {
+                [LlmProviderNames.OpenAi] = new() { Enabled = true, Model = "fake-model", Endpoint = "https://example.test", TimeoutSeconds = 5, ApiKey = "test-key" }
+            }
+        };
+        var monitor = new TestMonitor(options);
+        return new PollGenerationService(new[] { provider }, new FakePollsRepository(), config,
+            NullLogger<PollGenerationService>.Instance, new DeterministicPollConverter(), monitor,
+            new LlmProviderReadinessService(monitor));
     }
 
     private sealed class OutcomeProvider(LlmProviderResult result) : ILlmProvider
     {
-        public string ProviderName => "fake";
+        public string ProviderName => LlmProviderNames.OpenAi;
         public Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) => Task.FromResult(result);
     }
 
     private sealed class FakeProvider(string response) : ILlmProvider
     {
-        public string ProviderName => "fake";
+        public string ProviderName => LlmProviderNames.OpenAi;
         public LlmGenerationRequest? Request { get; private set; }
         public Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) { Request = request; return Task.FromResult(LlmProviderResult.Succeeded(response)); }
+    }
+
+    private sealed class TestMonitor(PollGenerationOptions value) : IOptionsMonitor<PollGenerationOptions>
+    {
+        public PollGenerationOptions CurrentValue => value;
+        public PollGenerationOptions Get(string? name) => value;
+        public IDisposable? OnChange(Action<PollGenerationOptions, string?> listener) => null;
     }
 
     private sealed class FakePollsRepository : IPollsRepository

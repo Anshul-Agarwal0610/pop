@@ -38,6 +38,8 @@ public sealed class PropositionGenerationResult
     [JsonIgnore] public long? SimilarPollId { get; set; }
     [JsonIgnore] public string? SourceTitle { get; set; }
     [JsonIgnore] public string? SourceUrl { get; set; }
+    [JsonIgnore] public string? GenerationProvider { get; set; }
+    [JsonIgnore] public string? GenerationModel { get; set; }
     [JsonIgnore] public string ReviewNotes => $"{GenerationMethod} validation: {Grounding.Rationale} Evidence: {string.Join("; ", Grounding.Evidence)} Confidence: {Quality.Confidence:0.00}. {string.Join(" ", QualityWarnings)}".Trim();
 }
 public sealed class SourceGrounding
