@@ -13,6 +13,10 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
 using BackendAPI.Analytics;
+using BackendAPI.Observability;
+using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,6 +58,8 @@ builder.Services.AddAuthorization(options =>
 
 // ── Dapper context ────────────────────────────────────────────────────────
 builder.Services.AddSingleton<DapperContext>();
+builder.Services.AddSingleton<PipelineMetrics>();
+builder.Services.AddSingleton<IPipelineRuntimeHealth, PipelineRuntimeHealth>();
 
 // ── Repositories ──────────────────────────────────────────────────────────
 builder.Services.AddScoped<IAuthRepository,          AuthRepository>();
@@ -78,6 +84,10 @@ builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IJitterSource, RandomJitterSource>();
+builder.Services.AddSingleton<IRetryDelayPolicy, RetryDelayPolicy>();
+builder.Services.AddSingleton<IProviderResilienceCoordinator, ProviderResilienceCoordinator>();
 builder.Services.Configure<AnalyticsOptions>(builder.Configuration.GetSection(AnalyticsOptions.Section));
 builder.Services.AddSingleton<IAnalyticsOutbox, AnalyticsOutbox>();
 builder.Services.AddSingleton<IFeatureFlagService, FeatureFlagService>();
@@ -90,7 +100,13 @@ builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();
 // ── LLM Providers — all registered; active one chosen via PollGen:Provider config ─
 builder.Services.AddScoped<ILlmProvider, OpenAiLlmProvider>();
 builder.Services.AddScoped<ILlmProvider, AnthropicLlmProvider>();
-builder.Services.AddScoped<ILlmProvider, CustomVmLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, GeminiLlmProvider>();
+builder.Services.AddScoped<ILlmProvider, GroqLlmProvider>();
+builder.Services.AddOptions<PollGenerationOptions>().Bind(builder.Configuration.GetSection("PollGen"));
+builder.Services.AddSingleton<IValidateOptions<PollGenerationOptions>, PollGenerationOptionsValidator>();
+builder.Services.AddSingleton<LlmProviderReadinessService>();
+builder.Services.AddHostedService<LlmReadinessStartupReporter>();
+builder.Services.AddHealthChecks().AddCheck<LlmProviderReadinessService>("llm");
 
 builder.Services.AddOptions<PollQualityOptions>()
     .Bind(builder.Configuration.GetSection(PollQualityOptions.Section))
@@ -108,6 +124,7 @@ builder.Services.AddScoped<IGeneratedPollQualityGate, GeneratedPollQualityGate>(
 
 // ── Poll Generation Service (US-07 enhanced: multi-provider) ─────────────
 builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
+builder.Services.AddSingleton<IDeterministicPollConverter, DeterministicPollConverter>();
 
 // ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
 builder.Services.AddScoped<IngestionJob>();
@@ -173,6 +190,21 @@ app.UseCors("FrontendPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health/llm", new HealthCheckOptions
+{
+    Predicate = registration => registration.Name == "llm",
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var entry = report.Entries["llm"];
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new
+        {
+            status = entry.Status.ToString(),
+            description = entry.Description,
+            providers = entry.Data
+        }));
+    }
+});
 
 // ── Register recurring jobs (US-06, US-08) ───────────────────────────────
 // Jobs are registered after the app is built so IRecurringJobManager is available.
@@ -183,19 +215,19 @@ using (var scope = app.Services.CreateScope())
     // US-06: Ingest trending topics every 30 minutes
     recurringJobs.AddOrUpdate<IngestionJob>(
         "ingest-trending-topics",
-        job => job.RunAsync(),
+        job => job.RunAsync(null, 100),
         builder.Configuration["Ingestion:Cron"] ?? "*/30 * * * *");
 
     // US-08: Generate polls from unprocessed topics every 35 minutes
     // (offset by 5 min so ingestion always runs first)
     recurringJobs.AddOrUpdate<PollGenerationJob>(
         "generate-polls-from-topics",
-        job => job.RunAsync(),
+        job => job.RunAsync(null),
         builder.Configuration["PollGeneration:Cron"] ?? "5/35 * * * *");
 
     if (builder.Configuration.GetValue<bool>("PollGeneration:RunOnStartup"))
     {
-        BackgroundJob.Enqueue<PollGenerationJob>(job => job.RunAsync());
+        BackgroundJob.Enqueue<PollGenerationJob>(job => job.RunAsync(null));
     }
 
     recurringJobs.AddOrUpdate<RetentionNotificationJob>(

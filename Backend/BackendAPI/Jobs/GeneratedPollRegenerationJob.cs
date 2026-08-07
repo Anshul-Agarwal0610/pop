@@ -21,19 +21,29 @@ public sealed class GeneratedPollRegenerationJob(
         {
             try
             {
+                if (item.ReplacementPollId is { } existingReplacementId)
+                {
+                    await cleanupRepository.CompleteRegenerationAsync(item, existingReplacementId);
+                    continue;
+                }
                 var topic = await cleanupRepository.ResolveTopicAsync(item);
                 if (topic is null) throw new InvalidOperationException("No unique trending topic provenance; manual review is required.");
-                var generated = await generator.GenerateAsync(topic);
-                if (generated is null) throw new InvalidOperationException("Generation returned no candidate.");
-                var decision = await qualityGate.EvaluateAsync(topic, generated, GeneratedPollContract.CanonicalOptions);
+                var outcome = await generator.GenerateAsync(topic);
+                if (outcome.Outcome != GenerationOutcome.Succeeded || outcome.Poll is null)
+                    throw new InvalidOperationException($"Generation returned no candidate: {outcome.Outcome} ({outcome.Reason}).");
+                var generated = outcome.Poll;
+                var decision = await qualityGate.EvaluateAsync(topic, generated, generated.Options);
                 if (decision.Disposition == PollQualityDisposition.Rejected)
                     throw new InvalidOperationException($"Replacement rejected by publication gate: {string.Join(',', decision.ReasonCodes)}");
                 var replacementId = await pollsRepository.CreateAsync(new CreatePollRequest
                 {
                     Question = generated.Proposition, Description = topic.Summary, Category = generated.Category,
-                    ExpiresAt = DateTime.UtcNow.AddHours(48), Options = GeneratedPollContract.CanonicalOptions.ToList(),
+                    ExpiresAt = DateTime.UtcNow.AddHours(48), Options = generated.Options,
                     SourceType = topic.SourceType, SourceUrl = topic.SourceUrl, ThumbnailUrl = topic.ThumbnailUrl,
-                    IsAIGenerated = true, TrendingTopicId = topic.Id, QualityDecision = decision,
+                    IsAIGenerated = true, GenerationMethod = generated.GenerationMethod,
+                    TrendingTopicId = topic.Id, GenerationProvider = generated.GenerationProvider,
+                    GenerationModel = generated.GenerationModel, QualityDecision = decision,
+                    AutoPublish = decision.Disposition == PollQualityDisposition.Accepted,
                     ReplacementForCleanupRecordId = item.CleanupRecordId,
                     ModerationReason = string.Join(',', decision.ReasonCodes)
                 });

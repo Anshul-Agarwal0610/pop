@@ -36,12 +36,16 @@ namespace BackendAPI.Services
         }
 
         public async Task<IEnumerable<TrendingTopic>> FetchAsync()
+            => (await FetchWithResultAsync()).Topics;
+
+        public async Task<IngestionFetchResult> FetchWithResultAsync(CancellationToken token = default)
         {
+            var started=DateTime.UtcNow;
             var apiKey = _config["YouTube:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 _logger.LogWarning("YouTube:ApiKey not configured — skipping YouTube ingestion");
-                return Enumerable.Empty<TrendingTopic>();
+                return IngestionFetchResult.Misconfigured("youtube");
             }
 
             try
@@ -49,16 +53,17 @@ namespace BackendAPI.Services
                 var client = _httpClientFactory.CreateClient();
                 var url    = string.Format(BaseUrl, apiKey);
 
-                using var response = await client.GetAsync(url);
-                response.EnsureSuccessStatusCode();
+                using var response = await client.GetAsync(url, token);
+                if ((int)response.StatusCode==429) return new("youtube",IngestionSourceState.CoolingDown,[],1,0,1,DateTime.UtcNow-started,"rate_limited");
+                if (!response.IsSuccessStatusCode) return new("youtube",IngestionSourceState.Failed,[],1,0,0,DateTime.UtcNow-started,"http_error");
 
                 var json = await response.Content.ReadAsStringAsync();
-                return ParseResponse(json);
+                return new("youtube",IngestionSourceState.Enabled,ParseResponse(json),1,1,0,DateTime.UtcNow-started);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "YouTube ingestion failed");
-                return Enumerable.Empty<TrendingTopic>();
+                return new("youtube",IngestionSourceState.Failed,[],1,0,0,DateTime.UtcNow-started,ex is OperationCanceledException?"timeout":"request_failed");
             }
         }
 

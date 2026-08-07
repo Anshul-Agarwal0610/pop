@@ -128,8 +128,12 @@ public sealed class GeneratedPollCleanupRepository(DapperContext context) : IGen
             SET Status='Regenerating',LastAttemptAt=SYSUTCDATETIME(),AttemptCount=AttemptCount+1
             WHERE Id IN @Ids AND ReplacementPollId IS NULL", new { Ids = claimed.Select(x => x.CleanupRecordId).ToArray() }, transaction);
         var items = (await connection.QueryAsync<RegenerationQueueItem>(@"
-            SELECT c.Id CleanupRecordId, c.PollId, c.TrendingTopicId, p.SourceUrl, 0 AttemptCount
-            FROM GeneratedPollCleanupRecords c JOIN Polls p ON p.Id=c.PollId WHERE c.Id IN @Ids",
+            SELECT c.Id CleanupRecordId, c.PollId, c.TrendingTopicId, p.SourceUrl, 0 AttemptCount,
+                   replacement.Id ReplacementPollId
+            FROM GeneratedPollCleanupRecords c
+            JOIN Polls p ON p.Id=c.PollId
+            LEFT JOIN Polls replacement ON replacement.ReplacementForCleanupRecordId=c.Id
+            WHERE c.Id IN @Ids",
             new { Ids = claimed.Select(x => x.CleanupRecordId).ToArray() }, transaction)).ToArray();
         transaction.Commit();
         return items.Select(x => x with { AttemptCount = attempts[x.CleanupRecordId] }).ToArray();

@@ -44,4 +44,11 @@ CREATE TABLE GeneratedPollRegenerationQueue (
 );
 GO
 CREATE INDEX IX_GPRQ_Claim ON GeneratedPollRegenerationQueue(Status, AvailableAt, LeaseExpiresAt, Id);
+GO
+ALTER TABLE Polls ADD ReplacementForCleanupRecordId BIGINT NULL;
+GO
+ALTER TABLE Polls ADD CONSTRAINT FK_Polls_CleanupReplacement
+    FOREIGN KEY(ReplacementForCleanupRecordId) REFERENCES GeneratedPollCleanupRecords(Id);
+CREATE UNIQUE INDEX UX_Polls_CleanupReplacement ON Polls(ReplacementForCleanupRecordId)
+    WHERE ReplacementForCleanupRecordId IS NOT NULL;
 

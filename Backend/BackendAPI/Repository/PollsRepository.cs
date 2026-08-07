@@ -338,7 +338,7 @@ namespace BackendAPI.Repository
         {
             using var conn = _context.CreateConnection();
             return await conn.QueryAsync<Poll>(
-                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated
+                @"SELECT TOP (@Count) Id, Question, Category, CreatedAt, SourceUrl, IsAIGenerated, GenerationProvider, GenerationModel
                   FROM Polls
                   WHERE IsAIGenerated = 1
                   ORDER BY CreatedAt DESC",
@@ -387,17 +387,15 @@ namespace BackendAPI.Repository
 
         public async Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null)
         {
-            if (request.IsAIGenerated)
+            var generated = request.GenerationMethod is GenerationMethods.Llm or GenerationMethods.DeterministicFallback;
+            if (generated)
             {
                 GeneratedPollContract.EnsureValid(request.Options);
-                var decision = request.QualityDecision ?? throw new InvalidOperationException("Generated polls require an auditable quality decision.");
-                if (string.IsNullOrWhiteSpace(decision.RulesVersion) || string.IsNullOrWhiteSpace(decision.EvaluatorSchemaVersion) ||
-                    string.IsNullOrWhiteSpace(decision.GenerationSchemaVersion))
-                    throw new InvalidOperationException("Generated poll quality decision is missing version metadata.");
-                if (decision.Disposition == PollQualityDisposition.Accepted && decision.OverallScore < decision.PublishThreshold)
+                var quality = request.QualityDecision ?? throw new InvalidOperationException("Generated polls require an auditable quality decision.");
+                if (quality.Disposition == PollQualityDisposition.Rejected)
+                    throw new InvalidOperationException("Rejected generated polls cannot be persisted.");
+                if (quality.Disposition == PollQualityDisposition.Accepted && quality.OverallScore < quality.PublishThreshold)
                     throw new InvalidOperationException("Generated poll does not meet its publication threshold.");
-                if (decision.Disposition == PollQualityDisposition.Rejected)
-                    throw new InvalidOperationException("Rejected generated polls cannot be persisted as polls.");
             }
             using var conn = _context.CreateConnection();
             conn.Open();
@@ -406,37 +404,27 @@ namespace BackendAPI.Repository
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
             var pollMode = isWellness ? PollModes.Wellness : PollModes.Public;
-            var moderationStatus = !request.IsAIGenerated && isWellness ||
-                request.QualityDecision?.Disposition == PollQualityDisposition.Accepted
+            var moderationStatus = isWellness || (request.IsAIGenerated && request.AutoPublish)
                 ? PollModerationStatus.Published
                 : PollModerationStatus.PendingReview;
 
             try
             {
-                if (request.ReplacementForCleanupRecordId is long cleanupRecordId)
-                {
-                    var existingReplacement = await conn.ExecuteScalarAsync<long?>(
-                        "SELECT ReplacementPollId FROM GeneratedPollCleanupRecords WITH (UPDLOCK,HOLDLOCK) WHERE Id=@Id",
-                        new { Id = cleanupRecordId }, transaction);
-                    if (existingReplacement.HasValue)
-                    {
-                        transaction.Commit();
-                        return existingReplacement.Value;
-                    }
-                }
                 var pollId = await conn.ExecuteScalarAsync<long>(
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated,
+                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
-                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt)
+                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
+                         ReplacementForCleanupRecordId)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated,
+                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
-                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL);
+                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
+                         @ReplacementForCleanupRecordId);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     new
                     {
@@ -448,6 +436,10 @@ namespace BackendAPI.Repository
                         request.SourceUrl,
                         request.ThumbnailUrl,
                         request.IsAIGenerated,
+                        GenerationMethod = generated ? request.GenerationMethod : GenerationMethods.ManualReview,
+                        request.TrendingTopicId,
+                        GenerationProvider = generated ? request.GenerationProvider : null,
+                        GenerationModel = generated ? request.GenerationModel : null,
                         IsPrivate = isPrivate,
                         IsWellness = isWellness,
                         PollMode = pollMode,
@@ -455,6 +447,7 @@ namespace BackendAPI.Repository
                         ModerationReason = string.IsNullOrWhiteSpace(request.ModerationReason)
                             ? null
                             : request.ModerationReason.Trim(),
+                        request.ReplacementForCleanupRecordId,
                         CreatedByUserId = createdByUserId
                     },
                     transaction
@@ -464,46 +457,13 @@ namespace BackendAPI.Repository
                 {
                     await conn.ExecuteAsync(
                         "INSERT INTO PollOptions (PollId, Text, Side, VoteCount) VALUES (@PollId, @Text, @Side, 0)",
-                        new { PollId = pollId, Text = optionText, Side = request.IsAIGenerated ? optionText : null },
+                        new { PollId = pollId, Text = optionText, Side = generated ? optionText : null },
                         transaction
                     );
                 }
 
-                if (request.IsAIGenerated && request.QualityDecision is { } quality)
-                {
-                    await conn.ExecuteAsync(@"INSERT INTO GeneratedPollQualityDecisions
-                        (PollId, TrendingTopicId, Disposition, OverallScore, GroundingScore, NeutralityScore,
-                         ClarityScore, AnswerabilityScore, BalancedSidesScore, DuplicationScore, SafetyScore,
-                         IsSensitive, SensitivityPolicyCode, ReasonCodes, GenerationProvider, ProviderConfidence,
-                         GenerationPromptVersion, GenerationSchemaVersion, EvaluatorPromptVersion,
-                         EvaluatorSchemaVersion, RulesVersion, DuplicatePollId, DuplicateSimilarity,
-                         DuplicateMatchType, ExactFingerprint, EvaluatedAt)
-                        VALUES (@PollId, @TrendingTopicId, @Disposition, @OverallScore, @Grounding, @Neutrality,
-                         @Clarity, @Answerability, @BalancedSides, @Duplication, @Safety, @IsSensitive,
-                         @SensitivityPolicyCode, @ReasonCodes, @GenerationProvider, @ProviderConfidence,
-                         @GenerationPromptVersion, @GenerationSchemaVersion, @EvaluatorPromptVersion,
-                         @EvaluatorSchemaVersion, @RulesVersion, @DuplicatePollId, @DuplicateSimilarity,
-                         @DuplicateMatchType, @ExactFingerprint, GETUTCDATE())", new
-                    {
-                        PollId = pollId, request.TrendingTopicId, Disposition = quality.Disposition.ToString(),
-                        quality.OverallScore, quality.Scores.Grounding, quality.Scores.Neutrality,
-                        quality.Scores.Clarity, quality.Scores.Answerability, quality.Scores.BalancedSides,
-                        quality.Scores.Duplication, quality.Scores.Safety, quality.IsSensitive,
-                        quality.SensitivityPolicyCode, ReasonCodes = string.Join(',', quality.ReasonCodes),
-                        quality.GenerationProvider, quality.ProviderConfidence, quality.GenerationPromptVersion,
-                        quality.GenerationSchemaVersion, quality.EvaluatorPromptVersion, quality.EvaluatorSchemaVersion,
-                        quality.RulesVersion, quality.DuplicatePollId, quality.DuplicateSimilarity,
-                        quality.DuplicateMatchType, quality.ExactFingerprint
-                    }, transaction);
-                }
-
-                if (request.ReplacementForCleanupRecordId is long replacementCleanupId)
-                {
-                    var linked = await conn.ExecuteAsync(@"UPDATE GeneratedPollCleanupRecords
-                        SET ReplacementPollId=@PollId WHERE Id=@CleanupId AND ReplacementPollId IS NULL",
-                        new { PollId = pollId, CleanupId = replacementCleanupId }, transaction);
-                    if (linked != 1) throw new InvalidOperationException("Cleanup replacement could not be linked idempotently.");
-                }
+                if (generated && request.QualityDecision is { } quality)
+                    await InsertQualityDecisionAsync(conn, transaction, pollId, request.TrendingTopicId, quality);
 
                 transaction.Commit();
                 if (createdByUserId != null)
@@ -519,27 +479,32 @@ namespace BackendAPI.Repository
             }
         }
 
-        public async Task RecordRejectedQualityDecisionAsync(long trendingTopicId, GeneratedPollQualityDecision quality)
+        public async Task RecordRejectedQualityDecisionAsync(long trendingTopicId, GeneratedPollQualityDecision decision)
         {
-            if (quality.Disposition != PollQualityDisposition.Rejected)
-                throw new ArgumentException("Only rejected terminal outcomes may be recorded without a poll.", nameof(quality));
+            if (decision.Disposition != PollQualityDisposition.Rejected)
+                throw new ArgumentException("Only rejected outcomes can be recorded without a poll.", nameof(decision));
             using var conn = _context.CreateConnection();
-            await conn.ExecuteAsync(@"INSERT INTO GeneratedPollQualityDecisions
-                (PollId, TrendingTopicId, Disposition, OverallScore, GroundingScore, NeutralityScore,
-                 ClarityScore, AnswerabilityScore, BalancedSidesScore, DuplicationScore, SafetyScore,
-                 IsSensitive, SensitivityPolicyCode, ReasonCodes, GenerationProvider, ProviderConfidence,
-                 GenerationPromptVersion, GenerationSchemaVersion, EvaluatorPromptVersion,
-                 EvaluatorSchemaVersion, RulesVersion, DuplicatePollId, DuplicateSimilarity,
-                 DuplicateMatchType, ExactFingerprint, EvaluatedAt)
-                VALUES (NULL, @TrendingTopicId, @Disposition, @OverallScore, @Grounding, @Neutrality,
-                 @Clarity, @Answerability, @BalancedSides, @Duplication, @Safety, @IsSensitive,
-                 @SensitivityPolicyCode, @ReasonCodes, @GenerationProvider, @ProviderConfidence,
-                 @GenerationPromptVersion, @GenerationSchemaVersion, @EvaluatorPromptVersion,
-                 @EvaluatorSchemaVersion, @RulesVersion, @DuplicatePollId, @DuplicateSimilarity,
-                 @DuplicateMatchType, @ExactFingerprint, GETUTCDATE())", new
+            await InsertQualityDecisionAsync(conn, null, null, trendingTopicId, decision);
+        }
+
+        private static Task InsertQualityDecisionAsync(System.Data.IDbConnection conn, System.Data.IDbTransaction? tx,
+            long? pollId, long? trendingTopicId, GeneratedPollQualityDecision quality) => conn.ExecuteAsync(@"
+            INSERT INTO GeneratedPollQualityDecisions
+              (PollId, TrendingTopicId, Disposition, OverallScore, GroundingScore, NeutralityScore, ClarityScore,
+               AnswerabilityScore, BalancedSidesScore, DuplicationScore, SafetyScore, IsSensitive,
+               SensitivityPolicyCode, ReasonCodes, GenerationProvider, ProviderConfidence, GenerationPromptVersion,
+               GenerationSchemaVersion, EvaluatorPromptVersion, EvaluatorSchemaVersion, RulesVersion,
+               DuplicatePollId, DuplicateSimilarity, DuplicateMatchType, ExactFingerprint, EvaluatedAt)
+            VALUES
+              (@PollId, @TrendingTopicId, @Disposition, @OverallScore, @Grounding, @Neutrality, @Clarity,
+               @Answerability, @BalancedSides, @Duplication, @Safety, @IsSensitive, @SensitivityPolicyCode,
+               @ReasonCodes, @GenerationProvider, @ProviderConfidence, @GenerationPromptVersion,
+               @GenerationSchemaVersion, @EvaluatorPromptVersion, @EvaluatorSchemaVersion, @RulesVersion,
+               @DuplicatePollId, @DuplicateSimilarity, @DuplicateMatchType, @ExactFingerprint, GETUTCDATE())",
+            new
             {
-                TrendingTopicId = trendingTopicId, Disposition = quality.Disposition.ToString(), quality.OverallScore,
-                quality.Scores.Grounding, quality.Scores.Neutrality, quality.Scores.Clarity,
+                PollId = pollId, TrendingTopicId = trendingTopicId, Disposition = quality.Disposition.ToString(),
+                quality.OverallScore, quality.Scores.Grounding, quality.Scores.Neutrality, quality.Scores.Clarity,
                 quality.Scores.Answerability, quality.Scores.BalancedSides, quality.Scores.Duplication,
                 quality.Scores.Safety, quality.IsSensitive, quality.SensitivityPolicyCode,
                 ReasonCodes = string.Join(',', quality.ReasonCodes), quality.GenerationProvider,
@@ -547,7 +512,31 @@ namespace BackendAPI.Repository
                 quality.EvaluatorPromptVersion, quality.EvaluatorSchemaVersion, quality.RulesVersion,
                 quality.DuplicatePollId, quality.DuplicateSimilarity, quality.DuplicateMatchType,
                 quality.ExactFingerprint
-            });
+            }, tx);
+
+        public async Task<long> CompleteGeneratedPollAsync(long topicId, Guid leaseId, CreatePollRequest request)
+        {
+            using var conn = _context.CreateConnection(); conn.Open();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                var existing = await conn.QuerySingleOrDefaultAsync<long?>(
+                    "SELECT Id FROM Polls WITH (UPDLOCK,HOLDLOCK) WHERE SourceTopicId=@TopicId", new { TopicId=topicId }, tx);
+                var pollId = existing ?? await conn.ExecuteScalarAsync<long>(@"INSERT INTO Polls
+                    (Question,Description,Category,ExpiresAt,IsActive,IsTrending,CreatedAt,TotalVotes,SourceType,SourceUrl,ThumbnailUrl,IsAIGenerated,GenerationMethod,TrendingTopicId,GenerationProvider,GenerationModel,SourceTopicId,ModerationStatus,ReportCount)
+                    VALUES (@Question,@Description,@Category,@ExpiresAt,1,0,GETUTCDATE(),0,@SourceType,@SourceUrl,@ThumbnailUrl,1,@GenerationMethod,@TopicId,@GenerationProvider,@GenerationModel,@TopicId,'PendingReview',0);
+                    SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
+                    new { request.Question,request.Description,Category=CategoryCatalog.NormalizeName(request.Category),request.ExpiresAt,request.SourceType,request.SourceUrl,request.ThumbnailUrl,request.GenerationMethod,request.GenerationProvider,request.GenerationModel,TopicId=topicId }, tx);
+                if (!existing.HasValue)
+                    foreach (var option in request.Options)
+                        await conn.ExecuteAsync("INSERT INTO PollOptions(PollId,Text,Side,VoteCount) VALUES(@PollId,@Text,@Side,0)", new { PollId=pollId,Text=option,Side=option }, tx);
+                var updated = await conn.ExecuteAsync(@"UPDATE TrendingTopics SET GenerationStatus='Completed',IsProcessed=1,
+                    ProcessedAt=GETUTCDATE(),LeaseId=NULL,LeaseExpiresAtUtc=NULL WHERE Id=@TopicId AND LeaseId=@LeaseId",
+                    new { TopicId=topicId,LeaseId=leaseId }, tx);
+                if (updated != 1) throw new InvalidOperationException("Topic lease was lost before poll completion.");
+                tx.Commit(); return pollId;
+            }
+            catch { tx.Rollback(); throw; }
         }
 
         // ── Delete ────────────────────────────────────────────────────────────

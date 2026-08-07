@@ -78,3 +78,4 @@ public sealed class PollQualityOptions
 }
 
 public sealed record DuplicateMatch(long PollId, string MatchType, double Similarity);
+

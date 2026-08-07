@@ -79,4 +79,4 @@ public sealed class GeneratedPollCleanupRequest
 
 public sealed record CleanupApplyResult(bool Changed, string Disposition, string Status, string? Error = null);
 public sealed record RegenerationQueueItem(long CleanupRecordId, long PollId, long? TrendingTopicId,
-    string? SourceUrl, int AttemptCount);
+    string? SourceUrl, int AttemptCount, long? ReplacementPollId = null);

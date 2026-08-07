@@ -12,6 +12,7 @@ public sealed class GeneratedPollQualityGate(
 {
     private readonly PollQualityOptions _options = options.Value;
     private static readonly Regex Leading = new(@"\b(obviously|clearly|reckless|disgraceful|common sense|only an idiot)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex Prediction = new(@"\b(who|what) will\b|\bwill (it|the|there)\b|\bwhich\b|\bfavou?rite\b|\bmost important\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex Unbalanced = new(@"\b(or (?:face|risk|allow) (?:death|disaster|harm)|save innocent lives|protect children or)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public async Task<GeneratedPollQualityDecision> EvaluateAsync(TrendingTopic topic,
@@ -59,7 +60,7 @@ public sealed class GeneratedPollQualityGate(
             EvaluatorSchemaVersion = _options.EvaluatorSchemaVersion,
             GenerationPromptVersion = PollGenerationService.GenerationPromptVersion,
             GenerationSchemaVersion = PollGenerationService.GenerationSchemaVersion,
-            GenerationProvider = candidate.ProviderName, ProviderConfidence = candidate.Quality?.Confidence,
+            GenerationProvider = candidate.GenerationProvider, ProviderConfidence = candidate.Quality?.Confidence,
             DuplicatePollId = duplicate?.PollId, DuplicateSimilarity = duplicate?.Similarity,
             DuplicateMatchType = duplicate?.MatchType, ExactFingerprint = fingerprint
         };
@@ -74,7 +75,7 @@ public sealed class GeneratedPollQualityGate(
         if (c.Grounding is null || string.IsNullOrWhiteSpace(c.Grounding.Rationale) || c.Grounding.Evidence is null ||
             c.Grounding.Evidence.Count is < 1 or > 3 || c.Grounding.Evidence.Any(string.IsNullOrWhiteSpace))
             yield return PollQualityReasonCodes.GroundingInsufficient;
-        if (PropositionFormRules.IsSurveyPreferenceRankingOrPrediction(c.Proposition)) yield return PollQualityReasonCodes.AnswerabilityInvalid;
+        if (Prediction.IsMatch(c.Proposition)) yield return PollQualityReasonCodes.AnswerabilityInvalid;
         if (c.Proposition.Contains(" and should ", StringComparison.OrdinalIgnoreCase) ||
             c.Proposition.Contains(" as well as ", StringComparison.OrdinalIgnoreCase)) yield return PollQualityReasonCodes.ClarityCompound;
         if (Leading.IsMatch(c.Proposition)) yield return PollQualityReasonCodes.NeutralityLeading;
