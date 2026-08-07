@@ -38,10 +38,10 @@ public class PollGenerationServiceTests
     public async Task Valid_contract_returns_structured_result()
     {
         var result = await Create(new FakeProvider(Valid)).GenerateAsync(new TrendingTopic { Title = "Law", Summary = "Parliament considers privacy law", Category = "Technology" });
-        Assert.NotNull(result);
-        Assert.Equal("Should Parliament adopt the proposed data privacy law?", result!.Proposition);
-        Assert.True(result.Quality.IsGrounded);
-        Assert.NotEmpty(result.Grounding.Evidence);
+        Assert.Equal(GenerationOutcome.Succeeded, result.Outcome);
+        Assert.Equal("Should Parliament adopt the proposed data privacy law?", result.Poll!.Proposition);
+        Assert.Equal(GenerationMethods.Llm, result.Poll.GenerationMethod);
+        Assert.Equal(new[] { "Up", "Against" }, result.Poll.Options);
     }
 
     [Theory]
@@ -53,27 +53,55 @@ public class PollGenerationServiceTests
     public async Task Malformed_legacy_or_invalid_contract_is_rejected(string json)
     {
         var result = await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Topic", Summary = "Detail", Category = "General" });
-        Assert.Null(result);
+        Assert.NotEqual(GenerationOutcome.Succeeded, result.Outcome);
     }
 
     [Fact]
     public async Task Ambiguous_topic_is_rejected()
     {
         var json = Valid.Replace("false,\"ambiguityReason\":null", "true,\"ambiguityReason\":\"Not enough source detail\"");
-        Assert.Null(await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Celebrity news", Category = "Entertainment" }));
+        Assert.NotEqual(GenerationOutcome.Succeeded, (await Create(new FakeProvider(json)).GenerateAsync(new TrendingTopic { Title = "Celebrity news", Category = "Entertainment" })).Outcome);
+    }
+
+    [Fact]
+    public async Task Transient_failure_uses_safe_fallback_only_for_convertible_topic()
+    {
+        var service = Create(new OutcomeProvider(LlmProviderResult.Transient("timeout")));
+        var result = await service.GenerateAsync(new TrendingTopic { Title = "Council bans cars from the city centre", Summary = "The council plan would ban cars from the city centre on weekdays.", Category = "General" });
+        Assert.Equal(GenerationOutcome.Succeeded, result.Outcome);
+        Assert.Equal(GenerationMethods.DeterministicFallback, result.Poll!.GenerationMethod);
+        Assert.Equal(new[] { "Up", "Against" }, result.Poll.Options);
+    }
+
+    [Fact]
+    public async Task Transient_failure_retains_ambiguous_topic_for_retry()
+    {
+        var result = await Create(new OutcomeProvider(LlmProviderResult.Transient("timeout"))).GenerateAsync(
+            new TrendingTopic { Title = "Major changes may be coming", Summary = "Officials discussed possibilities without announcing an action.", Category = "General" });
+        Assert.Equal(GenerationOutcome.ProviderTransientFailure, result.Outcome);
+        Assert.Null(result.Poll);
     }
 
     private static PollGenerationService Create(FakeProvider provider)
+        => Create((ILlmProvider)provider);
+
+    private static PollGenerationService Create(ILlmProvider provider)
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["PollGen:Provider"] = "fake" }).Build();
-        return new PollGenerationService(new[] { provider }, new FakePollsRepository(), config, NullLogger<PollGenerationService>.Instance);
+        return new PollGenerationService(new[] { provider }, new FakePollsRepository(), config, NullLogger<PollGenerationService>.Instance, new DeterministicPollConverter());
+    }
+
+    private sealed class OutcomeProvider(LlmProviderResult result) : ILlmProvider
+    {
+        public string ProviderName => "fake";
+        public Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) => Task.FromResult(result);
     }
 
     private sealed class FakeProvider(string response) : ILlmProvider
     {
         public string ProviderName => "fake";
         public LlmGenerationRequest? Request { get; private set; }
-        public Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) { Request = request; return Task.FromResult<string?>(response); }
+        public Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default) { Request = request; return Task.FromResult(LlmProviderResult.Succeeded(response)); }
     }
 
     private sealed class FakePollsRepository : IPollsRepository

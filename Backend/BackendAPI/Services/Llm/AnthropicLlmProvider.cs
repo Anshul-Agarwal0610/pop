@@ -32,17 +32,17 @@ namespace BackendAPI.Services.Llm
             _logger = logger;
         }
 
-        public async Task<string?> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
+        public async Task<LlmProviderResult> CompleteAsync(LlmGenerationRequest request, CancellationToken ct = default)
         {
             var apiKey = _config["PollGen:Anthropic:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 _logger.LogWarning("[Anthropic] PollGen:Anthropic:ApiKey not configured");
-                return null;
+                return LlmProviderResult.Permanent("PollGen:Anthropic:ApiKey not configured");
             }
 
             var model = _config["PollGen:Anthropic:Model"];
-            if (string.IsNullOrWhiteSpace(model)) return null;
+            if (string.IsNullOrWhiteSpace(model)) return LlmProviderResult.Permanent("PollGen:Anthropic:Model not configured");
 
             var client = _http.CreateClient();
             client.DefaultRequestHeaders.Add("x-api-key", apiKey);
@@ -71,23 +71,35 @@ namespace BackendAPI.Services.Llm
                 {
                     var err = await response.Content.ReadAsStringAsync(ct);
                     _logger.LogWarning("[Anthropic] HTTP {Status}: {Error}", (int)response.StatusCode, err);
-                    return null;
+                    return IsTransient(response.StatusCode) ? LlmProviderResult.Transient($"HTTP {(int)response.StatusCode}") : LlmProviderResult.Permanent($"HTTP {(int)response.StatusCode}");
                 }
 
                 var json = await response.Content.ReadAsStringAsync(ct);
                 using var doc = JsonDocument.Parse(json);
 
                 // Extract text from content[0].text
-                return doc.RootElement
+                var text = doc.RootElement
                     .GetProperty("content")[0]
                     .GetProperty("text")
                     .GetString();
+                return string.IsNullOrWhiteSpace(text) ? LlmProviderResult.Permanent("provider returned empty content") : LlmProviderResult.Succeeded(text);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "[Anthropic] Request timed out");
+                return LlmProviderResult.Transient("request timed out");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "[Anthropic] Request failed");
+                return LlmProviderResult.Transient(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[Anthropic] Request failed");
-                return null;
+                _logger.LogError(ex, "[Anthropic] Invalid provider response");
+                return LlmProviderResult.Permanent(ex.Message);
             }
         }
+        private static bool IsTransient(System.Net.HttpStatusCode status) => status is System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests || (int)status >= 500;
     }
 }

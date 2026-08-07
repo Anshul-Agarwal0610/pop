@@ -11,6 +11,7 @@ public class PollGenerationService : IPollGenerationService
     private readonly IPollsRepository _pollsRepo;
     private readonly IConfiguration _config;
     private readonly ILogger<PollGenerationService> _logger;
+    private readonly IDeterministicPollConverter _fallback;
 
     internal const string ResponseSchema = """
     {"type":"object","additionalProperties":false,"required":["proposition","category","sourceGrounding","quality"],"properties":{"proposition":{"type":"string"},"category":{"type":"string"},"sourceGrounding":{"type":"object","additionalProperties":false,"required":["rationale","evidence"],"properties":{"rationale":{"type":"string"},"evidence":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string"}}}},"quality":{"type":"object","additionalProperties":false,"required":["isSelfContained","isNeutral","isBinary","isGrounded","confidence","isAmbiguous","ambiguityReason"],"properties":{"isSelfContained":{"type":"boolean"},"isNeutral":{"type":"boolean"},"isBinary":{"type":"boolean"},"isGrounded":{"type":"boolean"},"confidence":{"type":"number","minimum":0,"maximum":1},"isAmbiguous":{"type":"boolean"},"ambiguityReason":{"type":["string","null"]}}}}}
@@ -24,35 +25,45 @@ public class PollGenerationService : IPollGenerationService
     };
 
     public PollGenerationService(IEnumerable<ILlmProvider> providers, IPollsRepository pollsRepo,
-        IConfiguration config, ILogger<PollGenerationService> logger)
-        => (_providers, _pollsRepo, _config, _logger) = (providers, pollsRepo, config, logger);
+        IConfiguration config, ILogger<PollGenerationService> logger, IDeterministicPollConverter fallback)
+        => (_providers, _pollsRepo, _config, _logger, _fallback) = (providers, pollsRepo, config, logger, fallback);
 
-    public async Task<PropositionGenerationResult?> GenerateAsync(TrendingTopic topic)
+    public async Task<PollGenerationOutcome> GenerateAsync(TrendingTopic topic)
     {
+        var mode = _config["PollGen:Mode"] ?? "LlmWithFallback";
+        if (mode.Equals("FallbackOnly", StringComparison.OrdinalIgnoreCase))
+            return Fallback(topic, GenerationOutcome.Unconvertible);
+
         var providerName = _config["PollGen:Provider"]?.ToLowerInvariant() ?? "custom";
         var provider = _providers.FirstOrDefault(p => p.ProviderName.Equals(providerName, StringComparison.OrdinalIgnoreCase));
-        if (provider is null) return null;
+        if (provider is null) return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase)
+            ? new(GenerationOutcome.ProviderPermanentFailure, Reason: $"Unsupported provider '{providerName}'", AttemptedMethod: GenerationMethods.Llm)
+            : Fallback(topic, GenerationOutcome.ProviderPermanentFailure, $"Unsupported provider '{providerName}'");
 
         var request = BuildRequest(topic);
-        var raw = await provider.CompleteAsync(request);
-        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var providerResult = await provider.CompleteAsync(request);
+        if (providerResult.Outcome != LlmProviderOutcome.Success)
+        {
+            var failure = providerResult.Outcome == LlmProviderOutcome.TransientFailure ? GenerationOutcome.ProviderTransientFailure : GenerationOutcome.ProviderPermanentFailure;
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(failure, Reason: providerResult.Reason, AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, failure, providerResult.Reason);
+        }
 
         PropositionGenerationResult? result;
-        try { result = JsonSerializer.Deserialize<PropositionGenerationResult>(raw, JsonOptions); }
+        try { result = JsonSerializer.Deserialize<PropositionGenerationResult>(providerResult.Content!, JsonOptions); }
         catch (JsonException ex)
         {
             _logger.LogWarning("[PollGen] Invalid structured response for topic {TopicId}: {Reason}", topic.Id, ex.Message);
-            return null;
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(GenerationOutcome.ContentRejected, Reason: ex.Message, AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, GenerationOutcome.ContentRejected, ex.Message);
         }
 
         var reason = "response was null";
         if (result is null || !Validate(result, out reason))
         {
             _logger.LogWarning("[PollGen] Rejected proposition for topic {TopicId}: {Reason}", topic.Id, reason);
-            return null;
+            return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(GenerationOutcome.ContentRejected, Reason: reason, AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, GenerationOutcome.ContentRejected, reason);
         }
 
-        if (!IsKnownCategory(result.Category)) return null;
+        if (!IsKnownCategory(result.Category)) return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(GenerationOutcome.ContentRejected, Reason: "unknown category", AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, GenerationOutcome.ContentRejected, "unknown category");
         result.Category = CategoryCatalog.NormalizeName(result.Category);
         result.SourceTitle = topic.Title;
         result.SourceUrl = topic.SourceUrl;
@@ -62,7 +73,18 @@ public class PollGenerationService : IPollGenerationService
             result.SimilarPollId = similar.Id;
             result.QualityWarnings.Add($"Similar generated poll detected: #{similar.Id}.");
         }
-        return result;
+        result.GenerationMethod = GenerationMethods.Llm;
+        if (!BinaryPublicationValidator.Validate(result, topic, out reason)) return mode.Equals("LlmOnly", StringComparison.OrdinalIgnoreCase) ? new(GenerationOutcome.ContentRejected, Reason: reason, AttemptedMethod: GenerationMethods.Llm) : Fallback(topic, GenerationOutcome.ContentRejected, reason);
+        return new(GenerationOutcome.Succeeded, result, AttemptedMethod: GenerationMethods.Llm);
+    }
+
+    private PollGenerationOutcome Fallback(TrendingTopic topic, GenerationOutcome failure, string? providerReason = null)
+    {
+        var converted = _fallback.TryConvert(topic);
+        if (converted.Succeeded) return new(GenerationOutcome.Succeeded, converted.Poll, AttemptedMethod: GenerationMethods.DeterministicFallback);
+        var reason = string.Join("; ", new[] { providerReason, converted.Reason }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        return new(failure == GenerationOutcome.ProviderTransientFailure ? failure : GenerationOutcome.Unconvertible,
+            Reason: reason, AttemptedMethod: GenerationMethods.DeterministicFallback);
     }
 
     internal static LlmGenerationRequest BuildRequest(TrendingTopic topic)

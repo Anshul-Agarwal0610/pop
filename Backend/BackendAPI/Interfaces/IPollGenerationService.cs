@@ -1,20 +1,23 @@
 using BackendAPI.Models;
+using BackendAPI.Services;
 using System.Text.Json.Serialization;
 
 namespace BackendAPI.Interfaces;
 
-public interface IPollGenerationService { Task<PropositionGenerationResult?> GenerateAsync(TrendingTopic topic); }
+public enum GenerationOutcome { Succeeded, ProviderTransientFailure, ProviderPermanentFailure, ContentRejected, Unconvertible }
 
-/// <summary>
-/// Compatibility model for the deterministic fallback pipeline. The active LLM
-/// path returns <see cref="PropositionGenerationResult"/> instead.
-/// </summary>
+public sealed record PollGenerationOutcome(GenerationOutcome Outcome, PropositionGenerationResult? Poll = null,
+    string? Reason = null, string? AttemptedMethod = null);
+
+public interface IPollGenerationService { Task<PollGenerationOutcome> GenerateAsync(TrendingTopic topic); }
+
+/// <summary>Compatibility model retained for the existing topic-enrichment fallback.</summary>
 public sealed class GeneratedPoll
 {
     public string Question { get; set; } = string.Empty;
-    public List<string> Options { get; set; } = new();
+    public List<string> Options { get; set; } = [];
     public string Category { get; set; } = "General";
-    public List<string> QualityWarnings { get; set; } = new();
+    public List<string> QualityWarnings { get; set; } = [];
     public long? SimilarPollId { get; set; }
     public string? SourceTitle { get; set; }
     public string? SourceUrl { get; set; }
@@ -29,11 +32,13 @@ public sealed class PropositionGenerationResult
     [JsonPropertyName("category")] public required string Category { get; set; }
     [JsonPropertyName("sourceGrounding")] public required SourceGrounding Grounding { get; set; }
     [JsonPropertyName("quality")] public required PropositionQuality Quality { get; set; }
-    [JsonIgnore] public List<string> QualityWarnings { get; set; } = new();
+    [JsonIgnore] public List<string> Options { get; } = [GeneratedPollContract.Up, GeneratedPollContract.Against];
+    [JsonIgnore] public string GenerationMethod { get; set; } = GenerationMethods.Llm;
+    [JsonIgnore] public List<string> QualityWarnings { get; set; } = [];
     [JsonIgnore] public long? SimilarPollId { get; set; }
     [JsonIgnore] public string? SourceTitle { get; set; }
     [JsonIgnore] public string? SourceUrl { get; set; }
-    [JsonIgnore] public string ReviewNotes => $"AI validation: {Grounding.Rationale} Evidence: {string.Join("; ", Grounding.Evidence)} Confidence: {Quality.Confidence:0.00}. {string.Join(" ", QualityWarnings)}".Trim();
+    [JsonIgnore] public string ReviewNotes => $"{GenerationMethod} validation: {Grounding.Rationale} Evidence: {string.Join("; ", Grounding.Evidence)} Confidence: {Quality.Confidence:0.00}. {string.Join(" ", QualityWarnings)}".Trim();
 }
 public sealed class SourceGrounding
 {

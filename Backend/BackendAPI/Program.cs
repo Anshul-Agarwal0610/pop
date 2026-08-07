@@ -91,6 +91,7 @@ builder.Services.AddScoped<ILlmProvider, CustomVmLlmProvider>();
 
 // ── Poll Generation Service (US-07 enhanced: multi-provider) ─────────────
 builder.Services.AddScoped<IPollGenerationService, PollGenerationService>();
+builder.Services.AddSingleton<IDeterministicPollConverter, DeterministicPollConverter>();
 
 // ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
 builder.Services.AddScoped<IngestionJob>();
