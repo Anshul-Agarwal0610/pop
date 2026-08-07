@@ -9,6 +9,8 @@ namespace BackendAPI.Services;
 
 public class PollGenerationService : IPollGenerationService
 {
+    public const string GenerationPromptVersion = "generation-prompt-v1";
+    public const string GenerationSchemaVersion = "generation-schema-v1";
     private readonly IEnumerable<ILlmProvider> _providers;
     private readonly IPollsRepository _pollsRepo;
     private readonly IConfiguration _config;

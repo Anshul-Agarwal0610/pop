@@ -15,6 +15,7 @@ namespace BackendAPI.Interfaces
         Task<IEnumerable<Poll>> GetModerationQueueAsync(string? status = null, int count = 50);
         Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null);
         Task<long> CompleteGeneratedPollAsync(long topicId, Guid leaseId, CreatePollRequest request) => CreateAsync(request);
+        Task RecordRejectedQualityDecisionAsync(long trendingTopicId, GeneratedPollQualityDecision decision) => Task.CompletedTask;
         Task<bool> ReportAsync(long pollId, long reportedByUserId, string reason);
         Task<bool> ModerateAsync(long pollId, string status, string? reason, long moderatedByUserId);
         Task<bool> DeleteAsync(long id);

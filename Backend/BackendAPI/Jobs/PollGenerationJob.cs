@@ -15,10 +15,13 @@ public class PollGenerationJob
     private readonly ILogger<PollGenerationJob> _logger;
     private readonly IRetryDelayPolicy _retryPolicy;
     private readonly TimeProvider _time;
+    private readonly IGeneratedPollQualityGate _qualityGate;
 
     public PollGenerationJob(ITrendingTopicRepository topics, IPollsRepository polls, IPollGenerationService generator,
-        IConfiguration config, ILogger<PollGenerationJob> logger, IRetryDelayPolicy retryPolicy, TimeProvider time)
-        => (_topics, _polls, _generator, _config, _logger, _retryPolicy, _time) = (topics, polls, generator, config, logger, retryPolicy, time);
+        IConfiguration config, ILogger<PollGenerationJob> logger, IRetryDelayPolicy retryPolicy, TimeProvider time,
+        IGeneratedPollQualityGate qualityGate)
+        => (_topics, _polls, _generator, _config, _logger, _retryPolicy, _time, _qualityGate) =
+            (topics, polls, generator, config, logger, retryPolicy, time, qualityGate);
 
     [DisableConcurrentExecution(timeoutInSeconds: 600)]
     [AutomaticRetry(Attempts = 0)]
@@ -39,6 +42,16 @@ public class PollGenerationJob
                 }
                 try
                 {
+                    var decision = await _qualityGate.EvaluateAsync(topic, outcome.Poll, outcome.Poll.Options);
+                    _logger.LogInformation("[PollQuality] TopicId={TopicId} Disposition={Disposition} Reasons={ReasonCodes} Rules={RulesVersion} ScoreBucket={ScoreBucket}",
+                        topic.Id, decision.Disposition, string.Join(',', decision.ReasonCodes), decision.RulesVersion,
+                        Math.Floor(decision.OverallScore * 10) / 10);
+                    if (decision.Disposition == PollQualityDisposition.Rejected)
+                    {
+                        await _polls.RecordRejectedQualityDecisionAsync(topic.Id, decision);
+                        await _topics.MarkUnconvertibleAsync(topic.Id, string.Join(',', decision.ReasonCodes), method);
+                        continue;
+                    }
                     var pollId = await _polls.CreateAsync(new CreatePollRequest
                     {
                         Question = outcome.Poll.Proposition, Description = topic.Summary, Category = outcome.Poll.Category,
@@ -47,6 +60,7 @@ public class PollGenerationJob
                         IsAIGenerated = outcome.Poll.GenerationMethod == GenerationMethods.Llm,
                         GenerationMethod = outcome.Poll.GenerationMethod, TrendingTopicId = topic.Id,
                         GenerationProvider = outcome.Poll.GenerationProvider, GenerationModel = outcome.Poll.GenerationModel,
+                        QualityDecision = decision, AutoPublish = decision.Disposition == PollQualityDisposition.Accepted,
                         ModerationReason = outcome.Poll.ReviewNotes
                     });
                     await _topics.MarkConvertedAsync(topic.Id, pollId, outcome.Poll.GenerationMethod);

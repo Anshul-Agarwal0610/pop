@@ -80,6 +80,8 @@ namespace BackendAPI.Models
         public string? GenerationProvider { get; set; }
         public string? GenerationModel { get; set; }
         [System.Text.Json.Serialization.JsonIgnore]
+        public GeneratedPollQualityDecision? QualityDecision { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
         public bool AutoPublish { get; set; }
         public bool IsPrivate { get; set; }
         public bool IsWellness { get; set; }

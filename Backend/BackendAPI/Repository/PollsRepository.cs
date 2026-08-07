@@ -389,7 +389,14 @@ namespace BackendAPI.Repository
         {
             var generated = request.GenerationMethod is GenerationMethods.Llm or GenerationMethods.DeterministicFallback;
             if (generated)
+            {
                 GeneratedPollContract.EnsureValid(request.Options);
+                var quality = request.QualityDecision ?? throw new InvalidOperationException("Generated polls require an auditable quality decision.");
+                if (quality.Disposition == PollQualityDisposition.Rejected)
+                    throw new InvalidOperationException("Rejected generated polls cannot be persisted.");
+                if (quality.Disposition == PollQualityDisposition.Accepted && quality.OverallScore < quality.PublishThreshold)
+                    throw new InvalidOperationException("Generated poll does not meet its publication threshold.");
+            }
             using var conn = _context.CreateConnection();
             conn.Open();
             using var transaction = conn.BeginTransaction();
@@ -452,6 +459,9 @@ namespace BackendAPI.Repository
                     );
                 }
 
+                if (generated && request.QualityDecision is { } quality)
+                    await InsertQualityDecisionAsync(conn, transaction, pollId, request.TrendingTopicId, quality);
+
                 transaction.Commit();
                 if (createdByUserId != null)
                 {
@@ -465,6 +475,41 @@ namespace BackendAPI.Repository
                 throw;
             }
         }
+
+        public async Task RecordRejectedQualityDecisionAsync(long trendingTopicId, GeneratedPollQualityDecision decision)
+        {
+            if (decision.Disposition != PollQualityDisposition.Rejected)
+                throw new ArgumentException("Only rejected outcomes can be recorded without a poll.", nameof(decision));
+            using var conn = _context.CreateConnection();
+            await InsertQualityDecisionAsync(conn, null, null, trendingTopicId, decision);
+        }
+
+        private static Task InsertQualityDecisionAsync(System.Data.IDbConnection conn, System.Data.IDbTransaction? tx,
+            long? pollId, long? trendingTopicId, GeneratedPollQualityDecision quality) => conn.ExecuteAsync(@"
+            INSERT INTO GeneratedPollQualityDecisions
+              (PollId, TrendingTopicId, Disposition, OverallScore, GroundingScore, NeutralityScore, ClarityScore,
+               AnswerabilityScore, BalancedSidesScore, DuplicationScore, SafetyScore, IsSensitive,
+               SensitivityPolicyCode, ReasonCodes, GenerationProvider, ProviderConfidence, GenerationPromptVersion,
+               GenerationSchemaVersion, EvaluatorPromptVersion, EvaluatorSchemaVersion, RulesVersion,
+               DuplicatePollId, DuplicateSimilarity, DuplicateMatchType, ExactFingerprint, EvaluatedAt)
+            VALUES
+              (@PollId, @TrendingTopicId, @Disposition, @OverallScore, @Grounding, @Neutrality, @Clarity,
+               @Answerability, @BalancedSides, @Duplication, @Safety, @IsSensitive, @SensitivityPolicyCode,
+               @ReasonCodes, @GenerationProvider, @ProviderConfidence, @GenerationPromptVersion,
+               @GenerationSchemaVersion, @EvaluatorPromptVersion, @EvaluatorSchemaVersion, @RulesVersion,
+               @DuplicatePollId, @DuplicateSimilarity, @DuplicateMatchType, @ExactFingerprint, GETUTCDATE())",
+            new
+            {
+                PollId = pollId, TrendingTopicId = trendingTopicId, Disposition = quality.Disposition.ToString(),
+                quality.OverallScore, quality.Scores.Grounding, quality.Scores.Neutrality, quality.Scores.Clarity,
+                quality.Scores.Answerability, quality.Scores.BalancedSides, quality.Scores.Duplication,
+                quality.Scores.Safety, quality.IsSensitive, quality.SensitivityPolicyCode,
+                ReasonCodes = string.Join(',', quality.ReasonCodes), quality.GenerationProvider,
+                quality.ProviderConfidence, quality.GenerationPromptVersion, quality.GenerationSchemaVersion,
+                quality.EvaluatorPromptVersion, quality.EvaluatorSchemaVersion, quality.RulesVersion,
+                quality.DuplicatePollId, quality.DuplicateSimilarity, quality.DuplicateMatchType,
+                quality.ExactFingerprint
+            }, tx);
 
         public async Task<long> CompleteGeneratedPollAsync(long topicId, Guid leaseId, CreatePollRequest request)
         {
