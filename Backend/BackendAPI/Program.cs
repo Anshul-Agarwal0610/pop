@@ -102,7 +102,13 @@ builder.Services.AddScoped<ILlmProvider, OpenAiLlmProvider>();
 builder.Services.AddScoped<ILlmProvider, AnthropicLlmProvider>();
 builder.Services.AddScoped<ILlmProvider, GeminiLlmProvider>();
 builder.Services.AddScoped<ILlmProvider, GroqLlmProvider>();
-builder.Services.AddOptions<PollGenerationOptions>().Bind(builder.Configuration.GetSection("PollGen"));
+builder.Services.AddOptions<PollGenerationOptions>()
+    .Bind(builder.Configuration.GetSection(PollGenerationOptions.Section))
+    .PostConfigure(options =>
+    {
+        if (options.ProviderOrder.Length == 0)
+            options.ProviderOrder = LlmProviderNames.All.ToArray();
+    });
 builder.Services.AddSingleton<IValidateOptions<PollGenerationOptions>, PollGenerationOptionsValidator>();
 builder.Services.AddSingleton<LlmProviderReadinessService>();
 builder.Services.AddHostedService<LlmReadinessStartupReporter>();
