@@ -71,6 +71,7 @@ builder.Services.AddScoped<IRewardRepository,        RewardRepository>();
 builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
+builder.Services.AddScoped<ILiveSessionsRepository,  LiveSessionsRepository>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
@@ -97,6 +98,7 @@ builder.Services.AddSingleton<IDeterministicPollConverter, DeterministicPollConv
 builder.Services.AddScoped<IngestionJob>();
 builder.Services.AddScoped<PollGenerationJob>();
 builder.Services.AddScoped<RetentionNotificationJob>();
+builder.Services.AddScoped<LiveSessionCleanupJob>();
 
 // ── Hangfire Dashboard Auth (US-11) ───────────────────────────────────────
 builder.Services.AddSingleton<HangfireDashboardAuthFilter>();
@@ -184,6 +186,13 @@ using (var scope = app.Services.CreateScope())
         "create-retention-notifications",
         job => job.RunAsync(),
         "0 * * * *");
+
+    recurringJobs.AddOrUpdate<LiveSessionCleanupJob>(
+        "cleanup-pop-live-sessions",
+        job => job.RunAsync(),
+        "* * * * *");
 }
 
 app.Run();
+
+public partial class Program { }
