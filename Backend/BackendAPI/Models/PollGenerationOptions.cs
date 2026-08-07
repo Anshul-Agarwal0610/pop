@@ -15,7 +15,9 @@ public sealed class PollGenerationOptions
 {
     public const string Section = "PollGen";
     public bool Enabled { get; set; } = true;
-    public List<string> ProviderOrder { get; set; } = [LlmProviderNames.Gemini, LlmProviderNames.OpenAi, LlmProviderNames.Anthropic, LlmProviderNames.Groq];
+    // Arrays are replaced by configuration binding. A pre-populated List is appended to,
+    // which duplicates every JSON entry and prevents the application from starting.
+    public string[] ProviderOrder { get; set; } = [LlmProviderNames.Gemini, LlmProviderNames.OpenAi, LlmProviderNames.Anthropic, LlmProviderNames.Groq];
     public Dictionary<string, LlmProviderOptions> Providers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public int MaxAttemptsPerTopic { get; set; } = 8;
     public int BaseRetryDelaySeconds { get; set; } = 30;
