@@ -416,13 +416,15 @@ namespace BackendAPI.Repository
                          CreatedByUserId,
                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
-                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt)
+                         ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
+                         ReplacementForCleanupRecordId)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
-                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL);
+                         @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
+                         @ReplacementForCleanupRecordId);
                       SELECT CAST(SCOPE_IDENTITY() AS BIGINT);",
                     new
                     {
@@ -445,6 +447,7 @@ namespace BackendAPI.Repository
                         ModerationReason = string.IsNullOrWhiteSpace(request.ModerationReason)
                             ? null
                             : request.ModerationReason.Trim(),
+                        request.ReplacementForCleanupRecordId,
                         CreatedByUserId = createdByUserId
                     },
                     transaction

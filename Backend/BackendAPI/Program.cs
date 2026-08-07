@@ -77,6 +77,9 @@ builder.Services.AddScoped<IRewardRepository,        RewardRepository>();
 builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
+builder.Services.AddScoped<IGeneratedPollCleanupRepository, GeneratedPollCleanupRepository>();
+builder.Services.AddScoped<IGeneratedPollCleanupClassifier, GeneratedPollCleanupClassifier>();
+builder.Services.AddScoped<IGeneratedPollCleanupService, GeneratedPollCleanupService>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
@@ -127,6 +130,8 @@ builder.Services.AddSingleton<IDeterministicPollConverter, DeterministicPollConv
 builder.Services.AddScoped<IngestionJob>();
 builder.Services.AddScoped<PollGenerationJob>();
 builder.Services.AddScoped<RetentionNotificationJob>();
+builder.Services.AddScoped<GeneratedPollCleanupJob>();
+builder.Services.AddScoped<GeneratedPollRegenerationJob>();
 
 // ── Hangfire Dashboard Auth (US-11) ───────────────────────────────────────
 builder.Services.AddSingleton<HangfireDashboardAuthFilter>();

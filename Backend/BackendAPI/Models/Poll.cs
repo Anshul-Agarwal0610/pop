@@ -83,6 +83,8 @@ namespace BackendAPI.Models
         public GeneratedPollQualityDecision? QualityDecision { get; set; }
         [System.Text.Json.Serialization.JsonIgnore]
         public bool AutoPublish { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public long? ReplacementForCleanupRecordId { get; set; }
         public bool IsPrivate { get; set; }
         public bool IsWellness { get; set; }
         public string? ModerationReason { get; set; }

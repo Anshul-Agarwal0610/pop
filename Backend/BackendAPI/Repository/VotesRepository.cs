@@ -30,11 +30,12 @@ namespace BackendAPI.Repository
             try
             {
                 var optionBelongsToPoll = await conn.ExecuteScalarAsync<int>(
-                    @"SELECT COUNT(1) FROM PollOptions WITH (UPDLOCK, ROWLOCK)
-                      WHERE Id = @OptionId AND PollId = @PollId",
+                    @"SELECT COUNT(1) FROM PollOptions o WITH (UPDLOCK, ROWLOCK)
+                      JOIN Polls p WITH (UPDLOCK, ROWLOCK) ON p.Id=o.PollId
+                      WHERE o.Id = @OptionId AND o.PollId = @PollId AND p.IsActive=1",
                     new { request.OptionId, request.PollId }, transaction);
                 if (optionBelongsToPoll != 1)
-                    throw new ArgumentException("The selected option does not belong to the poll.", nameof(request));
+                    throw new ArgumentException("The selected option does not belong to an active poll.", nameof(request));
 
                 // Serialize streak transitions for a user, including votes on different polls.
                 var user = await conn.QuerySingleAsync<User>(
