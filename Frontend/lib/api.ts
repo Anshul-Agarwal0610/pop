@@ -133,7 +133,7 @@ export interface ApiChallenge {
 export interface ApiNotification {
   id: number
   userId: number
-  type: "VoteMilestone" | "StreakMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring"
+  type: "VoteMilestone" | "StreakMilestone" | "LevelUp" | "PollTrending" | "DailyReminder" | "ChallengeAvailable" | "StreakReminder" | "PollExpiring" | "PollBombReminder"
   title: string
   body: string
   pollId: number | null
@@ -151,6 +151,39 @@ export interface ApiNotificationPreference {
   type: ApiNotification["type"]
   isEnabled: boolean
 }
+
+export interface ApiLiveSessionMode {
+  mode: "Bomb"
+  allowedThresholds: number[]
+  allowedDurationsSeconds: number[]
+  expiryPolicies: ["ExpireWithoutReveal"]
+  maximumCapacity: number
+  authenticatedOnly: boolean
+}
+
+export interface ApiLiveSessionOption { id: number; text: string; voteCount: number | null }
+export interface ApiLiveSessionState {
+  publicId: string
+  mode: "Bomb"
+  status: "Voting" | "Revealed" | "Expired"
+  hostUserId: number
+  participantId: number
+  isHost: boolean
+  hasLockedVote: boolean
+  notificationsEnabled: boolean
+  joinedCount: number
+  lockedCount: number
+  targetVotes: number
+  remainingVotes: number
+  stateVersion: number
+  serverNow: string
+  expiresAt: string
+  revealedAt: string | null
+  terminalReason: string | null
+  poll: { id: number; question: string; options: ApiLiveSessionOption[] }
+}
+
+export interface ApiLiveSessionEvent { sequence: number; type: string; stateVersion: number; payload: string; createdAt: string }
 
 export interface CreatePollPayload {
   question: string
@@ -355,6 +388,17 @@ export const gameSessionsApi = {
   get: (id: number | string) => request<ApiGameSession>(`/api/game-sessions/${id}`),
   vote: (id: number, position: number, pollId: number, optionId: number) => request<ApiGameVoteResult>(`/api/game-sessions/${id}/votes`, { method: "POST", body: JSON.stringify({ position, pollId, optionId }) }),
   complete: (id: number) => request<ApiGameSession>(`/api/game-sessions/${id}/complete`, { method: "POST" }),
+}
+
+export const liveSessionsApi = {
+  modes: () => request<ApiLiveSessionMode[]>("/api/live-session-modes"),
+  create: (value: { pollId: number; targetVotes: number; durationSeconds: number; notificationsEnabled: boolean }) =>
+    request<ApiLiveSessionState>("/api/live-sessions", { method: "POST", body: JSON.stringify({ mode: "Bomb", expiryPolicy: "ExpireWithoutReveal", ...value }) }),
+  get: (id: string) => request<ApiLiveSessionState>(`/api/live-sessions/${id}`),
+  join: (id: string) => request<ApiLiveSessionState>(`/api/live-sessions/${id}/join`, { method: "POST" }),
+  vote: (id: string, optionId: number, idempotencyKey: string) => request<ApiLiveSessionState>(`/api/live-sessions/${id}/votes`, { method: "POST", body: JSON.stringify({ optionId, idempotencyKey }) }),
+  notifications: (id: string, enabled: boolean) => request<ApiLiveSessionState>(`/api/live-sessions/${id}/notifications`, { method: "PUT", body: JSON.stringify({ enabled }) }),
+  events: (id: string, after = 0) => request<ApiLiveSessionEvent[]>(`/api/live-sessions/${id}/events?afterSequence=${after}`),
 }
 
 // ── Poll endpoints ────────────────────────────────────────────────────────────
