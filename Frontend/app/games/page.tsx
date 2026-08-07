@@ -7,6 +7,7 @@ import { GameModeCard } from "@/components/game-hub/game-mode-card"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { ApiError, gameSessionsApi, type ApiGameMode, type ApiGameSession } from "@/lib/api"
+import { ClashCreateDialog } from "@/components/poll-clash/clash-create-dialog"
 
 export default function GamesPage() {
   const router = useRouter(); const { isAuthenticated, isLoading } = useAuth()
@@ -17,6 +18,6 @@ export default function GamesPage() {
     {!isLoading&&!isAuthenticated&&<div className="mt-8 rounded-2xl bg-card p-8 text-center ring-1 ring-border"><p>Sign in to start or resume a round.</p><Button className="mt-4" onClick={()=>router.push("/login")}>Sign in</Button></div>}
     {active&&<section className="mt-8 rounded-2xl bg-primary/10 p-5 ring-1 ring-primary/30"><h2 className="font-bold">Round in progress</h2><p className="text-sm text-muted-foreground">Poll {active.currentPosition+1} of {active.pollCount} · {active.remainingPolls} remaining</p><Button className="mt-3" onClick={()=>router.push(`/games/${active.id}`)}>Resume round</Button></section>}
     {error&&<p role="alert" className="mt-6 rounded-xl bg-destructive/10 p-4 text-destructive">{error}</p>}
-    <div className="mt-8 space-y-5">{modes.map(m=><GameModeCard key={m.mode} mode={m} pending={pending} onStart={start}/>)}</div>
+    <div className="mt-8 space-y-5"><ClashCreateDialog />{modes.map(m=><GameModeCard key={m.mode} mode={m} pending={pending} onStart={start}/>)}</div>
   </div></AppShell>
 }

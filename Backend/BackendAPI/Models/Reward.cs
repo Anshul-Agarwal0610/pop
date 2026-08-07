@@ -4,6 +4,8 @@ public static class RewardRuleCodes
 {
     public const string VoteStandard = "vote.standard";
     public const string VoteTrending = "vote.trending";
+    public const string ClashParticipation = "clash.participation";
+    public const string ClashPrediction = "clash.prediction";
 }
 
 public sealed class RewardRule

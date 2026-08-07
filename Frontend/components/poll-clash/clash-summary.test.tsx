@@ -1,0 +1,4 @@
+import { render,screen } from "@testing-library/react"
+import { describe,expect,it } from "vitest"
+import { ClashSummary } from "./clash-summary"
+describe("ClashSummary",()=>{it("separates score, agreement and completed rounds",()=>{render(<ClashSummary clash={{id:1,inviteCode:"A",status:"Completed",source:"Poll",roundCount:3,completedRounds:3,expiresAt:"",players:[{userId:1,displayName:"A",isViewer:true,hasSubmitted:false,opinionOptionId:null,predictedMajorityOptionId:null,predictionScore:2},{userId:2,displayName:"B",isViewer:false,hasSubmitted:false,opinionOptionId:null,predictedMajorityOptionId:null,predictionScore:1}],rounds:[],agreementCount:1,winnerUserId:1,reward:{awardedXp:20,isDuplicate:false,capReached:false},rematch:null}}/>);expect(screen.getByText("Prediction score")).toBeInTheDocument();expect(screen.getByText("Agreement count")).toBeInTheDocument();expect(screen.getByText("Completed rounds")).toBeInTheDocument()})})

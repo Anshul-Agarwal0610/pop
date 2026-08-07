@@ -751,3 +751,19 @@ export const authApi = {
   /** Fetch fresh profile data for the logged-in user. Requires auth token. */
   getMe: () => request<ApiUser>("/api/auth/me"),
 }
+
+export type ClashStatus = "Lobby" | "Active" | "Completed" | "Expired"
+export interface ApiPollClashOption { id: number; text: string; publicVotes: number | null }
+export interface ApiPollClashPlayer { userId: number; displayName: string; isViewer: boolean; hasSubmitted: boolean; opinionOptionId: number | null; predictedMajorityOptionId: number | null; predictionScore: number }
+export interface ApiPollClashRound { id: number; position: number; pollId: number; question: string; status: "Pending" | "Active" | "Revealed"; options: ApiPollClashOption[]; resolvedMajorityOptionId: number | null; agreed: boolean | null; predictionPointsAwarded: number; revealedOpinions: { userId: number; displayName: string; opinionOptionId: number; predictedMajorityOptionId: number | null; predictionPoint: number }[] }
+export interface ApiPollClash { id: number; inviteCode: string; status: ClashStatus; source: "Poll" | "GeneratedPack"; roundCount: number; completedRounds: number; expiresAt: string; players: ApiPollClashPlayer[]; rounds: ApiPollClashRound[]; agreementCount: number; winnerUserId: number | null; reward: { awardedXp: number; isDuplicate: boolean; capReached: boolean }; rematch: { id: number; requestedByUserId: number; status: "Pending" | "Accepted" | "Declined"; resultingClashId: number | null } | null }
+export const pollClashesApi = {
+  create: (input: { seedPollId?: number; source: "Poll" | "GeneratedPack"; roundCount: 1 | 3 | 5 }) => request<ApiPollClash>("/api/poll-clashes", { method: "POST", body: JSON.stringify(input) }),
+  get: (id: number) => request<ApiPollClash>(`/api/poll-clashes/${id}`),
+  invite: (code: string) => request<ApiPollClash>(`/api/poll-clashes/invite/${encodeURIComponent(code)}`),
+  join: (id: number) => request<ApiPollClash>(`/api/poll-clashes/${id}/join`, { method: "POST" }),
+  respond: (id: number, input: { roundId: number; opinionOptionId: number; predictedMajorityOptionId?: number }) => request<ApiPollClash>(`/api/poll-clashes/${id}/responses`, { method: "POST", body: JSON.stringify(input) }),
+  requestRematch: (id: number) => request<ApiPollClash>(`/api/poll-clashes/${id}/rematch-requests`, { method: "POST" }),
+  acceptRematch: (id: number, requestId: number) => request<ApiPollClash>(`/api/poll-clashes/${id}/rematch-requests/${requestId}/accept`, { method: "POST" }),
+  declineRematch: (id: number, requestId: number) => request<ApiPollClash>(`/api/poll-clashes/${id}/rematch-requests/${requestId}/decline`, { method: "POST" }),
+}
