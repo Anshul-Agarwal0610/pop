@@ -38,7 +38,11 @@
       "expo-notifications"
     ],
     "extra": {
-      "releaseChannel": "production"
-    }
+      "releaseChannel": "production",
+      "eas": {
+        "projectId": "a1a0ec17-677f-4e84-957d-fdb3feee5639"
+      }
+    },
+    "owner": "ansh0610"
   }
 }
