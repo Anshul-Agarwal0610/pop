@@ -751,3 +751,29 @@ export const authApi = {
   /** Fetch fresh profile data for the logged-in user. Requires auth token. */
   getMe: () => request<ApiUser>("/api/auth/me"),
 }
+
+export type LiveSessionStatus = "Lobby" | "Voting" | "Revealed" | "Completed" | "Expired"
+export interface ApiLiveOption { id: number; text: string; voteCount: number | null }
+export interface ApiLiveParticipant { userId: number; displayName: string; isReady: boolean; isLocked: boolean }
+export interface ApiLiveSessionState {
+  sessionId: string; status: LiveSessionStatus; stateVersion: number; serverNow: string
+  currentRound: number; pollId: number | null; question: string | null; revealAt: string | null
+  eligibleCount: number; lockedCount: number; myOptionId: number | null
+  participants: ApiLiveParticipant[]; options: ApiLiveOption[]
+  reveal: { winningOptionId: number | null; options: ApiLiveOption[] } | null
+}
+export interface ApiLiveVoteResult { state: ApiLiveSessionState; wasDuplicate: boolean; revealScheduled: boolean }
+
+export const liveSessionsApi = {
+  get: (sessionId: string) => request<ApiLiveSessionState>(`/api/live-sessions/${encodeURIComponent(sessionId)}`),
+  ready: (sessionId: string, isReady: boolean) => request<ApiLiveSessionState>(`/api/live-sessions/${encodeURIComponent(sessionId)}/ready`, {
+    method: "POST", body: JSON.stringify({ isReady }),
+  }),
+  vote: (sessionId: string, round: number, optionId: number, idempotencyKey: string) =>
+    request<ApiLiveVoteResult>(`/api/live-sessions/${encodeURIComponent(sessionId)}/rounds/${round}/votes`, {
+      method: "POST", body: JSON.stringify({ optionId, idempotencyKey }),
+    }),
+  complete: (sessionId: string) => request<ApiLiveSessionState>(`/api/live-sessions/${encodeURIComponent(sessionId)}/complete`, {
+    method: "POST",
+  }),
+}
