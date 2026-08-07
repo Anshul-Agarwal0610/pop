@@ -23,6 +23,7 @@ import { hasCompletedOnboarding, markOnboardingComplete } from './src/lib/sessio
 import type { AuthUser } from './src/types/auth';
 import type { ApiPoll, ApiPollOption, VoteReward } from './src/types/poll';
 import { track } from './src/lib/analytics/client';
+import { theme } from './src/theme';
 
 type AuthMode = 'login' | 'register';
 type SignedInTab = 'home' | 'profile' | 'leaderboard';
@@ -99,7 +100,7 @@ function PollifyApp() {
 function LoadingScreen() {
   return (
     <View style={styles.loading}>
-      <ActivityIndicator color="#B0413E" size="large" />
+      <ActivityIndicator color={theme.destructive} size="large" />
       <Text style={styles.loadingText}>Checking your Pollify session</Text>
     </View>
   );
@@ -229,7 +230,7 @@ function AuthScreen() {
             style={[styles.primaryButton, isSubmitting && styles.primaryButtonDisabled]}
           >
             {isSubmitting ? (
-              <ActivityIndicator color="#1F2B32" />
+              <ActivityIndicator color={theme.primaryForeground} />
             ) : (
               <Text style={styles.primaryButtonText}>
                 {isRegister ? 'Create account' : 'Login'}
@@ -272,7 +273,7 @@ function LabeledInput({
         autoCorrect={false}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#9A9285"
+        placeholderTextColor={theme.mutedForeground}
         secureTextEntry={secureTextEntry}
         style={styles.input}
         value={value}
@@ -417,7 +418,7 @@ function OnboardingScreen({
           style={[styles.primaryButton, styles.onboardingPrimaryButton, isSaving && styles.primaryButtonDisabled]}
         >
           {isSaving ? (
-            <ActivityIndicator color="#1F2B32" />
+            <ActivityIndicator color={theme.primaryForeground} />
           ) : (
             <Text style={styles.primaryButtonText}>{step < 2 ? 'Next' : 'Start voting'}</Text>
           )}
@@ -641,7 +642,7 @@ function SignedInHome() {
 
           {isLoading ? (
             <View style={styles.feedState}>
-              <ActivityIndicator color="#B0413E" size="large" />
+              <ActivityIndicator color={theme.destructive} size="large" />
               <Text style={styles.loadingText}>Loading trending polls</Text>
             </View>
           ) : (
@@ -755,7 +756,7 @@ function LeaderboardPanel({
 
       {isLoading ? (
         <View style={styles.inlineState}>
-          <ActivityIndicator color="#B0413E" />
+          <ActivityIndicator color={theme.destructive} />
           <Text style={styles.inlineStateText}>Loading real rankings</Text>
         </View>
       ) : error ? (
@@ -914,7 +915,7 @@ function PollOptionButton({
           {option.text}
         </Text>
         {isVoting ? (
-          <ActivityIndicator color="#B0413E" />
+          <ActivityIndicator color={theme.destructive} />
         ) : showResults ? (
           <Text style={styles.optionPercent}>{percentage}%</Text>
         ) : null}
@@ -936,10 +937,24 @@ function formatRelativeDate(date: Date) {
   return `in ${diffDays}d`;
 }
 
+/**
+ * Status colors for banners/fills that don't have a shared web equivalent
+ * yet (Frontend/app/globals.css has no warning/caution tokens either -
+ * those are handled ad hoc there too). Kept local and separate from
+ * `theme` so it's clear these aren't part of the shared design tokens.
+ */
+const statusColors = {
+  highlightBackground: '#FFF6D8',
+  highlightText: '#5C4A12',
+  errorBackground: '#FBE9E7',
+  errorText: '#9F2E2B',
+  voteResultFill: '#F8E7B1',
+};
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F7F5EF',
+    backgroundColor: theme.background,
   },
   onboardingContainer: {
     flexGrow: 1,
@@ -951,8 +966,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   onboardingCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 14,
@@ -964,7 +979,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   onboardingPointBullet: {
-    backgroundColor: '#F4D35E',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     height: 14,
     marginTop: 5,
@@ -975,13 +990,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   onboardingPointTitle: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 17,
     fontWeight: '900',
     letterSpacing: 0,
   },
   onboardingPointCopy: {
-    color: '#54514A',
+    color: theme.mutedForeground,
     fontSize: 15,
     letterSpacing: 0,
     lineHeight: 22,
@@ -992,25 +1007,25 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   categoryChoice: {
-    backgroundColor: '#F9F7F2',
-    borderColor: '#DED6C8',
+    backgroundColor: theme.muted,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     paddingHorizontal: 13,
     paddingVertical: 10,
   },
   categoryChoiceActive: {
-    backgroundColor: '#233D4D',
-    borderColor: '#233D4D',
+    backgroundColor: theme.foreground,
+    borderColor: theme.foreground,
   },
   categoryChoiceText: {
-    color: '#4C473F',
+    color: theme.mutedForeground,
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0,
   },
   categoryChoiceTextActive: {
-    color: '#FFFFFF',
+    color: theme.primaryForeground,
   },
   onboardingDots: {
     flexDirection: 'row',
@@ -1018,13 +1033,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   onboardingDot: {
-    backgroundColor: '#DED6C8',
+    backgroundColor: theme.muted,
     borderRadius: 8,
     height: 8,
     width: 8,
   },
   onboardingDotActive: {
-    backgroundColor: '#B0413E',
+    backgroundColor: theme.destructive,
     width: 22,
   },
   onboardingActions: {
@@ -1037,8 +1052,8 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     minHeight: 50,
@@ -1046,7 +1061,7 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
   skipButtonText: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
@@ -1067,7 +1082,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   loadingText: {
-    color: '#54514A',
+    color: theme.mutedForeground,
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0,
@@ -1084,22 +1099,22 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   feedTitle: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 28,
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 34,
   },
   logoutButton: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
   logoutButtonText: {
-    color: '#B0413E',
+    color: theme.destructive,
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0,
@@ -1110,35 +1125,35 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   rewardBanner: {
-    backgroundColor: '#233D4D',
+    backgroundColor: theme.foreground,
     borderRadius: 8,
     gap: 4,
     marginBottom: 12,
     padding: 14,
   },
   rewardTitle: {
-    color: '#F4D35E',
+    color: theme.primary,
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
   },
   rewardCopy: {
-    color: '#E7EFF2',
+    color: theme.primaryForeground,
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0,
     lineHeight: 20,
   },
   pushNotice: {
-    backgroundColor: '#FFF6D8',
-    borderColor: '#F4D35E',
+    backgroundColor: statusColors.highlightBackground,
+    borderColor: theme.primary,
     borderRadius: 8,
     borderWidth: 1,
     marginBottom: 12,
     padding: 12,
   },
   pushNoticeText: {
-    color: '#5C4A12',
+    color: statusColors.highlightText,
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0,
@@ -1146,7 +1161,7 @@ const styles = StyleSheet.create({
   },
   feedError: {
     alignItems: 'center',
-    backgroundColor: '#FBE9E7',
+    backgroundColor: statusColors.errorBackground,
     borderRadius: 8,
     flexDirection: 'row',
     gap: 10,
@@ -1154,7 +1169,7 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   feedErrorText: {
-    color: '#9F2E2B',
+    color: statusColors.errorText,
     flex: 1,
     fontSize: 14,
     fontWeight: '700',
@@ -1162,13 +1177,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   retryButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.card,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   retryButtonText: {
-    color: '#9F2E2B',
+    color: statusColors.errorText,
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
@@ -1193,7 +1208,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   eyebrow: {
-    color: '#B0413E',
+    color: theme.destructive,
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0,
@@ -1201,27 +1216,27 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   title: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 36,
     fontWeight: '800',
     letterSpacing: 0,
     lineHeight: 42,
   },
   titleSmall: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 32,
     fontWeight: '800',
     letterSpacing: 0,
     lineHeight: 38,
   },
   subtitle: {
-    color: '#54514A',
+    color: theme.mutedForeground,
     fontSize: 17,
     lineHeight: 25,
     marginTop: 14,
   },
   segment: {
-    backgroundColor: '#EEE8DC',
+    backgroundColor: theme.muted,
     borderRadius: 8,
     flexDirection: 'row',
     padding: 4,
@@ -1233,27 +1248,27 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   segmentButtonActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.card,
   },
   segmentText: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 15,
     fontWeight: '800',
     letterSpacing: 0,
   },
   segmentTextActive: {
-    color: '#222222',
+    color: theme.foreground,
   },
   formPanel: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     padding: 18,
     gap: 14,
   },
   panelTitle: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0,
@@ -1263,25 +1278,25 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   inputLabel: {
-    color: '#4C473F',
+    color: theme.mutedForeground,
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0,
   },
   input: {
-    backgroundColor: '#F9F7F2',
-    borderColor: '#DED6C8',
+    backgroundColor: theme.muted,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 16,
     minHeight: 50,
     paddingHorizontal: 14,
   },
   errorText: {
-    backgroundColor: '#FBE9E7',
+    backgroundColor: statusColors.errorBackground,
     borderRadius: 8,
-    color: '#9F2E2B',
+    color: statusColors.errorText,
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0,
@@ -1289,42 +1304,42 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   apiPanel: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 6,
     padding: 16,
   },
   label: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0,
     textTransform: 'uppercase',
   },
   value: {
-    color: '#26231F',
+    color: theme.foreground,
     fontSize: 16,
     fontWeight: '600',
     lineHeight: 22,
   },
   profilePanel: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 18,
     padding: 18,
   },
   profileName: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: 0,
   },
   profileUsername: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0,
@@ -1336,8 +1351,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   metric: {
-    backgroundColor: '#F7F5EF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.background,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     flex: 1,
@@ -1345,13 +1360,13 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   metricValue: {
-    color: '#233D4D',
+    color: theme.foreground,
     fontSize: 24,
     fontWeight: '900',
     letterSpacing: 0,
   },
   metricLabel: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0,
@@ -1359,8 +1374,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   progressPanel: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 14,
@@ -1374,9 +1389,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   levelPill: {
-    backgroundColor: '#F4D35E',
+    backgroundColor: theme.primary,
     borderRadius: 8,
-    color: '#1F2B32',
+    color: theme.primaryForeground,
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
@@ -1386,34 +1401,34 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   progressTrack: {
-    backgroundColor: '#EEE8DC',
+    backgroundColor: theme.muted,
     borderRadius: 8,
     height: 12,
     overflow: 'hidden',
   },
   progressFill: {
-    backgroundColor: '#B0413E',
+    backgroundColor: theme.destructive,
     bottom: 0,
     left: 0,
     position: 'absolute',
     top: 0,
   },
   progressCopy: {
-    color: '#54514A',
+    color: theme.mutedForeground,
     fontSize: 15,
     letterSpacing: 0,
     lineHeight: 22,
   },
   smallButton: {
-    backgroundColor: '#F7F5EF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.background,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   smallButtonText: {
-    color: '#233D4D',
+    color: theme.foreground,
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
@@ -1424,15 +1439,15 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   inlineStateText: {
-    color: '#54514A',
+    color: theme.mutedForeground,
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0,
   },
   leaderboardRow: {
     alignItems: 'center',
-    backgroundColor: '#F9F7F2',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.muted,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -1440,11 +1455,11 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   leaderboardRowActive: {
-    backgroundColor: '#FFF6D8',
-    borderColor: '#F4D35E',
+    backgroundColor: statusColors.highlightBackground,
+    borderColor: theme.primary,
   },
   rankText: {
-    color: '#B0413E',
+    color: theme.destructive,
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
@@ -1454,13 +1469,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   leaderboardName: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
   },
   leaderboardUsername: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0,
@@ -1470,38 +1485,38 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   leaderboardXp: {
-    color: '#233D4D',
+    color: theme.foreground,
     fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0,
   },
   leaderboardLabel: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0,
     textTransform: 'uppercase',
   },
   actionPanel: {
-    backgroundColor: '#233D4D',
+    backgroundColor: theme.foreground,
     borderRadius: 8,
     padding: 20,
     gap: 14,
   },
   actionTitle: {
-    color: '#FFFFFF',
+    color: theme.primaryForeground,
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0,
   },
   actionCopy: {
-    color: '#DDE7EA',
+    color: theme.primaryForeground,
     fontSize: 16,
     lineHeight: 23,
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: '#F4D35E',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     minHeight: 50,
     paddingHorizontal: 16,
@@ -1511,50 +1526,50 @@ const styles = StyleSheet.create({
     opacity: 0.72,
   },
   primaryButtonText: {
-    color: '#1F2B32',
+    color: theme.primaryForeground,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0,
   },
   secondaryButton: {
     alignItems: 'center',
-    backgroundColor: '#F4D35E',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 13,
   },
   secondaryButtonText: {
-    color: '#1F2B32',
+    color: theme.primaryForeground,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0,
   },
   emptyState: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 12,
     padding: 22,
   },
   emptyTitle: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: 0,
     textAlign: 'center',
   },
   emptyCopy: {
-    color: '#54514A',
+    color: theme.mutedForeground,
     fontSize: 15,
     letterSpacing: 0,
     lineHeight: 22,
     textAlign: 'center',
   },
   pollCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 14,
@@ -1566,9 +1581,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   categoryPill: {
-    backgroundColor: '#F4D35E',
+    backgroundColor: theme.primary,
     borderRadius: 8,
-    color: '#1F2B32',
+    color: theme.primaryForeground,
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0,
@@ -1578,20 +1593,20 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   pollMeta: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0,
   },
   pollQuestion: {
-    color: '#222222',
+    color: theme.foreground,
     fontSize: 21,
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 27,
   },
   pollDescription: {
-    color: '#54514A',
+    color: theme.mutedForeground,
     fontSize: 15,
     letterSpacing: 0,
     lineHeight: 22,
@@ -1600,18 +1615,18 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   optionButton: {
-    backgroundColor: '#F9F7F2',
-    borderColor: '#DED6C8',
+    backgroundColor: theme.muted,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     minHeight: 52,
     overflow: 'hidden',
   },
   optionButtonSelected: {
-    borderColor: '#B0413E',
+    borderColor: theme.destructive,
   },
   optionFill: {
-    backgroundColor: '#F8E7B1',
+    backgroundColor: statusColors.voteResultFill,
     bottom: 0,
     left: 0,
     position: 'absolute',
@@ -1627,7 +1642,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   optionText: {
-    color: '#26231F',
+    color: theme.foreground,
     flex: 1,
     fontSize: 16,
     fontWeight: '800',
@@ -1635,16 +1650,16 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   optionTextSelected: {
-    color: '#9F2E2B',
+    color: statusColors.errorText,
   },
   optionPercent: {
-    color: '#233D4D',
+    color: theme.foreground,
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
   },
   pollFooter: {
-    color: '#756F63',
+    color: theme.mutedForeground,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0,
