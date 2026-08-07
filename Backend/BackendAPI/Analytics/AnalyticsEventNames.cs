@@ -8,4 +8,6 @@ public static class AnalyticsEventNames
     public const string LevelUp = "level_up";
     public const string AchievementUnlocked = "achievement_unlocked";
     public const string GameRoundCompleted = "game_round_completed";
+    public const string PollTossAccepted = "poll_toss_server_accepted";
+    public const string PollTossExpired = "poll_toss_server_expired";
 }

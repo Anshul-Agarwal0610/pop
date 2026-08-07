@@ -9,6 +9,13 @@ export const analyticsEventProperties = {
   game_round_started: ["round_id", "surface", "category"],
   game_round_completed: ["round_id", "surface", "outcome", "xp_awarded"],
   gamification_satisfaction_submitted: ["score", "reason_code"],
+  poll_toss_opened: ["surface", "reduced_motion"],
+  poll_toss_invitation_created: ["surface"],
+  poll_toss_channel_selected: ["surface", "channel"],
+  poll_toss_animation_started: ["trigger", "reduced_motion", "haptics_used"],
+  poll_toss_recipient_arrived: ["entry_method"],
+  poll_toss_completed: ["surface", "channel"],
+  poll_toss_ended: ["surface", "outcome"],
 } as const
 
 export interface AnalyticsEvents {
@@ -22,6 +29,13 @@ export interface AnalyticsEvents {
   game_round_started: { round_id: string; surface: "feed" | "detail"; category: string }
   game_round_completed: { round_id: string; surface: "feed" | "detail"; outcome: "voted"; xp_awarded: number }
   gamification_satisfaction_submitted: { score: 1 | 2 | 3 | 4 | 5; reason_code?: "fun" | "motivating" | "confusing" | "distracting" }
+  poll_toss_opened: { surface: "feed" | "detail"; reduced_motion: boolean }
+  poll_toss_invitation_created: { surface: "feed" | "detail" }
+  poll_toss_channel_selected: { surface: "feed" | "detail"; channel: "qr" | "share_sheet" | "link" | "room_code" }
+  poll_toss_animation_started: { trigger: "button" | "gesture"; reduced_motion: boolean; haptics_used: boolean }
+  poll_toss_recipient_arrived: { entry_method: "link" | "room_code" }
+  poll_toss_completed: { surface: "feed" | "detail"; channel: "qr" | "share_sheet" | "link" | "room_code" }
+  poll_toss_ended: { surface: "feed" | "detail"; outcome: "cancelled" | "failed" | "expired" }
 }
 
 export type AnalyticsEventName = keyof AnalyticsEvents

@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils"
 import { CategoryBadge } from "@/components/category-badge"
 import { ShareButton } from "@/components/share-button"
+import { PollTossButton } from "@/components/poll-toss/poll-toss-button"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
 import { pollsApi } from "@/lib/api"
 import { pollShareText, resultShareText } from "@/lib/share"
@@ -302,6 +303,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
             </div>
 
             <div className="flex flex-col items-end gap-2">
+              <PollTossButton poll={poll} surface="feed" className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background" />
               <ShareButton
                 category={poll.category}
                 className="bg-background/85 shadow-lg backdrop-blur-sm hover:bg-background"
