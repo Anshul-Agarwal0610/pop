@@ -19,16 +19,21 @@ namespace BackendAPI.Repository
         /// Empty or null SourceUrls are always inserted.
         /// </summary>
         public async Task SaveBatchAsync(IEnumerable<TrendingTopic> topics)
+            => _ = await SaveBatchWithResultAsync(topics);
+
+        public async Task<TopicSaveResult> SaveBatchWithResultAsync(IEnumerable<TrendingTopic> topics, string? correlationId = null)
         {
-            if (!topics.Any()) return;
+            var batch = topics.ToList();
+            if (batch.Count == 0) return new(0, 0, 0);
 
             using var conn = _context.CreateConnection();
+            var inserted = 0;
 
-            foreach (var topic in topics)
+            foreach (var topic in batch)
             {
                 var normalizedCategory = CategoryCatalog.NormalizeName(topic.Category);
 
-                await conn.ExecuteAsync(@"
+                inserted += await conn.ExecuteAsync(@"
                     IF NOT EXISTS (
                         SELECT 1 FROM TrendingTopics
                         WHERE (SourceUrl = @SourceUrl AND SourceUrl <> '')
@@ -37,9 +42,9 @@ namespace BackendAPI.Repository
                     )
                     BEGIN
                         INSERT INTO TrendingTopics
-                            (Title, Summary, SourceType, SourceUrl, ThumbnailUrl, Publisher, PublishedAt, Category, FetchedAt, IsProcessed, ConversionStatus, AttemptCount)
+                            (Title, Summary, SourceType, SourceUrl, ThumbnailUrl, Publisher, PublishedAt, Category, FetchedAt, IsProcessed, ConversionStatus, AttemptCount, CorrelationId)
                         VALUES
-                            (@Title, @Summary, @SourceType, @SourceUrl, @ThumbnailUrl, @Publisher, @PublishedAt, @Category, GETUTCDATE(), 0, 'Pending', 0)
+                            (@Title, @Summary, @SourceType, @SourceUrl, @ThumbnailUrl, @Publisher, @PublishedAt, @Category, GETUTCDATE(), 0, 'Pending', 0, @CorrelationId)
                     END",
                     new
                     {
@@ -50,9 +55,11 @@ namespace BackendAPI.Repository
                         topic.ThumbnailUrl,
                         topic.Publisher,
                         topic.PublishedAt,
-                        Category = normalizedCategory
+                        Category = normalizedCategory,
+                        CorrelationId = topic.CorrelationId ?? correlationId
                     });
             }
+            return new(batch.Count, inserted, batch.Count - inserted);
         }
 
         public async Task<IEnumerable<TrendingTopic>> GetUnprocessedAsync(int maxCount = 50)
@@ -153,6 +160,42 @@ namespace BackendAPI.Repository
             await conn.ExecuteAsync(@"UPDATE TrendingTopics SET GenerationStatus='Terminal',TerminalDecision=LEFT(@Decision,500),
               IsProcessed=1,ProcessedAt=GETUTCDATE(),LeaseId=NULL,LeaseExpiresAtUtc=NULL WHERE Id=@Id AND LeaseId=@LeaseId",
               new { Id=id,LeaseId=leaseId,Decision=decision });
+        }
+
+        public async Task<PipelineBacklog> GetBacklogAsync()
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.QuerySingleAsync<PipelineBacklog>(@"
+                SELECT
+                  SUM(CASE WHEN IsProcessed=0 AND ConversionStatus='Pending' THEN 1 ELSE 0 END) Queued,
+                  SUM(CASE WHEN IsProcessed=0 AND GenerationStatus='InProgress' THEN 1 ELSE 0 END) Processing,
+                  SUM(CASE WHEN IsProcessed=0 AND ConversionStatus='RetryPending' THEN 1 ELSE 0 END) RetryPending,
+                  MIN(CASE WHEN IsProcessed=0 THEN COALESCE(NextAttemptAt,FetchedAt) END) OldestEligibleAt
+                FROM TrendingTopics");
+        }
+
+        public async Task<int> RequeueAsync(int maxCount)
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.ExecuteAsync(@"
+                WITH candidates AS (
+                  SELECT TOP (@Count) * FROM TrendingTopics WITH (UPDLOCK,READPAST)
+                  WHERE ConversionStatus IN ('RetryPending','NeedsReview') ORDER BY LastAttemptAt)
+                UPDATE candidates SET ConversionStatus='RetryPending',NextAttemptAt=GETUTCDATE(),IsProcessed=0,ProcessedAt=NULL",
+                new { Count = Math.Clamp(maxCount, 1, 100) });
+        }
+
+        public async Task<PipelineControlState> GetControlStateAsync()
+        {
+            using var conn = _context.CreateConnection();
+            return await conn.QuerySingleAsync<PipelineControlState>("SELECT GenerationPaused,UpdatedAt,UpdatedBy FROM PipelineControl WHERE Id=1");
+        }
+
+        public async Task SetGenerationPausedAsync(bool paused, string? operatorId)
+        {
+            using var conn = _context.CreateConnection();
+            await conn.ExecuteAsync("UPDATE PipelineControl SET GenerationPaused=@Paused,UpdatedAt=GETUTCDATE(),UpdatedBy=@OperatorId WHERE Id=1",
+                new { Paused = paused, OperatorId = operatorId });
         }
     }
 }

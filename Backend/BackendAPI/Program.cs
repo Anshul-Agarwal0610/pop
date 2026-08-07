@@ -13,6 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
 using BackendAPI.Analytics;
+using BackendAPI.Observability;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using System.Text.Json;
@@ -57,6 +58,8 @@ builder.Services.AddAuthorization(options =>
 
 // ── Dapper context ────────────────────────────────────────────────────────
 builder.Services.AddSingleton<DapperContext>();
+builder.Services.AddSingleton<PipelineMetrics>();
+builder.Services.AddSingleton<IPipelineRuntimeHealth, PipelineRuntimeHealth>();
 
 // ── Repositories ──────────────────────────────────────────────────────────
 builder.Services.AddScoped<IAuthRepository,          AuthRepository>();
@@ -207,19 +210,19 @@ using (var scope = app.Services.CreateScope())
     // US-06: Ingest trending topics every 30 minutes
     recurringJobs.AddOrUpdate<IngestionJob>(
         "ingest-trending-topics",
-        job => job.RunAsync(),
+        job => job.RunAsync(null, 100),
         builder.Configuration["Ingestion:Cron"] ?? "*/30 * * * *");
 
     // US-08: Generate polls from unprocessed topics every 35 minutes
     // (offset by 5 min so ingestion always runs first)
     recurringJobs.AddOrUpdate<PollGenerationJob>(
         "generate-polls-from-topics",
-        job => job.RunAsync(),
+        job => job.RunAsync(null),
         builder.Configuration["PollGeneration:Cron"] ?? "5/35 * * * *");
 
     if (builder.Configuration.GetValue<bool>("PollGeneration:RunOnStartup"))
     {
-        BackgroundJob.Enqueue<PollGenerationJob>(job => job.RunAsync());
+        BackgroundJob.Enqueue<PollGenerationJob>(job => job.RunAsync(null));
     }
 
     recurringJobs.AddOrUpdate<RetentionNotificationJob>(

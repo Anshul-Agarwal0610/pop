@@ -171,5 +171,6 @@ namespace BackendAPI.Models
         public string? LastFailureReason { get; set; }
         public string? LastGenerationMethod { get; set; }
         public long? GeneratedPollId { get; set; }
+        public string? CorrelationId { get; set; }
     }
 }
