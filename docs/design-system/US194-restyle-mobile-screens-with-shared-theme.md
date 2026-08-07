@@ -1,4 +1,6 @@
-# US168: Restyle existing mobile screens with the shared theme
+# US194: Restyle existing mobile screens with the shared theme
+
+GitHub issue: https://github.com/Anshul-Agarwal0610/pop/issues/194
 
 ## User story
 
@@ -8,7 +10,7 @@ so that the mobile and web experience feels like the same product.
 
 ## Description
 
-Replace the hardcoded hex values throughout `apps/mobile/App.tsx`'s `StyleSheet.create` (and inline color props like `ActivityIndicator color="#B0413E"`) with the theme constants from US167. Purely a visual restyle — no screen logic, navigation, or API behavior changes.
+Replace the hardcoded hex values throughout `apps/mobile/App.tsx`'s `StyleSheet.create` (and inline color props like `ActivityIndicator color="#B0413E"`) with the theme constants from US193. Purely a visual restyle — no screen logic, navigation, or API behavior changes.
 
 ## Acceptance criteria
 
@@ -21,7 +23,7 @@ Replace the hardcoded hex values throughout `apps/mobile/App.tsx`'s `StyleSheet.
 ## Technical notes
 
 - Touches `apps/mobile/App.tsx` only (~1652 lines; all screens currently live in this one file)
-- Depends on US167's theme module existing first
+- Depends on US193's theme module existing first
 - This is a styling pass, not a component refactor — reuse existing structure
 
 ## Out of scope
