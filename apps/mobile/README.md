@@ -40,6 +40,10 @@ Push reminders use:
 
 Expo push does not require a committed secret for this MVP path. Production EAS builds should still define a stable Expo project and keep any future service credentials in EAS environment settings, not in the repo.
 
+## Design tokens
+
+Colors and corner radius come from the shared design tokens, not hardcoded hex values. See [`docs/design-system/token-convention.md`](../../docs/design-system/token-convention.md) for where tokens live, how to consume `./src/theme`, and how to add a new one.
+
 ## Requirements
 
 - Node.js 20.19.4 or newer is recommended for the current Expo package set.
