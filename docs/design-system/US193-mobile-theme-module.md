@@ -1,4 +1,6 @@
-# US167: Mobile theme module built from shared design tokens
+# US193: Mobile theme module built from shared design tokens
+
+GitHub issue: https://github.com/Anshul-Agarwal0610/pop/issues/193
 
 ## User story
 
@@ -8,7 +10,7 @@ so that mobile screens can reference the same colors/radius as the web app inste
 
 ## Description
 
-Create a theme module (e.g. `apps/mobile/src/theme/colors.ts`) that imports the shared tokens from US166 and exposes named constants mirroring the web's semantic token names (`background`, `foreground`, `primary`, `secondary`, `accent`, `muted`, `destructive`, `border`). This story only creates the module — it does not yet apply it to any screen.
+Create a theme module (e.g. `apps/mobile/src/theme/colors.ts`) that imports the shared tokens from US192 and exposes named constants mirroring the web's semantic token names (`background`, `foreground`, `primary`, `secondary`, `accent`, `muted`, `destructive`, `border`). This story only creates the module — it does not yet apply it to any screen.
 
 ## Acceptance criteria
 
@@ -20,11 +22,11 @@ Create a theme module (e.g. `apps/mobile/src/theme/colors.ts`) that imports the 
 
 ## Technical notes
 
-- Depends on US166's shared token source
+- Depends on US192's shared token source
 - Follow existing `apps/mobile/src` folder conventions (`config`/`context`/`lib`/`types`)
 - Plain exported constants are enough — no theming library needed at this scale
 
 ## Out of scope
 
-- Applying the theme to `App.tsx`'s existing styles (see US168)
+- Applying the theme to `App.tsx`'s existing styles (see US194)
 - Dark mode support on mobile — web has a dark theme; whether mobile needs one is an open question, not assumed here
