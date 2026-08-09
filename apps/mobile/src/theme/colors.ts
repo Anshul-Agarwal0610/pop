@@ -1,3 +1,5 @@
+import type { TextStyle } from 'react-native';
+
 import tokens from '../../../../design-tokens/tokens.json';
 
 export type ColorScheme = 'light' | 'dark';
@@ -80,3 +82,28 @@ export interface SpacingScale {
 }
 
 export const spacing: SpacingScale = tokens.spacing;
+
+export interface FontSizeScale {
+  xs: number;
+  sm: number;
+  base: number;
+  lg: number;
+  xl: number;
+  '2xl': number;
+  '3xl': number;
+  '4xl': number;
+}
+
+export interface FontWeightScale {
+  semibold: TextStyle['fontWeight'];
+  bold: TextStyle['fontWeight'];
+  extrabold: TextStyle['fontWeight'];
+  black: TextStyle['fontWeight'];
+}
+
+export interface Typography {
+  fontSize: FontSizeScale;
+  fontWeight: FontWeightScale;
+}
+
+export const typography: Typography = tokens.typography as Typography;
