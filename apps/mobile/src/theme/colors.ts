@@ -58,6 +58,22 @@ export interface RadiusScale {
   md: number;
   lg: number;
   xl: number;
+  '3xl': number;
+  full: number;
 }
 
 export const radius: RadiusScale = tokens.radius;
+
+export interface SpacingScale {
+  '1': number;
+  '2': number;
+  '3': number;
+  '4': number;
+  '5': number;
+  '6': number;
+  '8': number;
+  '10': number;
+  '12': number;
+}
+
+export const spacing: SpacingScale = tokens.spacing;

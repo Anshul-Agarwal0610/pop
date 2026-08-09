@@ -1,5 +1,5 @@
-export { colors, radius } from './colors';
-export type { ColorScheme, ThemeColors, RadiusScale } from './colors';
+export { colors, radius, spacing } from './colors';
+export type { ColorScheme, ThemeColors, RadiusScale, SpacingScale } from './colors';
 
 import { colors } from './colors';
 
