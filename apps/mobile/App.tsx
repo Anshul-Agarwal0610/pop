@@ -23,7 +23,7 @@ import { hasCompletedOnboarding, markOnboardingComplete } from './src/lib/sessio
 import type { AuthUser } from './src/types/auth';
 import type { ApiPoll, ApiPollOption, VoteReward } from './src/types/poll';
 import { track } from './src/lib/analytics/client';
-import { theme } from './src/theme';
+import { theme, typography } from './src/theme';
 
 type AuthMode = 'login' | 'register';
 type SignedInTab = 'home' | 'profile' | 'leaderboard';
@@ -991,13 +991,13 @@ const styles = StyleSheet.create({
   },
   onboardingPointTitle: {
     color: theme.foreground,
-    fontSize: 17,
-    fontWeight: '900',
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   onboardingPointCopy: {
     color: theme.mutedForeground,
-    fontSize: 15,
+    fontSize: typography.fontSize.sm,
     letterSpacing: 0,
     lineHeight: 22,
   },
@@ -1020,8 +1020,8 @@ const styles = StyleSheet.create({
   },
   categoryChoiceText: {
     color: theme.mutedForeground,
-    fontSize: 14,
-    fontWeight: '900',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   categoryChoiceTextActive: {
@@ -1062,8 +1062,8 @@ const styles = StyleSheet.create({
   },
   skipButtonText: {
     color: theme.mutedForeground,
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   keyboard: {
@@ -1083,8 +1083,8 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: theme.mutedForeground,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
   },
   feedShell: {
@@ -1100,8 +1100,8 @@ const styles = StyleSheet.create({
   },
   feedTitle: {
     color: theme.foreground,
-    fontSize: 28,
-    fontWeight: '900',
+    fontSize: typography.fontSize['3xl'],
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
     lineHeight: 34,
   },
@@ -1115,8 +1115,8 @@ const styles = StyleSheet.create({
   },
   logoutButtonText: {
     color: theme.destructive,
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   compactStats: {
@@ -1133,14 +1133,14 @@ const styles = StyleSheet.create({
   },
   rewardTitle: {
     color: theme.primary,
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   rewardCopy: {
     color: theme.primaryForeground,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: 20,
   },
@@ -1154,8 +1154,8 @@ const styles = StyleSheet.create({
   },
   pushNoticeText: {
     color: statusColors.highlightText,
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
     lineHeight: 20,
   },
@@ -1171,8 +1171,8 @@ const styles = StyleSheet.create({
   feedErrorText: {
     color: statusColors.errorText,
     flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: 20,
   },
@@ -1184,8 +1184,8 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: statusColors.errorText,
-    fontSize: 13,
-    fontWeight: '900',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   feedState: {
@@ -1209,29 +1209,29 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: theme.destructive,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     marginBottom: 10,
     textTransform: 'uppercase',
   },
   title: {
     color: theme.foreground,
-    fontSize: 36,
-    fontWeight: '800',
+    fontSize: typography.fontSize['4xl'],
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
     lineHeight: 42,
   },
   titleSmall: {
     color: theme.foreground,
-    fontSize: 32,
-    fontWeight: '800',
+    fontSize: typography.fontSize['3xl'],
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
     lineHeight: 38,
   },
   subtitle: {
     color: theme.mutedForeground,
-    fontSize: 17,
+    fontSize: typography.fontSize.lg,
     lineHeight: 25,
     marginTop: 14,
   },
@@ -1252,8 +1252,8 @@ const styles = StyleSheet.create({
   },
   segmentText: {
     color: theme.mutedForeground,
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   segmentTextActive: {
@@ -1269,8 +1269,8 @@ const styles = StyleSheet.create({
   },
   panelTitle: {
     color: theme.foreground,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
     marginBottom: 2,
   },
@@ -1279,8 +1279,8 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     color: theme.mutedForeground,
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   input: {
@@ -1289,7 +1289,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     color: theme.foreground,
-    fontSize: 16,
+    fontSize: typography.fontSize.base,
     minHeight: 50,
     paddingHorizontal: 14,
   },
@@ -1297,8 +1297,8 @@ const styles = StyleSheet.create({
     backgroundColor: statusColors.errorBackground,
     borderRadius: 8,
     color: statusColors.errorText,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: 20,
     padding: 12,
@@ -1313,15 +1313,15 @@ const styles = StyleSheet.create({
   },
   label: {
     color: theme.mutedForeground,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     textTransform: 'uppercase',
   },
   value: {
     color: theme.foreground,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
     lineHeight: 22,
   },
   profilePanel: {
@@ -1334,14 +1334,14 @@ const styles = StyleSheet.create({
   },
   profileName: {
     color: theme.foreground,
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: typography.fontSize['2xl'],
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   profileUsername: {
     color: theme.mutedForeground,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     marginTop: 4,
   },
@@ -1361,14 +1361,14 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     color: theme.foreground,
-    fontSize: 24,
-    fontWeight: '900',
+    fontSize: typography.fontSize['2xl'],
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   metricLabel: {
     color: theme.mutedForeground,
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
     marginTop: 2,
     textTransform: 'uppercase',
@@ -1392,8 +1392,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.primary,
     borderRadius: 8,
     color: theme.primaryForeground,
-    fontSize: 13,
-    fontWeight: '900',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
     overflow: 'hidden',
     paddingHorizontal: 10,
@@ -1415,7 +1415,7 @@ const styles = StyleSheet.create({
   },
   progressCopy: {
     color: theme.mutedForeground,
-    fontSize: 15,
+    fontSize: typography.fontSize.sm,
     letterSpacing: 0,
     lineHeight: 22,
   },
@@ -1429,8 +1429,8 @@ const styles = StyleSheet.create({
   },
   smallButtonText: {
     color: theme.foreground,
-    fontSize: 13,
-    fontWeight: '900',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   inlineState: {
@@ -1440,8 +1440,8 @@ const styles = StyleSheet.create({
   },
   inlineStateText: {
     color: theme.mutedForeground,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
   },
   leaderboardRow: {
@@ -1460,8 +1460,8 @@ const styles = StyleSheet.create({
   },
   rankText: {
     color: theme.destructive,
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
     minWidth: 38,
   },
@@ -1470,14 +1470,14 @@ const styles = StyleSheet.create({
   },
   leaderboardName: {
     color: theme.foreground,
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   leaderboardUsername: {
     color: theme.mutedForeground,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     marginTop: 2,
   },
@@ -1486,14 +1486,14 @@ const styles = StyleSheet.create({
   },
   leaderboardXp: {
     color: theme.foreground,
-    fontSize: 18,
-    fontWeight: '900',
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   leaderboardLabel: {
     color: theme.mutedForeground,
-    fontSize: 11,
-    fontWeight: '900',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
     textTransform: 'uppercase',
   },
@@ -1505,13 +1505,13 @@ const styles = StyleSheet.create({
   },
   actionTitle: {
     color: theme.primaryForeground,
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   actionCopy: {
     color: theme.primaryForeground,
-    fontSize: 16,
+    fontSize: typography.fontSize.base,
     lineHeight: 23,
   },
   primaryButton: {
@@ -1527,8 +1527,8 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: theme.primaryForeground,
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   secondaryButton: {
@@ -1540,8 +1540,8 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: theme.primaryForeground,
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   emptyState: {
@@ -1555,14 +1555,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: theme.foreground,
-    fontSize: 20,
-    fontWeight: '900',
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
     textAlign: 'center',
   },
   emptyCopy: {
     color: theme.mutedForeground,
-    fontSize: 15,
+    fontSize: typography.fontSize.sm,
     letterSpacing: 0,
     lineHeight: 22,
     textAlign: 'center',
@@ -1584,8 +1584,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.primary,
     borderRadius: 8,
     color: theme.primaryForeground,
-    fontSize: 12,
-    fontWeight: '900',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
     overflow: 'hidden',
     paddingHorizontal: 10,
@@ -1594,20 +1594,20 @@ const styles = StyleSheet.create({
   },
   pollMeta: {
     color: theme.mutedForeground,
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   pollQuestion: {
     color: theme.foreground,
-    fontSize: 21,
-    fontWeight: '900',
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
     lineHeight: 27,
   },
   pollDescription: {
     color: theme.mutedForeground,
-    fontSize: 15,
+    fontSize: typography.fontSize.sm,
     letterSpacing: 0,
     lineHeight: 22,
   },
@@ -1644,8 +1644,8 @@ const styles = StyleSheet.create({
   optionText: {
     color: theme.foreground,
     flex: 1,
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
     lineHeight: 22,
   },
@@ -1654,14 +1654,14 @@ const styles = StyleSheet.create({
   },
   optionPercent: {
     color: theme.foreground,
-    fontSize: 15,
-    fontWeight: '900',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   pollFooter: {
     color: theme.mutedForeground,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
   },
 });
