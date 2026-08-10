@@ -35,6 +35,13 @@ export function pollResultShareUrl(pollId: number | string) {
   return `${pollShareUrl(pollId)}?view=results`
 }
 
+export function popLiveInvitationUrl(opaqueToken: string) {
+  if (!/^[A-Za-z0-9_-]{16,256}$/.test(opaqueToken)) throw new Error("Invalid invitation token")
+  const base = appBaseUrl()
+  if (!base || !base.startsWith("https://")) throw new Error("PoP Live invitations require a public HTTPS base URL")
+  return `${base}/live/join/${opaqueToken}`
+}
+
 export function pollShareText(poll: ShareablePoll) {
   return `${poll.question}${poll.totalVotes != null ? ` (${poll.totalVotes.toLocaleString()} votes)` : ""}`
 }
