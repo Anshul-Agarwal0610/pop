@@ -81,6 +81,7 @@ builder.Services.AddScoped<IGeneratedPollCleanupRepository, GeneratedPollCleanup
 builder.Services.AddScoped<IGeneratedPollCleanupClassifier, GeneratedPollCleanupClassifier>();
 builder.Services.AddScoped<IGeneratedPollCleanupService, GeneratedPollCleanupService>();
 builder.Services.AddSingleton<ISystemClock,           SystemClock>();
+builder.Services.AddSingleton<PopLiveMetrics>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
@@ -91,6 +92,7 @@ builder.Services.AddSingleton<IProviderResilienceCoordinator, ProviderResilience
 builder.Services.Configure<AnalyticsOptions>(builder.Configuration.GetSection(AnalyticsOptions.Section));
 builder.Services.AddSingleton<IAnalyticsOutbox, AnalyticsOutbox>();
 builder.Services.AddSingleton<IFeatureFlagService, FeatureFlagService>();
+builder.Services.AddScoped<IPopLiveAnalytics, PopLiveAnalytics>();
 builder.Services.AddHostedService<AnalyticsDispatcher>();
 builder.Services.AddHttpClient<IPushNotificationService, ExpoPushNotificationService>();
 builder.Services.AddScoped<IRssIngestionService,     RssIngestionService>();
