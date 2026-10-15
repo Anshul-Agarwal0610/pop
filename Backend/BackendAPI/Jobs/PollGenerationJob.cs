@@ -18,17 +18,23 @@ public class PollGenerationJob
     private readonly TimeProvider _time;
     private readonly IGeneratedPollQualityGate _qualityGate;
     private readonly PipelineMetrics _metrics;
+    private readonly PhaseOneGeneration? _phaseOne;
 
     public PollGenerationJob(ITrendingTopicRepository topics, IPollsRepository polls, IPollGenerationService generator,
         IConfiguration config, ILogger<PollGenerationJob> logger, IRetryDelayPolicy retryPolicy, TimeProvider time,
-        IGeneratedPollQualityGate qualityGate, PipelineMetrics metrics)
-        => (_topics, _polls, _generator, _config, _logger, _retryPolicy, _time, _qualityGate, _metrics) =
-            (topics, polls, generator, config, logger, retryPolicy, time, qualityGate, metrics);
+        IGeneratedPollQualityGate qualityGate, PipelineMetrics metrics, PhaseOneGeneration? phaseOne = null)
+        => (_topics, _polls, _generator, _config, _logger, _retryPolicy, _time, _qualityGate, _metrics, _phaseOne) =
+            (topics, polls, generator, config, logger, retryPolicy, time, qualityGate, metrics, phaseOne);
 
     [DisableConcurrentExecution(timeoutInSeconds: 600)]
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(int? requestedCount = null)
     {
+        if (_config.GetValue("PhaseOne:Enabled", false))
+        {
+            if (_phaseOne is null) throw new InvalidOperationException("Phase-one services are missing");
+            await _phaseOne.RunAsync(requestedCount); return;
+        }
         if ((await _topics.GetControlStateAsync()).GenerationPaused)
         { _logger.LogInformation("Poll generation is paused"); return; }
         var limit = Math.Max(1, _config.GetValue("PollGen:RetryLimit", 3));

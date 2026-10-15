@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
 import { apiGoogleLogin } from "@/lib/auth"
+import Link from "next/link"
 
 // Inline Google SVG icon
 function GoogleIcon() {
@@ -35,6 +36,7 @@ export function GoogleButton({ onSuccess }: { onSuccess: () => void }) {
   const { login } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState("")
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
@@ -48,7 +50,7 @@ export function GoogleButton({ onSuccess }: { onSuccess: () => void }) {
 
         // For the backend we need an ID token — use the credential flow instead
         // This path uses access_token to fetch the user info directly
-        const data = await apiGoogleLogin(tokenResponse.access_token)
+        const data = await apiGoogleLogin(tokenResponse.access_token, true)
         login(data)
         onSuccess()
       } catch (err: unknown) {
@@ -63,12 +65,16 @@ export function GoogleButton({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="space-y-2">
+      <label className="flex items-start gap-3 text-xs leading-5 text-muted-foreground">
+        <input type="checkbox" checked={acceptedTerms} onChange={event => setAcceptedTerms(event.target.checked)} className="mt-1 h-4 w-4 accent-primary" />
+        <span>I agree to the <Link href="/terms" className="font-semibold text-primary hover:underline">Terms and Community Guidelines</Link>.</span>
+      </label>
       <Button
         type="button"
         variant="outline"
         className="w-full gap-2"
         onClick={() => googleLogin()}
-        disabled={loading}
+        disabled={loading || !acceptedTerms}
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />

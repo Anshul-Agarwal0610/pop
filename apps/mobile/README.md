@@ -1,5 +1,30 @@
 # Pollify Mobile
 
+## Mobile screens
+
+The mobile app has a native Discover → Vote → Results flow, with the same API contracts as the web app. The bottom navigation includes Home, Explore, Ranks, Profile, and More.
+
+- Home uses the personalized feed; Explore searches all polls through the API with category filters.
+- The header has Create Poll and Notifications actions. Creation includes editable options, category, expiry, an optional source, and a review step before publishing.
+- More opens Games, Challenges, Achievements, Community, Wellness, voting history, and preferences.
+- Challenges show progress and eligible category browsing. Achievements include collection filters and earned profile titles.
+- Games support starting/resuming Opinion Sprint, optional timing, voting, completion summaries, and expired sessions.
+- Community supports people search, friend requests, accept/decline/remove/block actions, groups, invitations, and group rankings.
+- Wellness check-ins are private and use separate response endpoints. CSV export uses the native share sheet; deleting history requires confirmation.
+- Ranks supports weekly, all-time, and friends scopes. Profile refreshes account statistics and links to history, achievements, interests, notification preferences, and analytics consent.
+- Notifications can be marked read individually or together, and poll-related updates open the poll. Poll details also provide reporting.
+
+Business campaign management, moderation administration, and full social pagination/block-list management remain outside this consumer screen expansion. Google login requires configured OAuth client IDs. Expo Go still skips remote push registration; use a development build to test push delivery.
+
+### Verification
+
+```sh
+npm run typecheck
+npm test
+```
+
+Tests mock the backend to avoid publishing polls, voting, or changing a real account. They cover screen rendering, hub navigation, create/review/publish, failed notification updates, request contracts, and voting presentation rules. Native keyboard behavior, accessibility, game timing across device suspension, and CSV sharing should also be checked on a physical Android device.
+
 Expo React Native app for Pollify's Android-first mobile experience, with iOS support kept in the same codebase.
 
 The app uses the existing Pollify backend auth endpoints:
@@ -59,6 +84,8 @@ npm run android
 ```
 
 The app reads the backend URL from `EXPO_PUBLIC_API_URL`.
+Set `EXPO_PUBLIC_PRIVACY_POLICY_URL` to the deployed web app's public HTTPS `/privacy` page for release builds. The in-app Preferences screen uses this link and also provides permanent account deletion.
+Set `EXPO_PUBLIC_WEB_URL` to the deployed web app origin so native poll sharing includes a direct `/polls/{id}` link.
 
 For the Android emulator, use:
 
@@ -94,3 +121,15 @@ npm run build:android:production
 ```
 
 See `docs/android-release.md` for Play Store checklist, privacy policy requirements, credential handling, and submit instructions. Use `docs/android-smoke-test.md` before uploading an internal testing build.
+Use [`../../docs/google-play-data-safety.md`](../../docs/google-play-data-safety.md) as the Data Safety submission worksheet.
+# Google sign-in
+
+Configure Google OAuth clients before starting Expo:
+
+```env
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=your-android-client-id.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-ios-client-id.apps.googleusercontent.com
+```
+
+The Android OAuth client must use package `com.pollify.app` and the SHA-1 fingerprint of the signing certificate. Configure the same IDs on the API as `Google:ClientId`, `Google:AndroidClientId`, and `Google:IosClientId`.

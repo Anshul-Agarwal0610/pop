@@ -52,7 +52,6 @@ public sealed class GeneratedPollDuplicateDetector(IPollsRepository polls, IOpti
 
     private static string? CanonicalUrl(string? value)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return value?.Trim().TrimEnd('/').ToLowerInvariant();
-        return $"{uri.Scheme.ToLowerInvariant()}://{uri.Host.ToLowerInvariant()}{uri.AbsolutePath.TrimEnd('/')}";
+        return SourceIdentity.CanonicalUrl(value);
     }
 }

@@ -84,6 +84,33 @@ namespace BackendAPI.Controllers
             return Ok(history);
         }
 
+        [HttpPut("me/profile")]
+        [Authorize]
+        public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateProfileRequest request)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            try
+            {
+                var user = await _usersRepo.UpdateProfileAsync(userId.Value, request.DisplayName, request.AvatarUrl);
+                return user == null ? NotFound() : Ok(user);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpDelete("me")]
+        [Authorize]
+        public async Task<IActionResult> DeleteMyAccount()
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+            await _usersRepo.DeleteAccountAsync(userId.Value);
+            return NoContent();
+        }
+
         [HttpGet("me/streak")]
         [Authorize]
         public async Task<IActionResult> GetMyStreak()

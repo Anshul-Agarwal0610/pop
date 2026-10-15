@@ -16,7 +16,7 @@ public sealed class AnthropicLlmProvider : ILlmProvider
         var c = _options.CurrentValue.Providers[ProviderName];
         using var msg = new HttpRequestMessage(HttpMethod.Post, c.Endpoint);
         msg.Headers.Add("x-api-key", c.ApiKey); msg.Headers.Add("anthropic-version", "2023-06-01");
-        msg.Content = new StringContent(JsonSerializer.Serialize(new { model = c.Model, max_tokens = request.MaxTokens, system = request.SystemInstruction, messages = new[] { new { role = "user", content = request.UserPrompt } } }), Encoding.UTF8, "application/json");
+        msg.Content = new StringContent(JsonSerializer.Serialize(new { model = c.Model, max_tokens = request.MaxTokens, system = request.SystemInstruction, messages = new[] { new { role = "user", content = request.ResponseSchema is null ? request.UserPrompt : request.UserPrompt + "\nReturn only JSON matching this schema: " + request.ResponseSchema } } }), Encoding.UTF8, "application/json");
         return await Send(msg, c, ct);
     }
     private async Task<LlmProviderResult> Send(HttpRequestMessage msg, LlmProviderOptions c, CancellationToken ct)

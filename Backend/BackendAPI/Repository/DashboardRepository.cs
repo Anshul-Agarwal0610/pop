@@ -26,7 +26,12 @@ namespace BackendAPI.Repository
                 @"SELECT
                     COUNT(*) AS TotalPolls,
                     COALESCE(SUM(TotalVotes), 0) AS TotalVotes,
-                    SUM(CASE WHEN IsActive = 1 THEN 1 ELSE 0 END) AS ActivePolls
+                    COALESCE(SUM(CASE WHEN IsActive = 1 AND ExpiresAt > SYSUTCDATETIME() THEN 1 ELSE 0 END), 0) AS ActivePolls,
+                    (SELECT COUNT(*) FROM Users WHERE AuthProvider <> 'deleted') AS TotalUsers,
+                    (SELECT COUNT(*) FROM BusinessAccounts) AS BusinessAccounts,
+                    COALESCE(SUM(CASE WHEN IsSponsored = 1 THEN 1 ELSE 0 END), 0) AS SponsoredPolls,
+                    COALESCE(SUM(CASE WHEN ModerationStatus = 'PendingReview' THEN 1 ELSE 0 END), 0) AS PendingReview,
+                    COALESCE(SUM(CASE WHEN ModerationStatus = 'Flagged' THEN 1 ELSE 0 END), 0) AS FlaggedPolls
                   FROM Polls"
             ) ?? new DashboardStats();
 

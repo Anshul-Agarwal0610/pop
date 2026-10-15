@@ -44,6 +44,15 @@ function relativeTime(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
+function youtubeEmbedUrl(url: string | null) {
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    const id = parsed.hostname.includes("youtu.be") ? parsed.pathname.slice(1) : parsed.searchParams.get("v")
+    return id && /^[A-Za-z0-9_-]{6,}$/.test(id) ? `https://www.youtube-nocookie.com/embed/${id}` : null
+  } catch { return null }
+}
+
 function isNotFound(error: string | null) {
   return Boolean(error?.startsWith("API 404"))
 }
@@ -245,6 +254,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   }
 
   const style = sourceStyle(poll.sourceType)
+  const youtubeEmbed = poll.sourceType === "manual-youtube" ? youtubeEmbedUrl(poll.sourceUrl) : null
   const resultView = searchParams.get("view") === "results"
   const showResults = poll.hasVoted || expired || resultView
   const selectedOption = poll.options.find((option) => option.id === poll.userVotedOptionId)
@@ -269,7 +279,11 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
 
       <article className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border/50">
         <div className="relative h-72 overflow-hidden bg-muted md:h-96">
-          {poll.thumbnailUrl ? (
+          {youtubeEmbed ? (
+            <iframe className="h-full w-full" src={youtubeEmbed} title="Attached YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+          ) : poll.mediaType === "video" && poll.thumbnailUrl ? (
+            <video className="h-full w-full object-cover" controls playsInline src={poll.thumbnailUrl} />
+          ) : poll.thumbnailUrl ? (
             <img
               alt=""
               className="h-full w-full object-cover"

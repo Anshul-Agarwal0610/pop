@@ -89,6 +89,16 @@ namespace BackendAPI.Controllers
             return Ok(polls);
         }
 
+        // GET /api/polls/mine
+        [HttpGet("mine")]
+        [Authorize]
+        public async Task<IActionResult> GetMine([FromQuery] int count = 100)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized(new { message = "Invalid token." });
+            return Ok(await _pollsRepo.GetByCreatorAsync(userId.Value, Math.Clamp(count, 1, 200)));
+        }
+
         // GET /api/polls/moderation
         [HttpGet("moderation")]
         [Authorize]
@@ -139,7 +149,10 @@ namespace BackendAPI.Controllers
             if (request.ExpiresAt <= DateTime.UtcNow)
                 return BadRequest(new { message = "ExpiresAt must be in the future." });
 
-            var id = await _pollsRepo.CreateAsync(request, userId);
+            request.IsPrivate = request.IsPrivate || request.AudienceType is PollAudienceTypes.Friend or PollAudienceTypes.Group;
+            long id;
+            try { id = await _pollsRepo.CreateAsync(request, userId); }
+            catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
             var poll = await _pollsRepo.GetByIdAsync(id, userId);
             return CreatedAtAction(nameof(GetById), new { id }, poll);
         }

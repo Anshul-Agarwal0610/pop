@@ -1,0 +1,13 @@
+node_modules/
+.expo/
+dist/
+web-build/
+coverage/
+android/
+ios/
+.env*.local
+*.log
+*.tsbuildinfo
+docs/
+**/*.test.ts
+**/*.test.tsx

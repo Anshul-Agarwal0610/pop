@@ -18,7 +18,7 @@ namespace BackendAPI.Services
         // YouTube Data API v3 — most popular videos in India (videoCategoryId=25 = News & Politics)
         private const string BaseUrl =
             "https://www.googleapis.com/youtube/v3/videos" +
-            "?part=snippet,statistics" +
+            "?part=snippet,statistics,contentDetails" +
             "&chart=mostPopular" +
             "&regionCode=IN" +
             "&videoCategoryId=25" +
@@ -81,6 +81,9 @@ namespace BackendAPI.Services
                 var title    = TopicEnrichment.CleanText(snippet.GetProperty("title").GetString());
                 var desc     = TopicEnrichment.CleanText(snippet.TryGetProperty("description", out var d) ? d.GetString() : "");
                 var publisher = snippet.TryGetProperty("channelTitle", out var channel) ? channel.GetString() : null;
+                var language = snippet.TryGetProperty("defaultLanguage", out var defaultLanguage) ? defaultLanguage.GetString() : null;
+                if (string.IsNullOrWhiteSpace(language) && item.TryGetProperty("contentDetails", out var contentDetails) && contentDetails.TryGetProperty("defaultAudioLanguage", out var defaultAudioLanguage))
+                    language = defaultAudioLanguage.GetString();
                 DateTime? publishedAt = snippet.TryGetProperty("publishedAt", out var published) && DateTime.TryParse(published.GetString(), out var date) ? date.ToUniversalTime() : null;
 
                 if (desc.Length > 400) desc = desc[..400];
@@ -111,6 +114,7 @@ namespace BackendAPI.Services
                     ThumbnailUrl = thumbnail,
                     Publisher    = publisher,
                     PublishedAt  = publishedAt,
+                    Language     = language,
                     Category     = TopicEnrichment.Classify(title, desc)
                 });
             }

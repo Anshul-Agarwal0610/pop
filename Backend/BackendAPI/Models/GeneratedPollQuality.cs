@@ -73,7 +73,12 @@ public sealed class PollQualityOptions
     public string RulesVersion { get; set; } = "quality-rules-v1";
     public string EvaluatorPromptVersion { get; set; } = "quality-evaluator-prompt-v1";
     public string EvaluatorSchemaVersion { get; set; } = "quality-evaluator-schema-v1";
-    public string[] SensitiveKeywords { get; set; } = ["election", "abortion", "religion", "war", "suicide", "vaccine", "immigration"];
+    public string[] SensitiveKeywords { get; set; } = [
+        "election", "abortion", "religion", "war", "suicide", "vaccine", "immigration",
+        "execution", "capital punishment", "death penalty", "firing squad", "terrorism",
+        "rape", "sexual assault", "murder", "killed", "death", "dead", "shooting",
+        "child abuse", "domestic violence"
+    ];
     public string[] ProhibitedTerms { get; set; } = ["kill all", "exterminate", "racially inferior", "suicide method"];
 }
 

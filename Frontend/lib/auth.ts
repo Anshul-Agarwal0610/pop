@@ -10,8 +10,11 @@ export interface AuthUser {
   email?: string
   avatarUrl?: string
   authProvider: "local" | "google"
+  accountType: "Personal" | "Business"
+  isAdmin: boolean
   xp: number
   streak: number
+  longestStreak?: number
   totalVotes: number
   pollsCreated: number
   lastVoteDate?: string | null
@@ -84,12 +87,14 @@ export async function apiRegister(
   displayName: string,
   password: string,
   confirmPassword: string,
+  acceptTerms: boolean,
 ): Promise<AuthResponse> {
   return post<AuthResponse>("/api/auth/register", {
     username,
     displayName,
     password,
     confirmPassword,
+    acceptTerms,
   })
 }
 
@@ -100,8 +105,25 @@ export async function apiLogin(
   return post<AuthResponse>("/api/auth/login", { username, password })
 }
 
-export async function apiGoogleLogin(idToken: string): Promise<AuthResponse> {
-  return post<AuthResponse>("/api/auth/google", { idToken })
+export async function apiBusinessLogin(username: string, password: string): Promise<AuthResponse> {
+  return post<AuthResponse>("/api/auth/business/login", { username, password })
+}
+
+export async function apiBusinessRegister(data: {
+  username: string
+  displayName: string
+  password: string
+  confirmPassword: string
+  businessName: string
+  websiteUrl?: string
+  subscriptionPlan: "Starter" | "Growth" | "Pro"
+  acceptTerms: boolean
+}): Promise<AuthResponse> {
+  return post<AuthResponse>("/api/auth/business/register", data)
+}
+
+export async function apiGoogleLogin(idToken: string, acceptTerms: boolean): Promise<AuthResponse> {
+  return post<AuthResponse>("/api/auth/google", { idToken, acceptTerms })
 }
 
 export async function getCurrentUser(): Promise<AuthUser> {

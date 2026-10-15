@@ -34,6 +34,7 @@ export function MediaStep({ value, onChange, onSkip }: MediaStepProps) {
         url,
         name: file.name,
         size: file.size,
+        file,
       })
     }
   }
@@ -49,6 +50,7 @@ export function MediaStep({ value, onChange, onSkip }: MediaStepProps) {
         url,
         name: file.name,
         size: file.size,
+        file,
       })
     }
   }

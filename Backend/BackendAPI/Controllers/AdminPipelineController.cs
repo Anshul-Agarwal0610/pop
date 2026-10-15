@@ -13,7 +13,7 @@ namespace BackendAPI.Controllers;
 [Authorize(Policy="Admin")]
 public sealed class AdminPipelineController : ControllerBase
 {
-    private static readonly HashSet<string> Sources=new(StringComparer.OrdinalIgnoreCase){"rss","youtube","gnews"};
+    private static readonly HashSet<string> Sources=new(StringComparer.OrdinalIgnoreCase){"rss","youtube","gnews","x","instagram","events"};
     private readonly ITrendingTopicRepository _topics;
     private readonly IPipelineRuntimeHealth _health;
     private readonly IBackgroundJobClient _jobs;
@@ -31,7 +31,7 @@ public sealed class AdminPipelineController : ControllerBase
         _metrics.UpdateGenerationState(control.GenerationPaused,backlog);
         var providers=new[]{"gemini","openai","anthropic","groq"}.Select(name=>_health.GetGeneration(name,IsEnabled(name),IsConfigured(name))).ToArray();
         var recordedIngestion=_health.Ingestion.ToDictionary(x=>x.Provider,StringComparer.OrdinalIgnoreCase);
-        var ingestionProviders=new[]{"rss","youtube","gnews"}.Select(name=>recordedIngestion.TryGetValue(name,out var value)?value:ConfiguredIngestion(name)).ToArray();
+        var ingestionProviders=Sources.Select(name=>recordedIngestion.TryGetValue(name,out var value)?value:ConfiguredIngestion(name)).ToArray();
         return Ok(new { ingestion=new { providers=ingestionProviders }, generation=new { paused=control.GenerationPaused,backlog,providers } });
     }
 
@@ -73,8 +73,10 @@ public sealed class AdminPipelineController : ControllerBase
         && Uri.TryCreate(_configuration[$"PollGen:Providers:{name}:Endpoint"],UriKind.Absolute,out _);
     private ProviderHealth ConfiguredIngestion(string name)
     {
-        var disabled=_configuration.GetValue($"Ingestion:{name}:Disabled",false);
-        var configured=name=="rss" || !string.IsNullOrWhiteSpace(_configuration[$"{(name=="youtube"?"YouTube":"GNews")}:ApiKey"]);
+        var disabled=_configuration.GetValue($"Ingestion:{name}:Disabled",name is "x" or "instagram" or "events") || (name=="rss" && _configuration.GetValue("PhaseOne:ApiSourcesOnly",false));
+        var key = name switch { "youtube"=>"YouTube:ApiKey", "gnews"=>"GNews:ApiKey", "x"=>"X:BearerToken", "instagram"=>"Instagram:AccessToken", "events"=>"Events:TicketmasterApiKey", _=>"" };
+        var configured=name=="rss" || !string.IsNullOrWhiteSpace(_configuration[key]);
+        if(name=="instagram") configured &= !string.IsNullOrWhiteSpace(_configuration["Instagram:UserId"]) && !string.IsNullOrWhiteSpace(_configuration["Instagram:GraphVersion"]) && _configuration.GetSection("Instagram:Hashtags").Get<string[]>() is { Length: >0 and <=10 };
         return new(name,disabled?ProviderOperationalState.Disabled:configured?ProviderOperationalState.Enabled:ProviderOperationalState.Misconfigured,disabled?"disabled":configured?null:"missing_api_key",null,null,null,null);
     }
 }

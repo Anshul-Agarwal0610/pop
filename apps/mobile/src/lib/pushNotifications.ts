@@ -1,16 +1,20 @@
-import * as Notifications from 'expo-notifications';
+import { isRunningInExpoGo } from 'expo';
 import { Platform } from 'react-native';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
 export async function getExpoPushToken() {
+  // Importing expo-notifications itself registers native push listeners.
+  // Expo Go cannot load those listeners, even before requesting a token.
+  if (isRunningInExpoGo()) return null;
+
+  const Notifications = await import('expo-notifications');
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('pollify-retention', {
       name: 'Pollify reminders',

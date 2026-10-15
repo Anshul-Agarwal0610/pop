@@ -41,6 +41,8 @@ public sealed partial class DeterministicPollConverter : IDeterministicPollConve
         var result = new PropositionGenerationResult
         {
             Proposition = proposition, Category = CategoryCatalog.NormalizeName(topic.Category),
+            SupportStatement = $"Support: {ToBaseForm(action)} {target}",
+            AgainstStatement = $"Against: do not {ToBaseForm(action)} {target}",
             Grounding = new SourceGrounding { Rationale = "The source explicitly identifies a named actor and proposed action.", Evidence = [title, summary[..Math.Min(summary.Length, 180)]] },
             Quality = new PropositionQuality { IsSelfContained = true, IsNeutral = true, IsBinary = true, IsGrounded = true, Confidence = .85, IsAmbiguous = false, AmbiguityReason = null },
             GenerationMethod = GenerationMethods.DeterministicFallback, SourceTitle = topic.Title, SourceUrl = topic.SourceUrl

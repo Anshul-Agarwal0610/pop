@@ -31,6 +31,8 @@ public sealed class PropositionGenerationResult
 {
     [JsonPropertyName("proposition")] public required string Proposition { get; set; }
     [JsonPropertyName("category")] public required string Category { get; set; }
+    [JsonPropertyName("supportStatement")] public string SupportStatement { get; set; } = "Support this proposal";
+    [JsonPropertyName("againstStatement")] public string AgainstStatement { get; set; } = "Oppose this proposal";
     [JsonPropertyName("sourceGrounding")] public required SourceGrounding Grounding { get; set; }
     [JsonPropertyName("quality")] public required PropositionQuality Quality { get; set; }
     [JsonIgnore] public List<string> Options { get; } = [GeneratedPollContract.Up, GeneratedPollContract.Against];

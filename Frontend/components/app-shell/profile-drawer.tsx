@@ -11,6 +11,7 @@ import {
   Moon,
   Sun,
   ChevronRight,
+  ShieldCheck,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -211,6 +212,17 @@ export function ProfileDrawer({ isOpen, onClose }: ProfileDrawerProps) {
                   transition={{ delay: 0.4 }}
                   className="mt-6 space-y-1"
                 >
+                  {user?.isAdmin && (
+                    <motion.button
+                      whileHover={{ x: 4 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-primary transition-colors hover:bg-primary/10"
+                      onClick={() => { router.push("/admin"); onClose() }}
+                    >
+                      <div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5" /><span className="font-medium">Platform Admin</span></div>
+                      <ChevronRight className="h-4 w-4" />
+                    </motion.button>
+                  )}
                   {menuItems.map((item) => (
                     <motion.button
                       key={item.label}

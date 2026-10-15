@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="PoP Public Pulse conversation mark">
+  <path fill="#FF6B61" d="M486 132C288 145 132 309 132 510c0 75 22 146 60 205l-54 140c-8 21 13 42 34 33l143-57c50 29 108 47 171 51V738c-127-13-226-120-226-250s99-237 226-250V132Z"/>
+  <path fill="#8D73F6" d="M538 132v106c127 13 226 120 226 250s-99 237-226 250v144c63-4 121-22 171-51l143 57c21 9 42-12 34-33l-54-140c38-59 60-130 60-205 0-201-156-365-354-378Z"/>
+  <rect x="378" y="430" width="64" height="164" rx="32" fill="#17151F"/>
+  <rect x="480" y="354" width="64" height="316" rx="32" fill="#17151F"/>
+  <rect x="582" y="430" width="64" height="164" rx="32" fill="#17151F"/>
+</svg>
