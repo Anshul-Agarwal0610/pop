@@ -1,6 +1,6 @@
 {
-  "name": "Pollify - Public Opinion Polling",
-  "short_name": "Pollify",
+  "name": "PoP - Public Opinion Polling",
+  "short_name": "PoP",
   "description": "Your voice matters. Create polls, vote, and see what the world thinks.",
   "start_url": "/",
   "display": "standalone",

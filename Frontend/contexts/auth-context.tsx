@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useSyncExternalStore,
   type ReactNode,
 } from "react"
 import {
@@ -31,6 +32,10 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+
+const subscribeToHydration = () => () => {}
+const getClientSnapshot = () => true
+const getServerSnapshot = () => false
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]         = useState<AuthUser | null>(null)
@@ -102,6 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext)
+  // A Suspense child can hydrate after the provider has resolved its session.
+  // Match the server's initial auth state until this consumer has hydrated.
+  const hydrated = useSyncExternalStore(subscribeToHydration, getClientSnapshot, getServerSnapshot)
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>")
-  return ctx
+  return hydrated ? ctx : { ...ctx, user: null, isLoading: true, isAuthenticated: false }
 }

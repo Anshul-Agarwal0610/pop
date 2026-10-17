@@ -25,7 +25,7 @@ public class PollGenerationService : IPollGenerationService
     private readonly IPipelineRuntimeHealth? _health;
 
     internal const string ResponseSchema = """
-    {"type":"object","additionalProperties":false,"required":["proposition","category","sourceGrounding","quality"],"properties":{"proposition":{"type":"string"},"category":{"type":"string"},"sourceGrounding":{"type":"object","additionalProperties":false,"required":["rationale","evidence"],"properties":{"rationale":{"type":"string"},"evidence":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string"}}}},"quality":{"type":"object","additionalProperties":false,"required":["isSelfContained","isNeutral","isBinary","isGrounded","confidence","isAmbiguous","ambiguityReason"],"properties":{"isSelfContained":{"type":"boolean"},"isNeutral":{"type":"boolean"},"isBinary":{"type":"boolean"},"isGrounded":{"type":"boolean"},"confidence":{"type":"number","minimum":0,"maximum":1},"isAmbiguous":{"type":"boolean"},"ambiguityReason":{"type":["string","null"]}}}}}
+    {"type":"object","additionalProperties":false,"required":["proposition","category","supportStatement","againstStatement","sourceGrounding","quality"],"properties":{"proposition":{"type":"string"},"category":{"type":"string"},"supportStatement":{"type":"string","minLength":5,"maxLength":120},"againstStatement":{"type":"string","minLength":5,"maxLength":120},"sourceGrounding":{"type":"object","additionalProperties":false,"required":["rationale","evidence"],"properties":{"rationale":{"type":"string"},"evidence":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string"}}}},"quality":{"type":"object","additionalProperties":false,"required":["isSelfContained","isNeutral","isBinary","isGrounded","confidence","isAmbiguous","ambiguityReason"],"properties":{"isSelfContained":{"type":"boolean"},"isNeutral":{"type":"boolean"},"isBinary":{"type":"boolean"},"isGrounded":{"type":"boolean"},"confidence":{"type":"number","minimum":0,"maximum":1},"isAmbiguous":{"type":"boolean"},"ambiguityReason":{"type":["string","null"]}}}}}
     """;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -146,7 +146,8 @@ public class PollGenerationService : IPollGenerationService
             publisher = topic.Publisher,
             category = CategoryCatalog.NormalizeName(topic.Category),
             publicationDate = topic.PublishedAt?.ToString("O"),
-            sourceType = topic.SourceType
+            sourceType = topic.SourceType,
+            language = topic.Language, region = topic.Region, sourceTopic = topic.SourceTopic, eventStartUtc = topic.EventStartUtc
         });
         var categories = string.Join(", ", CategoryCatalog.All.Select(c => c.Name));
         var prompt = $"""
@@ -162,16 +163,29 @@ public class PollGenerationService : IPollGenerationService
             prompt, ResponseSchema, 0.1, 700);
     }
 
-    internal static bool Validate(PropositionGenerationResult r, out string reason)
+    internal static bool Validate(
+        PropositionGenerationResult r,
+        out string reason,
+        bool requirePositiveQualityMetadata = true,
+        bool requireSourceGrounding = true)
     {
         reason = "";
         if (string.IsNullOrWhiteSpace(r.Proposition) || r.Proposition.Length is < 20 or > 160 || !r.Proposition.EndsWith('?')) reason = "invalid proposition length or form";
-        else if (r.Grounding is null || string.IsNullOrWhiteSpace(r.Grounding.Rationale) || r.Grounding.Rationale.Length > 300 || r.Grounding.Evidence is null || r.Grounding.Evidence.Count is < 1 or > 3 || r.Grounding.Evidence.Any(e => string.IsNullOrWhiteSpace(e) || e.Length > 240)) reason = "invalid source grounding";
-        else if (r.Quality is null || r.Quality.Confidence is < 0 or > 1 || r.Quality.IsAmbiguous || !r.Quality.IsSelfContained || !r.Quality.IsNeutral || !r.Quality.IsBinary || !r.Quality.IsGrounded) reason = "negative or ambiguous quality metadata";
+        else if (requireSourceGrounding && (r.Grounding is null || string.IsNullOrWhiteSpace(r.Grounding.Rationale) || r.Grounding.Rationale.Length > 300 || r.Grounding.Evidence is null || r.Grounding.Evidence.Count is < 1 or > 3 || r.Grounding.Evidence.Any(e => string.IsNullOrWhiteSpace(e) || e.Length > 240))) reason = "invalid source grounding";
+        else if (r.Quality is null || r.Quality.Confidence is < 0 or > 1 ||
+                 (requirePositiveQualityMetadata &&
+                  (r.Quality.IsAmbiguous || !r.Quality.IsSelfContained || !r.Quality.IsNeutral ||
+                   !r.Quality.IsBinary || !r.Quality.IsGrounded)))
+            reason = "negative or ambiguous quality metadata";
+        else if (string.IsNullOrWhiteSpace(r.SupportStatement) || r.SupportStatement.Length is < 5 or > 120 || string.IsNullOrWhiteSpace(r.AgainstStatement) || r.AgainstStatement.Length is < 5 or > 120) reason = "invalid support or against statement";
+        else if (r.SupportStatement.Equals(r.AgainstStatement, StringComparison.OrdinalIgnoreCase)) reason = "support and against statements must be distinct";
+        else if (ContainsDevanagari(r.Proposition) || ContainsDevanagari(r.SupportStatement) || ContainsDevanagari(r.AgainstStatement)) reason = "generated question and statements must be English";
         else if (ContainsForbiddenFraming(r.Proposition)) reason = "survey, preference, or prediction framing";
         else if (r.Proposition.Count(c => c == '?') != 1 || r.Proposition.Contains(" and should ", StringComparison.OrdinalIgnoreCase)) reason = "compound proposition";
         return reason.Length == 0;
     }
+
+    private static bool ContainsDevanagari(string value) => value.Any(character => character is >= '\u0900' and <= '\u097F');
 
     private static bool ContainsForbiddenFraming(string value)
     {

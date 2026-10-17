@@ -11,6 +11,7 @@ export interface MediaAttachment {
   url: string
   name: string
   size?: number
+  file: File
 }
 
 export interface ExternalLink {

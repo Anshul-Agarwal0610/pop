@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Pollify",
+    "name": "PoP",
     "slug": "pollify-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,13 +9,14 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pollify.app"
+      "bundleIdentifier": "com.PublicOpinionPoll.com"
     },
     "android": {
-      "package": "com.pollify.app",
-      "versionCode": 1,
+      "package": "com.PublicOpinionPoll.com",
+      "versionCode": 8,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#17151F",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -23,19 +24,48 @@
       "permissions": [
         "POST_NOTIFICATIONS"
       ],
-      "predictiveBackGestureEnabled": false
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.ACTIVITY_RECOGNITION"
+      ],
+      "predictiveBackGestureEnabled": false,
+      "backgroundColor": "#000000"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F7F5EF"
-    },
     "plugins": [
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-sharing",
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": false,
+          "style": "light"
+        }
+      ],
+      "./plugins/withBlackNavigationBar",
+      "expo-status-bar",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Pop to choose photos and videos for your polls.",
+          "cameraPermission": "Allow Pop to take photos and record videos for your polls.",
+          "microphonePermission": "Allow Pop to record sound with poll videos."
+        }
+      ],
+      "expo-web-browser",
+      "expo-video",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#17151F"
+        }
+      ]
     ],
     "extra": {
       "releaseChannel": "production",
@@ -43,6 +73,7 @@
         "projectId": "a1a0ec17-677f-4e84-957d-fdb3feee5639"
       }
     },
-    "owner": "ansh0610"
+    "owner": "ansh0610",
+    "backgroundColor": "#000000"
   }
 }

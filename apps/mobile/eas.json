@@ -11,7 +11,11 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.pollify.example.com"
+        "EXPO_PUBLIC_API_URL": "https://example-app-service6.azurewebsites.net",
+        "EXPO_PUBLIC_WEB_URL": "https://mvp-react-frontend.azurewebsites.net"
+        ,"EXPO_PUBLIC_PRIVACY_POLICY_URL": "https://mvp-react-frontend.azurewebsites.net/privacy"
+        ,"EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "262540943829-susdr1g2n6tsgube1j0k7h5bd3h4g2lu.apps.googleusercontent.com"
+        ,"EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "262540943829-7hjdjsjd19pnasvlclskrsh7vpsljmrc.apps.googleusercontent.com"
       }
     },
     "preview": {
@@ -20,7 +24,11 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.pollify.example.com"
+        "EXPO_PUBLIC_API_URL": "https://example-app-service6.azurewebsites.net",
+        "EXPO_PUBLIC_WEB_URL": "https://mvp-react-frontend.azurewebsites.net"
+        ,"EXPO_PUBLIC_PRIVACY_POLICY_URL": "https://mvp-react-frontend.azurewebsites.net/privacy"
+        ,"EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "262540943829-susdr1g2n6tsgube1j0k7h5bd3h4g2lu.apps.googleusercontent.com"
+        ,"EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "262540943829-7hjdjsjd19pnasvlclskrsh7vpsljmrc.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -29,7 +37,11 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.pollify.example.com"
+        "EXPO_PUBLIC_API_URL": "https://example-app-service6.azurewebsites.net",
+        "EXPO_PUBLIC_WEB_URL": "https://mvp-react-frontend.azurewebsites.net"
+        ,"EXPO_PUBLIC_PRIVACY_POLICY_URL": "https://mvp-react-frontend.azurewebsites.net/privacy"
+        ,"EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "262540943829-susdr1g2n6tsgube1j0k7h5bd3h4g2lu.apps.googleusercontent.com"
+        ,"EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "262540943829-7hjdjsjd19pnasvlclskrsh7vpsljmrc.apps.googleusercontent.com"
       }
     }
   },

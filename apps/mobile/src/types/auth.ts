@@ -5,6 +5,7 @@ export interface AuthUser {
   email?: string | null;
   avatarUrl?: string | null;
   authProvider: 'local' | 'google' | string;
+  accountType: 'Personal' | 'Business' | string;
   xp: number;
   streak: number;
   longestStreak: number;
@@ -45,4 +46,11 @@ export interface LoginPayload {
 export interface RegisterPayload extends LoginPayload {
   displayName: string;
   confirmPassword: string;
+  acceptTerms: boolean;
+}
+
+export interface RegisterBusinessPayload extends RegisterPayload {
+  businessName: string;
+  websiteUrl?: string;
+  subscriptionPlan: 'Starter' | 'Growth' | 'Pro';
 }

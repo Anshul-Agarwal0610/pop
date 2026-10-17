@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/contexts/auth-context"
 import { ApiError, socialApi, type FriendConnection, type SocialGroup, type SocialUser } from "@/lib/api"
+import Image from "next/image"
 
 export default function SocialPage() {
   const { isAuthenticated, isLoading } = useAuth(); const router = useRouter()
@@ -19,7 +20,7 @@ export default function SocialPage() {
   const act=async(key:string,fn:()=>Promise<unknown>)=>{if(busy)return;setBusy(key);setMessage("");try{await fn();await refresh()}catch(e){setMessage(e instanceof ApiError&&e.status===429?"Invitation limit reached. Try again later.":(e as Error).message)}finally{setBusy(null)}}
   const search=async(e:FormEvent)=>{e.preventDefault();if(query.trim().length<2)return;setResults((await socialApi.searchUsers(query)).items)}
   if(isLoading||!isAuthenticated)return null
-  return <AppShell><main className="mx-auto max-w-3xl space-y-5 px-4 py-6"><div><h1 className="text-2xl font-bold">Friends & groups</h1><p className="text-sm text-muted-foreground">Everything here is opt-in. Private and wellness activity never contributes to social rankings.</p></div>{message&&<p role="alert" className="rounded-lg bg-muted p-3 text-sm">{message}</p>}
+  return <AppShell><main className="mx-auto max-w-3xl space-y-5 px-4 py-6"><div className="flex items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-secondary"><Image alt="Public Pulse" height={52} src="/brand/public-pulse-mark.svg" width={52}/></div><div><p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Public Pulse</p><h1 className="text-2xl font-bold">Friends & groups</h1><p className="text-sm text-muted-foreground">Everything here is opt-in. Private and wellness activity never contributes to social rankings.</p></div></div>{message&&<p role="alert" className="rounded-lg bg-muted p-3 text-sm">{message}</p>}
     <Tabs defaultValue="friends"><TabsList><TabsTrigger value="friends">Friends</TabsTrigger><TabsTrigger value="groups">Private groups</TabsTrigger></TabsList>
       <TabsContent value="friends" className="space-y-4"><form className="flex gap-2" onSubmit={search}><Input aria-label="Search users" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search username or display name"/><Button type="submit">Search</Button></form>
         {results.map(u=><div className="flex items-center justify-between rounded-xl border p-3" key={u.id}><span><b>{u.displayName}</b> <span className="text-muted-foreground">@{u.username}</span></span><Button disabled={!!busy} onClick={()=>act(`add-${u.id}`,()=>socialApi.sendFriendRequest(u.id))}>Add friend</Button></div>)}

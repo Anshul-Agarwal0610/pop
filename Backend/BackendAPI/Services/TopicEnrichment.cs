@@ -27,8 +27,19 @@ namespace BackendAPI.Services
 
         public static string CleanText(string? value)
         {
-            var decoded = WebUtility.HtmlDecode(value ?? string.Empty);
-            return Regex.Replace(decoded, @"\s+", " ").Trim();
+            var decoded = value ?? string.Empty;
+            // Some feeds encode markup more than once. Decode a bounded number of
+            // times, then remove tags so encoded <p style="..."> fragments cannot
+            // reach topic summaries or poll cards.
+            for (var pass = 0; pass < 3; pass++)
+            {
+                var next = WebUtility.HtmlDecode(decoded);
+                if (next == decoded) break;
+                decoded = next;
+            }
+            var withoutMarkup = Regex.Replace(decoded, @"<[^>]*>", " ", RegexOptions.Singleline);
+            withoutMarkup = Regex.Replace(withoutMarkup, @"<[A-Za-z/!][^>]*$", " ", RegexOptions.Singleline);
+            return Regex.Replace(withoutMarkup, @"\s+", " ").Trim();
         }
 
         public static string Classify(string? title, string? summary, string? sourceCategory = null)

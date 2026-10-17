@@ -67,16 +67,13 @@ export function LinkStep({ value, onChange, onSkip }: LinkStepProps) {
     setIsLoading(true)
     setError(null)
 
-    // Simulate fetching link preview
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
     const platform = detectPlatform(url)
+    const hostname = new URL(url).hostname.replace(/^www\./, "")
     onChange({
       url,
       platform,
-      title: "Link preview title would appear here",
-      description: "This is where the link description would be shown after fetching metadata.",
-      thumbnail: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=300&fit=crop",
+      title: hostname,
+      description: `Attached ${platform === "instagram" ? "Instagram post or reel" : platform === "youtube" ? "YouTube video" : "external source"}.`,
     })
 
     setIsLoading(false)

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Bell, CheckCheck, Loader2, RefreshCw, Sparkles, TrendingUp, Trophy } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
 import { Button } from "@/components/ui/button"
@@ -48,6 +49,7 @@ const preferenceLabels: Record<ApiNotification["type"], string> = {
 }
 
 export default function NotificationsPage() {
+  const router = useRouter()
   const { isAuthenticated } = useAuth()
   const [notifications, setNotifications] = useState<ApiNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)

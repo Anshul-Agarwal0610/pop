@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/contexts/auth-context"
 import { apiRegister } from "@/lib/auth"
+import Link from "next/link"
 
 export function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const { login } = useAuth()
@@ -18,15 +19,17 @@ export function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
   const [showPw,      setShowPw]      = useState(false)
   const [error,       setError]       = useState("")
   const [loading,     setLoading]     = useState(false)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
     if (password !== confirm) { setError("Passwords do not match."); return }
     if (password.length < 6)  { setError("Password must be at least 6 characters."); return }
+    if (!acceptedTerms) { setError("Accept the Terms of Use and Community Guidelines to continue."); return }
     setLoading(true)
     try {
-      const data = await apiRegister(username, displayName, password, confirm)
+      const data = await apiRegister(username, displayName, password, confirm, true)
       login(data)
       onSuccess()
     } catch (err: unknown) {
@@ -96,6 +99,11 @@ export function RegisterForm({ onSuccess }: { onSuccess: () => void }) {
           autoComplete="new-password"
         />
       </div>
+
+      <label className="flex items-start gap-3 text-sm leading-5 text-muted-foreground">
+        <input type="checkbox" checked={acceptedTerms} onChange={event => setAcceptedTerms(event.target.checked)} className="mt-1 h-4 w-4 accent-primary" />
+        <span>I agree to the <Link href="/terms" className="font-semibold text-primary hover:underline">Terms of Use and Community Guidelines</Link> and acknowledge the <Link href="/privacy" className="font-semibold text-primary hover:underline">Privacy Policy</Link>.</span>
+      </label>
 
       {error && (
         <motion.p

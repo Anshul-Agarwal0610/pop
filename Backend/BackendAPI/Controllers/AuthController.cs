@@ -53,6 +53,21 @@ namespace BackendAPI.Controllers
             }
         }
 
+        [HttpPost("business/register")]
+        public async Task<IActionResult> RegisterBusiness([FromBody] RegisterBusinessRequest request)
+        {
+            try { return Ok(await _authRepo.RegisterBusinessAsync(request)); }
+            catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+            catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
+        }
+
+        [HttpPost("business/login")]
+        public async Task<IActionResult> LoginBusiness([FromBody] LoginRequest request)
+        {
+            try { return Ok(await _authRepo.LoginBusinessAsync(request)); }
+            catch (UnauthorizedAccessException ex) { return Unauthorized(new { message = ex.Message }); }
+        }
+
         // POST /api/auth/google
         // Frontend sends the Google ID token; we validate it server-side.
         [HttpPost("google")]
@@ -60,17 +75,23 @@ namespace BackendAPI.Controllers
         {
             try
             {
-                var settings = new GoogleJsonWebSignature.ValidationSettings
+                var audiences = new[]
                 {
-                    Audience = new[] { _config["Google:ClientId"] }
-                };
+                    _config["Google:ClientId"],
+                    _config["Google:AndroidClientId"],
+                    _config["Google:IosClientId"]
+                }.Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().Distinct().ToArray();
+                if (audiences.Length == 0)
+                    return StatusCode(503, new { message = "Google sign-in is not configured." });
+                var settings = new GoogleJsonWebSignature.ValidationSettings { Audience = audiences };
 
                 var payload = await GoogleJsonWebSignature.ValidateAsync(request.IdToken, settings);
 
                 var result = await _authRepo.GoogleLoginAsync(
                     email:       payload.Email,
                     displayName: payload.Name,
-                    avatarUrl:   payload.Picture
+                    avatarUrl:   payload.Picture,
+                    acceptTerms: request.AcceptTerms
                 );
 
                 return Ok(result);
@@ -78,6 +99,10 @@ namespace BackendAPI.Controllers
             catch (InvalidJwtException)
             {
                 return Unauthorized(new { message = "Invalid Google token." });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
         }
 

@@ -1,13 +1,14 @@
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
-  RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,17 +16,22 @@ import {
   View,
 } from 'react-native';
 
-import { API_BASE_URL } from './src/config/api';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PollExperience } from './src/screens/PollExperience';
+import { BusinessExperience } from './src/screens/BusinessExperience';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { notificationsApi, pollsApi, usersApi, votesApi } from './src/lib/api';
-import { getExpoPushToken } from './src/lib/pushNotifications';
+import { usersApi } from './src/lib/api';
+
 import { hasCompletedOnboarding, markOnboardingComplete } from './src/lib/session';
 import type { AuthUser } from './src/types/auth';
-import type { ApiPoll, ApiPollOption, VoteReward } from './src/types/poll';
-import { track } from './src/lib/analytics/client';
+
+
+import { ThemeProvider, useTheme, typography, spacing, radius, type ThemeColors } from './src/theme';
 
 type AuthMode = 'login' | 'register';
-type SignedInTab = 'home' | 'profile' | 'leaderboard';
+
+WebBrowser.maybeCompleteAuthSession();
+
 
 const onboardingCategories = [
   'Technology',
@@ -40,13 +46,18 @@ const onboardingCategories = [
 
 export default function App() {
   return (
-    <AuthProvider>
-      <PollifyApp />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <ThemeProvider><AuthProvider>
+        <PollifyApp />
+      </AuthProvider></ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 
 function PollifyApp() {
+  const insets = useSafeAreaInsets();
+  const { colors: theme, scheme } = useTheme(); const styles = useMemo(() => createStyles(theme), [theme]);
+
   const { isAuthenticated, isLoading, user } = useAuth();
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false);
@@ -75,45 +86,64 @@ function PollifyApp() {
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [user?.id]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
+    <View style={{ flex: 1, backgroundColor: "#000000" }}>
+    <SafeAreaView edges={Platform.OS === "android" ? ["top", "left", "right"] : undefined} style={styles.safeArea}>
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       {isLoading || isCheckingOnboarding ? (
         <LoadingScreen />
+      ) : isAuthenticated && user?.accountType === 'Business' ? (
+        <BusinessExperience />
       ) : isAuthenticated && user && !onboardingComplete ? (
         <OnboardingScreen
           onComplete={() => setOnboardingComplete(true)}
           user={user}
         />
       ) : isAuthenticated ? (
-        <SignedInHome />
+        <PollExperience />
       ) : (
         <AuthScreen />
       )}
     </SafeAreaView>
+    {Platform.OS === "android" && <View pointerEvents="none" style={{ height: insets.bottom, backgroundColor: "#000000" }} />}
+    </View>
   );
 }
 
 function LoadingScreen() {
+  const { colors: theme, scheme } = useTheme(); const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={styles.loading}>
-      <ActivityIndicator color="#B0413E" size="large" />
+      <ActivityIndicator color={theme.destructive} size="large" />
       <Text style={styles.loadingText}>Checking your Pollify session</Text>
     </View>
   );
 }
 
 function AuthScreen() {
-  const { signIn, signUp } = useAuth();
+  const { colors: theme, scheme } = useTheme(); const styles = useMemo(() => createStyles(theme), [theme]);
+
+  const { signIn, signUp, signInWithGoogle, signInBusiness, signUpBusiness } = useAuth();
+  const [accountType, setAccountType] = useState<'Personal' | 'Business'>('Personal');
   const [mode, setMode] = useState<AuthMode>('login');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [subscriptionPlan, setSubscriptionPlan] = useState<'Starter' | 'Growth' | 'Pro'>('Starter');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const googleConfigured = Boolean(
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID &&
+    (Platform.OS === 'android' ? process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID :
+      Platform.OS === 'ios' ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID : true)
+  );
 
   const isRegister = mode === 'register';
 
@@ -123,17 +153,22 @@ function AuthScreen() {
 
     try {
       if (isRegister) {
-        await signUp({
+        if (!acceptedTerms) throw new Error('Accept the Terms of Use and Community Guidelines to continue.');
+        const base = {
           username: username.trim().toLowerCase(),
           displayName: displayName.trim(),
           password,
           confirmPassword,
-        });
+          acceptTerms: true,
+        };
+        if (accountType === 'Business') await signUpBusiness({ ...base, businessName: businessName.trim(), websiteUrl: websiteUrl.trim() || undefined, subscriptionPlan });
+        else await signUp(base);
       } else {
-        await signIn({
+        const payload = {
           username: username.trim().toLowerCase(),
           password,
-        });
+        };
+        if (accountType === 'Business') await signInBusiness(payload); else await signIn(payload);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
@@ -144,16 +179,34 @@ function AuthScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.keyboard}
     >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={styles.container}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>Pollify Mobile</Text>
-          <Text style={styles.title}>Vote daily. Keep the streak alive.</Text>
+          <View style={styles.authBrand}>
+            <View style={styles.authLogoTile}>
+              <Image source={require('./assets/pop-mark.png')} resizeMode="contain" style={styles.authLogo} />
+            </View>
+            <View>
+              <Text style={styles.authBrandName}>PoP</Text>
+              <Text style={styles.eyebrow}>Public Opinion Poll</Text>
+            </View>
+          </View>
+          <Text style={styles.title}>{accountType === 'Business' ? 'Ask better questions. Grow with every answer.' : 'Vote daily. Keep the streak alive.'}</Text>
           <Text style={styles.subtitle}>
-            Sign in once and Pollify keeps your JWT session in secure native storage.
+            Your next perspective is waiting. Sign in and join the conversation.
           </Text>
+        </View>
+
+        <View style={styles.segment}>
+          {(['Personal', 'Business'] as const).map(item => <Pressable key={item} onPress={() => { setAccountType(item); setError(null); }} style={[styles.segmentButton, accountType === item && styles.segmentButtonActive]}><Text style={[styles.segmentText, accountType === item && styles.segmentTextActive]}>{item === 'Personal' ? 'For people' : 'For business'}</Text></Pressable>)}
         </View>
 
         <View style={styles.segment}>
@@ -183,7 +236,7 @@ function AuthScreen() {
 
         <View style={styles.formPanel}>
           <Text style={styles.panelTitle}>
-            {isRegister ? 'Create your Pollify account' : 'Welcome back'}
+            {isRegister ? `Create your ${accountType.toLowerCase()} account` : `${accountType} sign in`}
           </Text>
 
           <LabeledInput
@@ -202,6 +255,16 @@ function AuthScreen() {
               value={displayName}
             />
           )}
+
+          {isRegister && <TermsAcceptance accepted={acceptedTerms} onChange={setAcceptedTerms} styles={styles} />}
+
+          {isRegister && accountType === 'Business' && <>
+            <LabeledInput label="Business name" onChangeText={setBusinessName} placeholder="Acme India" value={businessName} />
+            <LabeledInput autoCapitalize="none" label="Website (optional)" onChangeText={setWebsiteUrl} placeholder="https://acme.in" value={websiteUrl} />
+            <Text style={styles.inputLabel}>Choose a plan</Text>
+            <View style={styles.segment}>{(['Starter', 'Growth', 'Pro'] as const).map(plan => <Pressable key={plan} onPress={() => setSubscriptionPlan(plan)} style={[styles.segmentButton, subscriptionPlan === plan && styles.segmentButtonActive]}><Text style={[styles.segmentText, subscriptionPlan === plan && styles.segmentTextActive]}>{plan}</Text></Pressable>)}</View>
+            <Text style={styles.helperText}>Includes a 14-day trial. Billing activation will be completed before production launch.</Text>
+          </>}
 
           <LabeledInput
             label="Password"
@@ -229,22 +292,65 @@ function AuthScreen() {
             style={[styles.primaryButton, isSubmitting && styles.primaryButtonDisabled]}
           >
             {isSubmitting ? (
-              <ActivityIndicator color="#1F2B32" />
+              <ActivityIndicator color={theme.primaryForeground} />
             ) : (
               <Text style={styles.primaryButtonText}>
                 {isRegister ? 'Create account' : 'Login'}
               </Text>
             )}
           </Pressable>
+          {accountType === 'Personal' && googleConfigured && <GoogleSignInButton busy={isSubmitting} setBusy={setIsSubmitting} setError={setError} signIn={signInWithGoogle} styles={styles} />}
         </View>
 
-        <View style={styles.apiPanel}>
-          <Text style={styles.label}>Backend API</Text>
-          <Text style={styles.value}>{API_BASE_URL}</Text>
-        </View>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
+}
+
+function GoogleSignInButton({ busy, setBusy, setError, signIn, styles }: {
+  busy: boolean;
+  setBusy: (value: boolean) => void;
+  setError: (value: string | null) => void;
+  signIn: (idToken: string, acceptTerms: boolean) => Promise<void>;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID!;
+  const [request, response, prompt] = Google.useIdTokenAuthRequest({
+    clientId: webClientId,
+    webClientId,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  });
+
+  useEffect(() => {
+    if (response?.type !== 'success') return;
+    const idToken = response.params.id_token;
+    if (!idToken) { setError('Google did not return an identity token.'); return; }
+    setBusy(true); setError(null);
+    void signIn(idToken, acceptedTerms)
+      .catch(error => setError(error instanceof Error ? error.message : 'Google sign-in failed'))
+      .finally(() => setBusy(false));
+  }, [acceptedTerms, response, setBusy, setError, signIn]);
+
+  return <>
+    <View style={styles.authDivider}><View style={styles.authDividerLine} /><Text style={styles.authDividerText}>or</Text><View style={styles.authDividerLine} /></View>
+    <TermsAcceptance accepted={acceptedTerms} onChange={setAcceptedTerms} styles={styles} />
+    <Pressable disabled={busy || !request || !acceptedTerms} onPress={() => { setError(null); void prompt(); }} style={[styles.googleButton, (busy || !request || !acceptedTerms) && styles.primaryButtonDisabled]}>
+      <Text style={styles.googleButtonText}>Continue with Google</Text>
+    </Pressable>
+  </>;
+}
+
+function TermsAcceptance({ accepted, onChange, styles }: { accepted: boolean; onChange: (value: boolean) => void; styles: ReturnType<typeof createStyles> }) {
+  const webUrl = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://mvp-react-frontend.azurewebsites.net';
+  return <View style={styles.termsRow}>
+    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: accepted }} onPress={() => onChange(!accepted)} style={[styles.checkbox, accepted && styles.checkboxChecked]}>
+      {accepted && <Text style={styles.checkboxMark}>✓</Text>}
+    </Pressable>
+    <Text style={styles.termsText}>I agree to the <Text style={styles.termsLink} onPress={() => void Linking.openURL(`${webUrl}/terms`)}>Terms of Use and Community Guidelines</Text> and acknowledge the <Text style={styles.termsLink} onPress={() => void Linking.openURL(`${webUrl}/privacy`)}>Privacy Policy</Text>.</Text>
+  </View>;
 }
 
 interface LabeledInputProps {
@@ -264,6 +370,8 @@ function LabeledInput({
   secureTextEntry,
   value,
 }: LabeledInputProps) {
+  const { colors: theme, scheme } = useTheme(); const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={styles.field}>
       <Text style={styles.inputLabel}>{label}</Text>
@@ -272,7 +380,7 @@ function LabeledInput({
         autoCorrect={false}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#9A9285"
+        placeholderTextColor={theme.mutedForeground}
         secureTextEntry={secureTextEntry}
         style={styles.input}
         value={value}
@@ -288,6 +396,8 @@ function OnboardingScreen({
   onComplete: () => void;
   user: AuthUser;
 }) {
+  const { colors: theme, scheme } = useTheme(); const styles = useMemo(() => createStyles(theme), [theme]);
+
   const [step, setStep] = useState(0);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -344,7 +454,7 @@ function OnboardingScreen({
       <View style={styles.onboardingCard}>
         {step === 0 && (
           <>
-            <OnboardingPoint title="Fresh polls" copy="Trending questions are pulled from the backend feed." />
+            <OnboardingPoint title="Fresh polls" copy="Discover the questions everyone is talking about." />
             <OnboardingPoint title="Fast voting" copy="Tap an option, get results, and continue your session." />
             <OnboardingPoint title="Share-worthy results" copy="Public polls can be shared once you want to bring friends in." />
           </>
@@ -354,7 +464,7 @@ function OnboardingScreen({
           <>
             <OnboardingPoint title="XP rewards" copy="Votes update your XP and level right away." />
             <OnboardingPoint title="Daily streaks" copy="Come back daily to keep your streak growing." />
-            <OnboardingPoint title="Ranks" copy="The leaderboard uses real backend XP data, no mock scores." />
+            <OnboardingPoint title="Ranks" copy="Add your voice and find your place in the community." />
           </>
         )}
 
@@ -417,7 +527,7 @@ function OnboardingScreen({
           style={[styles.primaryButton, styles.onboardingPrimaryButton, isSaving && styles.primaryButtonDisabled]}
         >
           {isSaving ? (
-            <ActivityIndicator color="#1F2B32" />
+            <ActivityIndicator color={theme.primaryForeground} />
           ) : (
             <Text style={styles.primaryButtonText}>{step < 2 ? 'Next' : 'Start voting'}</Text>
           )}
@@ -428,6 +538,8 @@ function OnboardingScreen({
 }
 
 function OnboardingPoint({ copy, title }: { copy: string; title: string }) {
+  const { colors: theme, scheme } = useTheme(); const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <View style={styles.onboardingPoint}>
       <View style={styles.onboardingPointBullet} />
@@ -439,616 +551,119 @@ function OnboardingPoint({ copy, title }: { copy: string; title: string }) {
   );
 }
 
-function SignedInHome() {
-  const { applyVoteReward, signOut, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<SignedInTab>('home');
-  const [pushToken, setPushToken] = useState<string | null>(null);
-  const [pushNotice, setPushNotice] = useState<string | null>(null);
-  const [leaderboard, setLeaderboard] = useState<AuthUser[]>([]);
-  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
-  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
-  const [polls, setPolls] = useState<ApiPoll[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [votingPollId, setVotingPollId] = useState<number | null>(null);
-  const [latestReward, setLatestReward] = useState<VoteReward | null>(null);
-  const roundIds = useRef(new Map<number, string>());
-
-  const loadLeaderboard = useCallback(async () => {
-    setIsLeaderboardLoading(true);
-    setLeaderboardError(null);
-
-    try {
-      setLeaderboard(await usersApi.getLeaderboard(25));
-    } catch (err) {
-      setLeaderboardError(err instanceof Error ? err.message : 'Could not load leaderboard');
-    } finally {
-      setIsLeaderboardLoading(false);
-    }
-  }, []);
-
-  const loadPolls = useCallback(async (refreshing = false) => {
-    if (refreshing) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
-
-    setError(null);
-
-    try {
-      setPolls(await pollsApi.getTrending(20));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load polls');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadPolls();
-  }, [loadPolls]);
-
-  useEffect(() => {
-    const poll = polls[0]; if (!poll) return;
-    let roundId = roundIds.current.get(poll.id); if (!roundId) { roundId = `mobile-${Date.now()}-${poll.id}`; roundIds.current.set(poll.id, roundId); }
-    void track('game_round_started', { round_id: roundId, surface: 'feed', category: poll.category }, `feed:${poll.id}`);
-  }, [polls[0]?.id, polls[0]?.category]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function registerForPush() {
-      try {
-        const token = await getExpoPushToken();
-        if (!token) {
-          if (isMounted) setPushNotice('Enable notifications to get streak and daily poll reminders.');
-          return;
-        }
-
-        await notificationsApi.registerDeviceToken(token, Platform.OS);
-        if (isMounted) {
-          setPushToken(token);
-          setPushNotice(null);
-        }
-      } catch {
-        if (isMounted) setPushNotice('Push reminders could not be enabled on this device.');
-      }
-    }
-
-    registerForPush();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'leaderboard' && leaderboard.length === 0) {
-      loadLeaderboard();
-    }
-  }, [activeTab, leaderboard.length, loadLeaderboard]);
-
-  async function vote(pollId: number, optionId: number) {
-    setVotingPollId(pollId);
-    setError(null);
-
-    try {
-      const response = await votesApi.cast(pollId, optionId);
-      setPolls((current) =>
-        current.map((poll) => (poll.id === response.poll.id ? response.poll : poll)),
-      );
-      setLatestReward(response.reward);
-      applyVoteReward(response.reward);
-      let roundId = roundIds.current.get(pollId); if (!roundId) { roundId = `mobile-${Date.now()}-${pollId}`; roundIds.current.set(pollId, roundId); }
-      void track('game_round_completed', { round_id: roundId, surface: 'feed', outcome: 'voted', xp_awarded: response.reward.xpAwarded }, `feed:${pollId}:completed`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not record your vote');
-    } finally {
-      setVotingPollId(null);
-    }
-  }
-
-  async function logout() {
-    if (pushToken) {
-      await notificationsApi.disableDeviceToken(pushToken).catch(() => undefined);
-    }
-
-    await signOut();
-  }
-
-  if (!user) return null;
-
-  const level = user.progression.level;
-  const progress = { current: user.progression.xpIntoLevel, percent: user.progression.progressPercent };
-
-  return (
-    <View style={styles.feedShell}>
-      <View style={styles.feedHeader}>
-        <View>
-          <Text style={styles.eyebrow}>Pollify</Text>
-          <Text style={styles.feedTitle}>Hi, {user.displayName}</Text>
-        </View>
-        <Pressable onPress={logout} style={styles.logoutButton}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.compactStats}>
-        <Metric label="XP" value={String(user.xp ?? 0)} />
-        <Metric label="Streak" value={String(user.streak ?? 0)} />
-        <Metric label="Votes" value={String(user.totalVotes ?? 0)} />
-      </View>
-
-      <View style={styles.segment}>
-        <TabButton active={activeTab === 'home'} label="Home" onPress={() => setActiveTab('home')} />
-        <TabButton
-          active={activeTab === 'profile'}
-          label="Profile"
-          onPress={() => setActiveTab('profile')}
-        />
-        <TabButton
-          active={activeTab === 'leaderboard'}
-          label="Ranks"
-          onPress={() => setActiveTab('leaderboard')}
-        />
-      </View>
-
-      {latestReward && (
-        <View style={styles.rewardBanner}>
-          <Text accessibilityLiveRegion="polite" style={styles.rewardTitle}>
-            {latestReward.leveledUp ? `Level up! Level ${latestReward.progression.level}` : `+${latestReward.awardedXp} XP earned`}
-          </Text>
-          <Text style={styles.rewardCopy}>
-            {latestReward.streakAdvanced
-              ? `Daily streak is now ${latestReward.streak}.`
-              : `Streak stays at ${latestReward.streak}.`}
-          </Text>
-        </View>
-      )}
-
-      {pushNotice && (
-        <View style={styles.pushNotice}>
-          <Text style={styles.pushNoticeText}>{pushNotice}</Text>
-        </View>
-      )}
-
-      {activeTab === 'home' && (
-        <>
-          <View style={styles.progressPanel}>
-            <View style={styles.progressHeader}>
-              <Text style={styles.panelTitle}>Today's progress</Text>
-              <Text style={styles.levelPill}>Level {level}</Text>
-            </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progress.percent}%` }]} />
-            </View>
-            <Text style={styles.progressCopy}>
-              {progress.current} / {user.progression.xpRequiredForNextLevel} XP toward the next level.
-            </Text>
-          </View>
-
-          {error && (
-            <View style={styles.feedError}>
-              <Text style={styles.feedErrorText}>{error}</Text>
-              <Pressable onPress={() => loadPolls()} style={styles.retryButton}>
-                <Text style={styles.retryButtonText}>Retry</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {isLoading ? (
-            <View style={styles.feedState}>
-              <ActivityIndicator color="#B0413E" size="large" />
-              <Text style={styles.loadingText}>Loading trending polls</Text>
-            </View>
-          ) : (
-            <FlatList
-              contentContainerStyle={styles.feedList}
-              data={polls}
-              keyExtractor={(poll) => String(poll.id)}
-              ListEmptyComponent={<EmptyPollState onRetry={() => loadPolls()} />}
-              refreshControl={
-                <RefreshControl refreshing={isRefreshing} onRefresh={() => loadPolls(true)} />
-              }
-              renderItem={({ item }) => (
-                <PollCard
-                  isVoting={votingPollId === item.id}
-                  onVote={(optionId) => vote(item.id, optionId)}
-                  poll={item}
-                />
-              )}
-              showsVerticalScrollIndicator={false}
-            />
-          )}
-        </>
-      )}
-
-      {activeTab === 'profile' && (
-        <ScrollView contentContainerStyle={styles.feedList} showsVerticalScrollIndicator={false}>
-          <ProfilePanel level={level} user={user} />
-          <View style={styles.actionPanel}>
-            <Text style={styles.actionTitle}>Gamified mobile profile</Text>
-            <Text style={styles.actionCopy}>
-              XP, streak, level, profile stats, and rankings are driven by backend user data.
-            </Text>
-          </View>
-        </ScrollView>
-      )}
-
-      {activeTab === 'leaderboard' && (
-        <ScrollView contentContainerStyle={styles.feedList} showsVerticalScrollIndicator={false}>
-          <LeaderboardPanel
-            currentUserId={user.id}
-            error={leaderboardError}
-            isLoading={isLeaderboardLoading}
-            onRefresh={loadLeaderboard}
-            users={leaderboard}
-          />
-        </ScrollView>
-      )}
-    </View>
-  );
-}
-
-function TabButton({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.segmentButton, active && styles.segmentButtonActive]}
-    >
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function ProfilePanel({ level, user }: { level: number; user: AuthUser }) {
-  return (
-    <View style={styles.profilePanel}>
-      <View>
-        <Text style={styles.profileName}>{user.displayName}</Text>
-        <Text style={styles.profileUsername}>@{user.username}</Text>
-      </View>
-      <View style={styles.metricGrid}>
-        <Metric label="Level" value={String(level)} />
-        <Metric label="XP" value={String(user.xp ?? 0)} />
-        <Metric label="Streak" value={String(user.streak ?? 0)} />
-        <Metric label="Votes" value={String(user.totalVotes ?? 0)} />
-        <Metric label="Polls" value={String(user.pollsCreated ?? 0)} />
-        <Metric label="Joined" value={formatMonth(user.createdAt)} />
-      </View>
-    </View>
-  );
-}
-
-function LeaderboardPanel({
-  currentUserId,
-  error,
-  isLoading,
-  onRefresh,
-  users,
-}: {
-  currentUserId: number;
-  error: string | null;
-  isLoading: boolean;
-  onRefresh: () => void;
-  users: AuthUser[];
-}) {
-  return (
-    <View style={styles.profilePanel}>
-      <View style={styles.progressHeader}>
-        <Text style={styles.panelTitle}>Leaderboard</Text>
-        <Pressable onPress={onRefresh} style={styles.smallButton}>
-          <Text style={styles.smallButtonText}>Refresh</Text>
-        </Pressable>
-      </View>
-
-      {isLoading ? (
-        <View style={styles.inlineState}>
-          <ActivityIndicator color="#B0413E" />
-          <Text style={styles.inlineStateText}>Loading real rankings</Text>
-        </View>
-      ) : error ? (
-        <Text style={styles.errorText}>{error}</Text>
-      ) : users.length === 0 ? (
-        <View style={styles.inlineState}>
-          <Text style={styles.inlineStateText}>No ranked users yet.</Text>
-        </View>
-      ) : (
-        users.map((rankedUser, index) => (
-          <LeaderboardRow
-            currentUserId={currentUserId}
-            key={rankedUser.id}
-            rank={index + 1}
-            user={rankedUser}
-          />
-        ))
-      )}
-    </View>
-  );
-}
-
-function LeaderboardRow({
-  currentUserId,
-  rank,
-  user,
-}: {
-  currentUserId: number;
-  rank: number;
-  user: AuthUser;
-}) {
-  const isCurrentUser = user.id === currentUserId;
-
-  return (
-    <View style={[styles.leaderboardRow, isCurrentUser && styles.leaderboardRowActive]}>
-      <Text style={styles.rankText}>#{rank}</Text>
-      <View style={styles.leaderboardIdentity}>
-        <Text style={styles.leaderboardName}>{user.displayName}</Text>
-        <Text style={styles.leaderboardUsername}>@{user.username}</Text>
-      </View>
-      <View style={styles.leaderboardScore}>
-        <Text style={styles.leaderboardXp}>{user.xp ?? 0}</Text>
-        <Text style={styles.leaderboardLabel}>XP</Text>
-      </View>
-    </View>
-  );
-}
-
-function formatMonth(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'New';
-
-  return date.toLocaleDateString('en-IN', {
-    month: 'short',
-    year: '2-digit',
-  });
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function EmptyPollState({ onRetry }: { onRetry: () => void }) {
-  return (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyTitle}>No trending polls yet</Text>
-      <Text style={styles.emptyCopy}>
-        Pull to refresh or retry once the backend has generated fresh polls.
-      </Text>
-      <Pressable onPress={onRetry} style={styles.secondaryButton}>
-        <Text style={styles.secondaryButtonText}>Refresh</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function PollCard({
-  isVoting,
-  onVote,
-  poll,
-}: {
-  isVoting: boolean;
-  onVote: (optionId: number) => void;
-  poll: ApiPoll;
-}) {
-  const expiresAt = new Date(poll.expiresAt);
-  const isExpired = !poll.isActive || expiresAt.getTime() < Date.now();
-  const canVote = !poll.hasVoted && !isExpired && !isVoting;
-
-  return (
-    <View style={styles.pollCard}>
-      <View style={styles.pollMetaRow}>
-        <Text style={styles.categoryPill}>{poll.category || 'General'}</Text>
-        <Text style={styles.pollMeta}>{poll.totalVotes} votes</Text>
-      </View>
-
-      <Text style={styles.pollQuestion}>{poll.question}</Text>
-      {Boolean(poll.description) && <Text style={styles.pollDescription}>{poll.description}</Text>}
-
-      <View style={styles.optionList}>
-        {poll.options.map((option) => (
-          <PollOptionButton
-            canVote={canVote}
-            isSelected={poll.userVotedOptionId === option.id}
-            isVoting={isVoting}
-            key={option.id}
-            onPress={() => onVote(option.id)}
-            option={option}
-            showResults={poll.hasVoted || isExpired}
-          />
-        ))}
-      </View>
-
-      <Text style={styles.pollFooter}>
-        {poll.hasVoted
-          ? 'Your vote is counted.'
-          : isExpired
-            ? 'This poll has ended.'
-            : `Ends ${formatRelativeDate(expiresAt)}`}
-      </Text>
-    </View>
-  );
-}
-
-function PollOptionButton({
-  canVote,
-  isSelected,
-  isVoting,
-  onPress,
-  option,
-  showResults,
-}: {
-  canVote: boolean;
-  isSelected: boolean;
-  isVoting: boolean;
-  onPress: () => void;
-  option: ApiPollOption;
-  showResults: boolean;
-}) {
-  const percentage = Math.round(option.votePercentage || 0);
-
-  return (
-    <Pressable
-      disabled={!canVote}
-      onPress={onPress}
-      style={[styles.optionButton, isSelected && styles.optionButtonSelected]}
-    >
-      {showResults && <View style={[styles.optionFill, { width: `${percentage}%` }]} />}
-      <View style={styles.optionContent}>
-        <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-          {option.text}
-        </Text>
-        {isVoting ? (
-          <ActivityIndicator color="#B0413E" />
-        ) : showResults ? (
-          <Text style={styles.optionPercent}>{percentage}%</Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
-function formatRelativeDate(date: Date) {
-  if (Number.isNaN(date.getTime())) return 'soon';
-
-  const diffMs = date.getTime() - Date.now();
-  const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
-
-  if (diffHours <= 0) return 'soon';
-  if (diffHours < 24) return `in ${diffHours}h`;
-
-  const diffDays = Math.ceil(diffHours / 24);
-  return `in ${diffDays}d`;
-}
-
-const styles = StyleSheet.create({
+const createStyles = (theme: ThemeColors) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F7F5EF',
+    backgroundColor: theme.background,
   },
   onboardingContainer: {
     flexGrow: 1,
-    gap: 18,
+    gap: spacing['5'],
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing['6'],
   },
   onboardingHeader: {
-    gap: 4,
+    gap: spacing['1'],
   },
   onboardingCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    gap: 14,
-    padding: 18,
+    gap: spacing['3.5'],
+    padding: spacing['5'],
   },
   onboardingPoint: {
     alignItems: 'flex-start',
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing['3'],
   },
   onboardingPointBullet: {
-    backgroundColor: '#F4D35E',
-    borderRadius: 8,
+    backgroundColor: theme.primary,
+    borderRadius: radius.full,
     height: 14,
-    marginTop: 5,
+    marginTop: spacing['1'],
     width: 14,
   },
   onboardingPointText: {
     flex: 1,
-    gap: 4,
+    gap: spacing['1'],
   },
   onboardingPointTitle: {
-    color: '#222222',
-    fontSize: 17,
-    fontWeight: '900',
+    color: theme.foreground,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   onboardingPointCopy: {
-    color: '#54514A',
-    fontSize: 15,
+    color: theme.mutedForeground,
+    fontSize: typography.fontSize.sm,
     letterSpacing: 0,
     lineHeight: 22,
   },
   categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: spacing['2.5'],
   },
   categoryChoice: {
-    backgroundColor: '#F9F7F2',
-    borderColor: '#DED6C8',
-    borderRadius: 8,
+    backgroundColor: theme.muted,
+    borderColor: theme.border,
+    borderRadius: radius.full,
     borderWidth: 1,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
+    paddingHorizontal: spacing['3.5'],
+    paddingVertical: spacing['2.5'],
   },
   categoryChoiceActive: {
-    backgroundColor: '#233D4D',
-    borderColor: '#233D4D',
+    backgroundColor: theme.foreground,
+    borderColor: theme.foreground,
   },
   categoryChoiceText: {
-    color: '#4C473F',
-    fontSize: 14,
-    fontWeight: '900',
+    color: theme.mutedForeground,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   categoryChoiceTextActive: {
-    color: '#FFFFFF',
+    color: theme.primaryForeground,
   },
   onboardingDots: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing['2'],
     justifyContent: 'center',
   },
   onboardingDot: {
-    backgroundColor: '#DED6C8',
-    borderRadius: 8,
+    backgroundColor: theme.muted,
+    borderRadius: radius.full,
     height: 8,
     width: 8,
   },
   onboardingDotActive: {
-    backgroundColor: '#B0413E',
+    backgroundColor: theme.destructive,
     width: 22,
   },
   onboardingActions: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing['3'],
   },
   onboardingPrimaryButton: {
     flex: 1,
   },
   skipButton: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: radius.lg,
     borderWidth: 1,
     minHeight: 50,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
+    paddingHorizontal: spacing['5'],
+    paddingVertical: spacing['3.5'],
   },
   skipButtonText: {
-    color: '#756F63',
-    fontSize: 16,
-    fontWeight: '900',
+    color: theme.mutedForeground,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.black,
     letterSpacing: 0,
   },
   keyboard: {
@@ -1056,597 +671,153 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    padding: 24,
-    gap: 18,
+    padding: spacing['6'],
+    gap: spacing['5'],
   },
   loading: {
     alignItems: 'center',
     flex: 1,
-    gap: 14,
+    gap: spacing['3.5'],
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing['6'],
   },
   loadingText: {
-    color: '#54514A',
-    fontSize: 16,
-    fontWeight: '700',
+    color: theme.mutedForeground,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
-  },
-  feedShell: {
-    flex: 1,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-  },
-  feedHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingBottom: 14,
-  },
-  feedTitle: {
-    color: '#222222',
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 34,
-  },
-  logoutButton: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  logoutButtonText: {
-    color: '#B0413E',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  compactStats: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingBottom: 12,
-  },
-  rewardBanner: {
-    backgroundColor: '#233D4D',
-    borderRadius: 8,
-    gap: 4,
-    marginBottom: 12,
-    padding: 14,
-  },
-  rewardTitle: {
-    color: '#F4D35E',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  rewardCopy: {
-    color: '#E7EFF2',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0,
-    lineHeight: 20,
-  },
-  pushNotice: {
-    backgroundColor: '#FFF6D8',
-    borderColor: '#F4D35E',
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 12,
-    padding: 12,
-  },
-  pushNoticeText: {
-    color: '#5C4A12',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0,
-    lineHeight: 20,
-  },
-  feedError: {
-    alignItems: 'center',
-    backgroundColor: '#FBE9E7',
-    borderRadius: 8,
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-    padding: 12,
-  },
-  feedErrorText: {
-    color: '#9F2E2B',
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0,
-    lineHeight: 20,
-  },
-  retryButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  retryButtonText: {
-    color: '#9F2E2B',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  feedState: {
-    alignItems: 'center',
-    flex: 1,
-    gap: 14,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  feedList: {
-    gap: 14,
-    paddingBottom: 28,
   },
   hero: {
-    paddingTop: 36,
-    paddingBottom: 16,
+    paddingTop: spacing['4'],
+    paddingBottom: spacing['4'],
   },
-  heroCompact: {
-    paddingTop: 36,
-    paddingBottom: 8,
-  },
+  authBrand: { alignItems: 'center', flexDirection: 'row', gap: spacing['3'], marginBottom: spacing['5'] },
+  authLogoTile: { alignItems: 'center', backgroundColor: '#17151F', borderRadius: radius.lg, height: 58, justifyContent: 'center', width: 58 },
+  authLogo: { height: 44, width: 44 },
+  authBrandName: { color: theme.foreground, fontSize: typography.fontSize['3xl'], fontWeight: typography.fontWeight.extrabold, letterSpacing: -1, lineHeight: 31 },
   eyebrow: {
-    color: '#B0413E',
-    fontSize: 14,
-    fontWeight: '700',
+    color: theme.destructive,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
-    marginBottom: 10,
+    marginBottom: spacing['2.5'],
     textTransform: 'uppercase',
   },
   title: {
-    color: '#222222',
-    fontSize: 36,
-    fontWeight: '800',
+    color: theme.foreground,
+    fontSize: typography.fontSize['4xl'],
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
     lineHeight: 42,
   },
   titleSmall: {
-    color: '#222222',
-    fontSize: 32,
-    fontWeight: '800',
+    color: theme.foreground,
+    fontSize: typography.fontSize['3xl'],
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
     lineHeight: 38,
   },
   subtitle: {
-    color: '#54514A',
-    fontSize: 17,
+    color: theme.mutedForeground,
+    fontSize: typography.fontSize.lg,
     lineHeight: 25,
-    marginTop: 14,
+    marginTop: spacing['3.5'],
   },
   segment: {
-    backgroundColor: '#EEE8DC',
-    borderRadius: 8,
+    backgroundColor: theme.muted,
+    borderRadius: radius.lg,
     flexDirection: 'row',
-    padding: 4,
+    padding: spacing['1'],
   },
   segmentButton: {
     alignItems: 'center',
-    borderRadius: 7,
+    borderRadius: radius.md,
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: spacing['3'],
   },
   segmentButtonActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.card,
   },
   segmentText: {
-    color: '#756F63',
-    fontSize: 15,
-    fontWeight: '800',
+    color: theme.mutedForeground,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
   segmentTextActive: {
-    color: '#222222',
+    color: theme.foreground,
   },
   formPanel: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    padding: 18,
-    gap: 14,
+    padding: spacing['5'],
+    gap: spacing['3.5'],
   },
   panelTitle: {
-    color: '#222222',
-    fontSize: 18,
-    fontWeight: '800',
+    color: theme.foreground,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
-    marginBottom: 2,
+    marginBottom: spacing['1'],
   },
   field: {
-    gap: 8,
+    gap: spacing['2'],
   },
   inputLabel: {
-    color: '#4C473F',
-    fontSize: 14,
-    fontWeight: '800',
+    color: theme.mutedForeground,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
+  helperText: { color: theme.mutedForeground, fontSize: typography.fontSize.xs, lineHeight: 18 },
   input: {
-    backgroundColor: '#F9F7F2',
-    borderColor: '#DED6C8',
-    borderRadius: 8,
+    backgroundColor: theme.muted,
+    borderColor: theme.border,
+    borderRadius: radius.md,
     borderWidth: 1,
-    color: '#222222',
-    fontSize: 16,
+    color: theme.foreground,
+    fontSize: typography.fontSize.base,
     minHeight: 50,
-    paddingHorizontal: 14,
+    paddingHorizontal: spacing['3.5'],
   },
   errorText: {
-    backgroundColor: '#FBE9E7',
-    borderRadius: 8,
-    color: '#9F2E2B',
-    fontSize: 14,
-    fontWeight: '700',
+    backgroundColor: `${theme.destructive}16`,
+    borderRadius: radius.lg,
+    color: theme.destructive,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
     letterSpacing: 0,
     lineHeight: 20,
-    padding: 12,
-  },
-  apiPanel: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 6,
-    padding: 16,
-  },
-  label: {
-    color: '#756F63',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0,
-    textTransform: 'uppercase',
-  },
-  value: {
-    color: '#26231F',
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 22,
-  },
-  profilePanel: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 18,
-    padding: 18,
-  },
-  profileName: {
-    color: '#222222',
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  profileUsername: {
-    color: '#756F63',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0,
-    marginTop: 4,
-  },
-  metricGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  metric: {
-    backgroundColor: '#F7F5EF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    minWidth: '47%',
-    padding: 14,
-  },
-  metricValue: {
-    color: '#233D4D',
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  metricLabel: {
-    color: '#756F63',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0,
-    marginTop: 2,
-    textTransform: 'uppercase',
-  },
-  progressPanel: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 14,
-    marginBottom: 14,
-    padding: 18,
-  },
-  progressHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'space-between',
-  },
-  levelPill: {
-    backgroundColor: '#F4D35E',
-    borderRadius: 8,
-    color: '#1F2B32',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0,
-    overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    textTransform: 'uppercase',
-  },
-  progressTrack: {
-    backgroundColor: '#EEE8DC',
-    borderRadius: 8,
-    height: 12,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    backgroundColor: '#B0413E',
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    top: 0,
-  },
-  progressCopy: {
-    color: '#54514A',
-    fontSize: 15,
-    letterSpacing: 0,
-    lineHeight: 22,
-  },
-  smallButton: {
-    backgroundColor: '#F7F5EF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  smallButtonText: {
-    color: '#233D4D',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  inlineState: {
-    alignItems: 'center',
-    gap: 10,
-    padding: 18,
-  },
-  inlineStateText: {
-    color: '#54514A',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
-  leaderboardRow: {
-    alignItems: 'center',
-    backgroundColor: '#F9F7F2',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    padding: 12,
-  },
-  leaderboardRowActive: {
-    backgroundColor: '#FFF6D8',
-    borderColor: '#F4D35E',
-  },
-  rankText: {
-    color: '#B0413E',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0,
-    minWidth: 38,
-  },
-  leaderboardIdentity: {
-    flex: 1,
-  },
-  leaderboardName: {
-    color: '#222222',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  leaderboardUsername: {
-    color: '#756F63',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0,
-    marginTop: 2,
-  },
-  leaderboardScore: {
-    alignItems: 'flex-end',
-  },
-  leaderboardXp: {
-    color: '#233D4D',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  leaderboardLabel: {
-    color: '#756F63',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0,
-    textTransform: 'uppercase',
-  },
-  actionPanel: {
-    backgroundColor: '#233D4D',
-    borderRadius: 8,
-    padding: 20,
-    gap: 14,
-  },
-  actionTitle: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  actionCopy: {
-    color: '#DDE7EA',
-    fontSize: 16,
-    lineHeight: 23,
+    padding: spacing['3'],
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: '#F4D35E',
-    borderRadius: 8,
+    backgroundColor: theme.primary,
+    borderRadius: radius.lg,
     minHeight: 50,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
+    paddingHorizontal: spacing['4'],
+    paddingVertical: spacing['3.5'],
   },
   primaryButtonDisabled: {
     opacity: 0.72,
   },
   primaryButtonText: {
-    color: '#1F2B32',
-    fontSize: 16,
-    fontWeight: '800',
+    color: theme.primaryForeground,
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.extrabold,
     letterSpacing: 0,
   },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#F4D35E',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-  },
-  secondaryButtonText: {
-    color: '#1F2B32',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  emptyState: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 12,
-    padding: 22,
-  },
-  emptyTitle: {
-    color: '#222222',
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 0,
-    textAlign: 'center',
-  },
-  emptyCopy: {
-    color: '#54514A',
-    fontSize: 15,
-    letterSpacing: 0,
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  pollCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E6E0D4',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 14,
-    padding: 16,
-  },
-  pollMetaRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  categoryPill: {
-    backgroundColor: '#F4D35E',
-    borderRadius: 8,
-    color: '#1F2B32',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0,
-    overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    textTransform: 'uppercase',
-  },
-  pollMeta: {
-    color: '#756F63',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  pollQuestion: {
-    color: '#222222',
-    fontSize: 21,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 27,
-  },
-  pollDescription: {
-    color: '#54514A',
-    fontSize: 15,
-    letterSpacing: 0,
-    lineHeight: 22,
-  },
-  optionList: {
-    gap: 10,
-  },
-  optionButton: {
-    backgroundColor: '#F9F7F2',
-    borderColor: '#DED6C8',
-    borderRadius: 8,
-    borderWidth: 1,
-    minHeight: 52,
-    overflow: 'hidden',
-  },
-  optionButtonSelected: {
-    borderColor: '#B0413E',
-  },
-  optionFill: {
-    backgroundColor: '#F8E7B1',
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    top: 0,
-  },
-  optionContent: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 10,
-    justifyContent: 'space-between',
-    minHeight: 52,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  optionText: {
-    color: '#26231F',
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0,
-    lineHeight: 22,
-  },
-  optionTextSelected: {
-    color: '#9F2E2B',
-  },
-  optionPercent: {
-    color: '#233D4D',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  pollFooter: {
-    color: '#756F63',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0,
-  },
+  authDivider: { flexDirection: 'row', alignItems: 'center', gap: spacing['3'] },
+  authDividerLine: { flex: 1, height: 1, backgroundColor: theme.border },
+  authDividerText: { color: theme.mutedForeground, fontSize: typography.fontSize.sm },
+  googleButton: { alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background, borderColor: theme.border, borderWidth: 1, borderRadius: radius.lg, minHeight: 50, paddingHorizontal: spacing['4'] },
+  googleButtonText: { color: theme.foreground, fontSize: typography.fontSize.base, fontWeight: typography.fontWeight.extrabold },
+  termsRow: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing['3'] },
+  checkbox: { alignItems: 'center', borderColor: theme.border, borderRadius: 5, borderWidth: 1, height: 22, justifyContent: 'center', marginTop: 1, width: 22 },
+  checkboxChecked: { backgroundColor: theme.primary, borderColor: theme.primary },
+  checkboxMark: { color: theme.primaryForeground, fontSize: 15, fontWeight: typography.fontWeight.extrabold },
+  termsText: { color: theme.mutedForeground, flex: 1, fontSize: typography.fontSize.xs, lineHeight: 19 },
+  termsLink: { color: theme.primary, fontWeight: typography.fontWeight.extrabold },
 });

@@ -8,6 +8,8 @@ namespace BackendAPI.Interfaces
         Task<LeaderboardResponse> GetRankingsAsync(LeaderboardPeriod period, int limit, int offset, long? currentUserId, DateTime utcNow);
         Task<User?> GetByIdAsync(long id);
         Task<User?> GetByUsernameAsync(string username);
+        Task<User?> UpdateProfileAsync(long userId, string displayName, string? avatarUrl);
+        Task DeleteAccountAsync(long userId);
         Task<long> CreateAsync(CreateUserRequest request);
         Task IncrementPollsCreatedAsync(long userId);
         Task<VoteRewardResult> ApplyVoteRewardAsync(long userId, long pollId, int xpToAdd, DateTime utcNow, bool leaderboardEligible = true);

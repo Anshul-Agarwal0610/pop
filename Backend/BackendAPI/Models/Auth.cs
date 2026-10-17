@@ -8,6 +8,7 @@ namespace BackendAPI.Models
         public string DisplayName { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
         public string ConfirmPassword { get; set; } = string.Empty;
+        public bool AcceptTerms { get; set; }
     }
 
     public class LoginRequest
@@ -16,10 +17,18 @@ namespace BackendAPI.Models
         public string Password { get; set; } = string.Empty;
     }
 
+    public class RegisterBusinessRequest : RegisterRequest
+    {
+        public string BusinessName { get; set; } = string.Empty;
+        public string? WebsiteUrl { get; set; }
+        public string SubscriptionPlan { get; set; } = "Starter";
+    }
+
     public class GoogleLoginRequest
     {
         /// <summary>The ID token returned by Google Sign-In on the frontend.</summary>
         public string IdToken { get; set; } = string.Empty;
+        public bool AcceptTerms { get; set; }
     }
 
     // ── Responses ───────────────────────────────────────────────────────────
@@ -39,6 +48,7 @@ namespace BackendAPI.Models
         public string? Email { get; set; }
         public string? AvatarUrl { get; set; }
         public string AuthProvider { get; set; } = "local";
+        public string AccountType { get; set; } = AccountTypes.Personal;
         public bool IsAdmin { get; set; }
         public int Xp { get; set; }
         public int Streak { get; set; }
@@ -50,5 +60,11 @@ namespace BackendAPI.Models
         public ProgressionSnapshot Progression => Services.GamificationRules.FromTotalXp(Xp);
         public int Level => Progression.Level;
         public List<UserBadge> Badges { get; set; } = new();
+    }
+
+    public static class AccountTypes
+    {
+        public const string Personal = "Personal";
+        public const string Business = "Business";
     }
 }

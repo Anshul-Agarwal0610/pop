@@ -48,6 +48,12 @@ namespace BackendAPI.Models
                 ["fitness"] = "Health",
                 ["news"] = "Politics",
                 ["government"] = "Politics",
+                ["economy"] = "Work",
+                ["finance"] = "Work",
+                ["crime"] = "Society",
+                ["law-and-order"] = "Society",
+                ["international-relations"] = "Politics",
+                ["governance"] = "Politics",
             };
 
         public static PollCategory Normalize(string? category)

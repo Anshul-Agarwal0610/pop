@@ -5,6 +5,9 @@ namespace BackendAPI.Models
         public long Id { get; set; }
         public string Username { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string AuthProvider { get; set; } = "local";
         public int Xp { get; set; }
         public int Streak { get; set; }
         public int LongestStreak { get; set; }
@@ -21,6 +24,11 @@ namespace BackendAPI.Models
 
     public sealed class AnalyticsPrivacyPreference { public string Consent { get; set; } = "unknown"; public DateTime? UpdatedAt { get; set; } }
     public sealed class UpdateAnalyticsPrivacyRequest { public string Consent { get; set; } = "unknown"; }
+    public sealed class UpdateProfileRequest
+    {
+        public string DisplayName { get; set; } = string.Empty;
+        public string? AvatarUrl { get; set; }
+    }
 
     public class CreateUserRequest
     {
