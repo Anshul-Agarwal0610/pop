@@ -3,11 +3,17 @@
 import { motion } from "framer-motion"
 import { Sparkles, Lightbulb } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { CREATIVE_TEMPLATES, CreativePollHero, POPMOJI, PoPmoji } from "../creative-poll-hero"
+import type { PollReaction, PollTemplate } from "@/lib/poll-creation"
 
 interface QuestionStepProps {
   value: string
   onChange: (value: string) => void
   error?: string
+  creativeTemplate: PollTemplate
+  reactionId: PollReaction | null
+  onTemplateChange: (value: PollTemplate) => void
+  onReactionChange: (value: PollReaction | null) => void
 }
 
 const SUGGESTIONS = [
@@ -17,7 +23,7 @@ const SUGGESTIONS = [
   "Is electric the future of transportation?",
 ]
 
-export function QuestionStep({ value, onChange, error }: QuestionStepProps) {
+export function QuestionStep({ value, onChange, error, creativeTemplate, reactionId, onTemplateChange, onReactionChange }: QuestionStepProps) {
   const charCount = value.length
   const maxChars = 280
   const isNearLimit = charCount > maxChars * 0.8
@@ -88,6 +94,15 @@ export function QuestionStep({ value, onChange, error }: QuestionStepProps) {
           </motion.p>
         )}
       </div>
+
+      <details className="group rounded-2xl border border-border bg-card p-4">
+        <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold text-foreground"><Sparkles className="h-5 w-5 text-primary" />Make it PoP<span className="ml-auto text-sm text-muted-foreground group-open:hidden">Style your poll</span></summary>
+        <div className="mt-5 space-y-5">
+          <div><p className="mb-2 text-sm font-semibold">Card style</p><div className="grid grid-cols-3 gap-2">{CREATIVE_TEMPLATES.map(item => <button type="button" key={item.id} aria-pressed={creativeTemplate === item.id} onClick={() => onTemplateChange(item.id)} className={cn("min-h-20 rounded-2xl border p-3 text-left ring-offset-background", item.id === "pulse" ? "bg-[#FFE1E4] text-[#321D2B]" : item.id === "spotlight" ? "bg-[#252034] text-white" : "bg-secondary text-secondary-foreground", creativeTemplate === item.id ? "border-primary ring-2 ring-primary" : "border-border")}><span className="block text-sm font-bold">{item.label}</span><span className="text-xs opacity-70">{item.hint}</span></button>)}</div></div>
+          <div><p className="mb-2 text-sm font-semibold">PoPmoji reaction</p><div className="flex flex-wrap gap-2"><button type="button" aria-pressed={reactionId === null} onClick={() => onReactionChange(null)} className={cn("rounded-xl border px-3 py-2 text-sm", reactionId === null ? "border-primary ring-2 ring-primary" : "border-border")}>None</button>{POPMOJI.map(item => <button type="button" key={item.id} aria-label={item.label} aria-pressed={reactionId === item.id} onClick={() => onReactionChange(item.id)} className={cn("flex items-center gap-2 rounded-xl border px-2 py-1 text-xs", reactionId === item.id ? "border-primary ring-2 ring-primary" : "border-border")}><PoPmoji id={item.id} small />{item.label}</button>)}</div></div>
+          <CreativePollHero question={value} template={creativeTemplate} reaction={reactionId} compact />
+        </div>
+      </details>
 
       {/* Suggestions */}
       <div>

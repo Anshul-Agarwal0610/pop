@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { CategoryBadge } from "@/components/category-badge"
+import { CreativePollHero } from "@/components/poll-create/creative-poll-hero"
 import { ShareButton } from "@/components/share-button"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/auth-context"
@@ -289,6 +290,8 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
               className="h-full w-full object-cover"
               src={poll.thumbnailUrl}
             />
+          ) : poll.creativeTemplate || poll.reactionId ? (
+            <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} className="h-full rounded-none border-0 pb-14 pt-20" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 via-accent/10 to-primary/5">
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -298,7 +301,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
             </div>
           )}
 
-          <div className="absolute inset-0 bg-gradient-to-t from-card via-card/20 to-transparent" />
+          {!poll.creativeTemplate && !poll.reactionId && <div className="absolute inset-0 bg-gradient-to-t from-card via-card/20 to-transparent" />}
 
           <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
             <div className="flex flex-wrap gap-2">
@@ -357,6 +360,8 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
           </div>
 
           <div className="space-y-3">
+            {(poll.creativeTemplate || poll.reactionId) && poll.thumbnailUrl && <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} />}
+            {!poll.creativeTemplate && !poll.reactionId && <>
             <h1 className="text-3xl font-black leading-tight text-foreground md:text-4xl">
               {poll.question}
             </h1>
@@ -365,6 +370,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
                 {poll.description}
               </p>
             )}
+            </>}
             {poll.sourceUrl && (
               <a
                 className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"

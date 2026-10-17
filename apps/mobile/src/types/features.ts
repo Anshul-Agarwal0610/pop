@@ -50,6 +50,8 @@ export interface CreatePollPayload {
   sourceUrl?: string
   thumbnailUrl?: string
   mediaType?: string
+  creativeTemplate?: 'classic' | 'pulse' | 'spotlight'
+  reactionId?: 'big_yes' | 'thinking' | 'no_way' | 'wow'
   isAIGenerated?: boolean
   isPrivate?: boolean
   audienceType?: 'Public' | 'Friend' | 'Group'

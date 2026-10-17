@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CategoryBadge } from "@/components/category-badge"
+import { CreativePollHero } from "@/components/poll-create/creative-poll-hero"
 import { ShareButton } from "@/components/share-button"
 import { Poll, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/poll-data"
 import { pollsApi } from "@/lib/api"
@@ -140,7 +141,8 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
   const noOpacity  = useTransform(x, [-100, 0], [1, 0])
 
   // Prefer backend thumbnailUrl → fallback to mediaUrl
-  const imageUrl = poll.thumbnailUrl || poll.mediaUrl
+  const creative = !!(poll.creativeTemplate || poll.reactionId)
+  const imageUrl = poll.thumbnailUrl || (creative ? null : poll.mediaUrl)
 
   // Source resolution
   const effectiveSource    = poll.sourceType ?? poll.source
@@ -238,6 +240,8 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                 ;(e.currentTarget as HTMLImageElement).style.display = "none"
               }}
             />
+          ) : creative ? (
+            <CreativePollHero question={poll.question} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} compact className="h-full rounded-none border-0 pt-16" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 via-accent/10 to-primary/5">
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -248,7 +252,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
           )}
 
           {/* Gradient Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
+          {!creative && <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />}
 
           {/* Play Button for Videos */}
           {poll.mediaType === "video" && !hasVoted && (
@@ -355,6 +359,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
 
           {/* Question — clamped with hover tooltip */}
           <div className="mb-3 min-h-0 flex-1">
+            {creative && imageUrl ? <CreativePollHero question={poll.question} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} compact /> : !creative ? (
             <Tooltip delayDuration={300}>
               <TooltipTrigger asChild>
                 <h2 className="cursor-default break-words text-lg font-bold leading-tight text-foreground sm:text-xl lg:text-2xl">
@@ -368,6 +373,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                 {poll.question}
               </TooltipContent>
             </Tooltip>
+            ) : null}
           </div>
 
           {/* Stats */}

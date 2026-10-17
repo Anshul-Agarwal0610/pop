@@ -1,4 +1,5 @@
 import { BallotVote } from '../components/BallotVote';
+import { CreativePollHero } from '../components/CreativePollHero';
 import { ballotChoices } from '../lib/ballot';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { isRunningInExpoGo } from 'expo';
@@ -123,11 +124,12 @@ function YouTubeMedia({ videoId, thumbnail }: { videoId: string; thumbnail: stri
 
 function PollPreview({ poll, onOpen }: { poll: ApiPoll; onOpen: () => void }) {
   const { colors: c } = useTheme(); const s = useMemo(() => createStyles(c), [c]);
+  const creative = !!(poll.creativeTemplate || poll.reactionId);
   return <View style={s.card}>
     <View style={s.between}><Category name={poll.category} /><Text style={s.meta}>{pollDeadline(poll)}</Text></View>
-    <Text style={s.cardTitle}>{poll.question}</Text>
+    {creative ? <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} compact /> : <Text style={s.cardTitle}>{poll.question}</Text>}
     <PollMedia poll={poll} />
-    <View style={s.previewBody}><Text numberOfLines={3} style={[s.body, s.flex]}>{poll.description || 'A fresh perspective starts with you. Where do you stand?'}</Text>{!poll.thumbnailUrl && !youtubeVideoId(poll.sourceUrl) && <PollArtwork />}</View>
+    {!creative && <View style={s.previewBody}><Text numberOfLines={3} style={[s.body, s.flex]}>{poll.description || 'A fresh perspective starts with you. Where do you stand?'}</Text>{!poll.thumbnailUrl && !youtubeVideoId(poll.sourceUrl) && <PollArtwork />}</View>}
     <View style={s.row}><Icon name="people-outline" size={17} /><Text style={s.meta}>{count(poll.totalVotes)} votes</Text>{poll.hasVoted && <Text style={s.votedTag}>Voted ✓</Text>}</View>
     <Button title={poll.hasVoted || isPollClosed(poll) ? 'View results' : 'Vote now  →'} onPress={onOpen} />
   </View>;
@@ -292,10 +294,10 @@ export function PollExperience() {
       <ScrollView scrollEnabled={!ballotDragging && !voting} contentContainerStyle={[s.detailContent, activeBallot && s.ballotDetailContent]} showsVerticalScrollIndicator={false}>
         {results && !choices && !creatorView && <View style={s.success}><Icon name="checkmark-circle" color={c.accent} /><Text style={s.successText}>{detail.hasVoted ? 'Your vote is in' : 'This poll has closed'}</Text></View>}
         <View style={s.between}><Category name={detail.category} /><Text style={s.meta}>{pollDeadline(detail)}</Text></View>
-        <Text accessibilityRole="header" style={[s.question, choices && { fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", fontWeight: "400" }]}>{detail.question}</Text>
+        {detail.creativeTemplate || detail.reactionId ? <CreativePollHero question={detail.question} description={detail.description} category={detail.category} template={detail.creativeTemplate} reaction={detail.reactionId} /> : <Text accessibilityRole="header" style={[s.question, choices && { fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", fontWeight: "400" }]}>{detail.question}</Text>}
         <PollMedia poll={detail} detail />
         {detail.id === samplePoll.id && <Text style={s.caption}>LOCAL DEMO · No real votes or XP · Refresh the feed to try again</Text>}
-        {(!results || creatorView) && <Text style={s.context}>{detail.description || 'Every perspective counts. Where do you stand?'}</Text>}
+        {(!results || creatorView) && !detail.creativeTemplate && !detail.reactionId && <Text style={s.context}>{detail.description || 'Every perspective counts. Where do you stand?'}</Text>}
         {!!detail.sourceUrl && <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(detail.sourceUrl!)}><Text style={s.sourceLink}>Read the original source ↗</Text></Pressable>}
         {activeBallot && detail.id !== samplePoll.id && <Pressable accessibilityRole="button" disabled={voting} onPress={() => setFeature('Report')}><Text style={[s.meta, { textAlign: 'right' }]}>Report poll</Text></Pressable>}
         {results && choices && !creatorView && <View accessibilityLiveRegion="polite" style={{ alignItems: 'center', gap: 12, paddingVertical: 22 }}>
