@@ -1,4 +1,6 @@
-# US169: Document the shared design token convention
+# US195: Document the shared design token convention
+
+GitHub issue: https://github.com/Anshul-Agarwal0610/pop/issues/195
 
 ## User story
 
@@ -8,7 +10,7 @@ so that new components don't reintroduce hardcoded, divergent styling.
 
 ## Description
 
-With shared tokens in place (US166–US168), write a short contributor-facing note describing where tokens live, how each platform consumes them, and the expectation that new UI work pulls from tokens instead of hardcoding new colors.
+With shared tokens in place (US192–US194), write a short contributor-facing note describing where tokens live, how each platform consumes them, and the expectation that new UI work pulls from tokens instead of hardcoding new colors.
 
 ## Acceptance criteria
 
