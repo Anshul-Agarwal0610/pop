@@ -269,7 +269,7 @@ export default function ProfilePage() {
                     </div>
                     <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock className="h-3 w-3" />
-                      {relativeTime(item.votedAt)} · {item.totalVotes.toLocaleString()} votes
+                      {relativeTime(item.votedAt)} · {item.canViewResults === false ? "Results when poll closes" : `${item.totalVotes.toLocaleString()} votes`}
                     </p>
                   </div>
                 </motion.div>

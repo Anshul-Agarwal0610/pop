@@ -59,7 +59,7 @@ export function SearchResultCard({ poll, onSelect }: SearchResultCardProps) {
           <CategoryBadge category={poll.category} className="px-2 py-0.5" />
           <span className="flex items-center gap-1">
             <Users className="h-3.5 w-3.5" />
-            {poll.totalVotes.toLocaleString()}
+            {poll.canViewResults === false ? "Hidden" : poll.totalVotes.toLocaleString()}
           </span>
           <span
             className={cn(

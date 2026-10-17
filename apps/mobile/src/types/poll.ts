@@ -32,6 +32,8 @@ export interface ApiPoll {
   mediaType?: 'image' | 'video' | string | null;
   creativeTemplate?: 'classic' | 'pulse' | 'spotlight' | string | null;
   reactionId?: 'big_yes' | 'thinking' | 'no_way' | 'wow' | string | null;
+  resultVisibility?: 'Immediate' | 'AfterVote' | 'AfterClose';
+  canViewResults?: boolean;
   isAIGenerated: boolean;
   isSponsored?: boolean;
   sponsorName?: string | null;

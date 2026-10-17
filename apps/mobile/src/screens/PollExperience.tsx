@@ -130,8 +130,8 @@ function PollPreview({ poll, onOpen }: { poll: ApiPoll; onOpen: () => void }) {
     {creative ? <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} compact /> : <Text style={s.cardTitle}>{poll.question}</Text>}
     <PollMedia poll={poll} />
     {!creative && <View style={s.previewBody}><Text numberOfLines={3} style={[s.body, s.flex]}>{poll.description || 'A fresh perspective starts with you. Where do you stand?'}</Text>{!poll.thumbnailUrl && !youtubeVideoId(poll.sourceUrl) && <PollArtwork />}</View>}
-    <View style={s.row}><Icon name="people-outline" size={17} /><Text style={s.meta}>{count(poll.totalVotes)} votes</Text>{poll.hasVoted && <Text style={s.votedTag}>Voted ✓</Text>}</View>
-    <Button title={poll.hasVoted || isPollClosed(poll) ? 'View results' : 'Vote now  →'} onPress={onOpen} />
+    <View style={s.row}><Icon name="people-outline" size={17} /><Text style={s.meta}>{poll.canViewResults === false ? 'Results hidden' : `${count(poll.totalVotes)} votes`}</Text>{poll.hasVoted && <Text style={s.votedTag}>Voted ✓</Text>}</View>
+    <Button title={poll.hasVoted || isPollClosed(poll) ? poll.canViewResults === false ? 'View vote' : 'View results' : 'Vote now  →'} onPress={onOpen} />
   </View>;
 }
 
@@ -214,7 +214,7 @@ export function PollExperience() {
     try {
       if (detail.id === samplePoll.id && typeof __DEV__ !== 'undefined' && __DEV__) {
         await new Promise(resolve => setTimeout(resolve, 700));
-        const updated = { ...detail, hasVoted: true, userVotedOptionId: optionId, totalVotes: 1,
+        const updated = { ...detail, hasVoted: true, userVotedOptionId: optionId, canViewResults: true, totalVotes: 1,
           options: detail.options.map(option => ({ ...option, voteCount: option.id === optionId ? 1 : 0, votePercentage: option.id === optionId ? 100 : 0 })) };
         setDetail(updated);
         setPolls(current => current.map(poll => poll.id === updated.id ? updated : poll));
@@ -281,14 +281,15 @@ export function PollExperience() {
   if (feature === 'Report' && detail) return <ReportScreen pollId={detail.id} back={() => setFeature(null)} />;
   if (detail) {
     const creatorView = detail.createdByUserId === user.id;
-    const results = creatorView || detail.hasVoted || isPollClosed(detail);
+    const canVote = !creatorView && !detail.hasVoted && !isPollClosed(detail);
+    const results = (detail.canViewResults ?? (creatorView || detail.hasVoted || isPollClosed(detail))) && !canVote;
     const next = nextUnvotedPoll(polls, detail.id);
     const choices = ballotChoices(detail.options);
-    const activeBallot = !results && Boolean(choices);
+    const activeBallot = canVote && Boolean(choices);
     return <View style={s.shell}>
       <View style={s.detailHeader}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to feed" disabled={voting} onPress={back} style={s.iconButton}><Icon name="arrow-back" color={c.foreground} /></Pressable>
-        <Text style={s.headerTitle}>{creatorView ? 'Poll performance' : results ? 'Results' : 'Today’s debate'}</Text>
+        <Text style={s.headerTitle}>{creatorView ? 'Poll performance' : results ? 'Results' : canVote ? 'Today’s debate' : 'Vote counted'}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Share poll question" style={s.iconButton} onPress={() => sharePoll(detail)}><Icon name="share-outline" color={c.foreground} /></Pressable>
       </View>
       <ScrollView scrollEnabled={!ballotDragging && !voting} contentContainerStyle={[s.detailContent, activeBallot && s.ballotDetailContent]} showsVerticalScrollIndicator={false}>
@@ -318,7 +319,7 @@ export function PollExperience() {
           })}
           <Text style={s.body}>{count(detail.totalVotes)} total votes · {pollDeadline(detail)}</Text>
           <Text style={s.caption}>{creatorView ? 'Results update as people vote. You cannot vote on a poll you created.' : 'Results reflect participants in this poll.'}</Text>
-        </View> : choices ? <BallotVote key={detail.id} choices={choices} busy={voting} cast={confirmVote} onDragChange={setBallotDragging} gestureChoiceId={shakeChoiceId} /> : <View style={s.options}>
+        </View> : !canVote ? <View style={s.card}><Text style={s.cardTitle}>{detail.hasVoted ? 'Your vote is in' : 'Poll closed'}</Text><Text style={s.body}>Results will appear when this poll closes. Come back after {new Date(detail.expiresAt).toLocaleString()}.</Text></View> : choices ? <BallotVote key={detail.id} choices={choices} busy={voting} cast={confirmVote} onDragChange={setBallotDragging} gestureChoiceId={shakeChoiceId} /> : <View style={s.options}>
           {detail.options.map(option => <Pressable key={option.id} accessibilityRole="radio" accessibilityState={{ checked: selected === option.id, disabled: voting }} disabled={voting} onPress={() => setSelected(option.id)} style={({ pressed }) => [s.option, selected === option.id && s.optionSelected, pressed && s.pressed]}>
             <Icon name={selected === option.id ? 'radio-button-on' : 'radio-button-off'} color={selected === option.id ? c.primary : c.chart3} size={28} />
             <View style={s.flex}><Text style={s.optionTitle}>{option.text}</Text>{['up', 'support', 'against'].includes(option.text.toLowerCase()) && <Text style={s.body}>{['up', 'support'].includes(option.text.toLowerCase()) ? 'I support this' : 'I oppose this'}</Text>}</View>
@@ -328,10 +329,11 @@ export function PollExperience() {
         {reward && <View style={[s.card, s.row]}><View style={s.rewardIcon}><Icon name="star" color={c.chart4} size={27} /></View><View style={s.flex}><Text style={s.cardTitle}>+{reward.xpAwarded} XP</Text><Text style={s.body}>{reward.leveledUp ? `You reached level ${reward.progression.level}!` : `${reward.streak} day streak · ${reward.todayComplete ? 'Today’s activity complete' : 'Keep the conversation going'}`}</Text></View></View>}
         {detail.id !== samplePoll.id && !creatorView && !activeBallot && <Button title="Report this poll" secondary disabled={voting} onPress={() => setFeature("Report")} />}
         {voteError && <Text accessibilityRole="alert" style={s.error}>{voteError}</Text>}
-        {!results && !choices && <Text style={[s.caption, s.center]}>One vote. Your perspective.</Text>}
+        {canVote && detail.resultVisibility === 'Immediate' && detail.canViewResults && <View style={s.card}><Text style={s.cardTitle}>Live results</Text>{detail.options.map(option => <Text key={option.id} style={s.body}>{option.text}: {resultPercent(option.voteCount, detail.totalVotes)}%</Text>)}</View>}
+        {canVote && !choices && <Text style={[s.caption, s.center]}>One vote. Your perspective.</Text>}
       </ScrollView>
-      <View style={[s.footer, !results && choices ? { display: 'none' } : undefined]}>
-        {creatorView ? <><Button title="Share poll" onPress={() => sharePoll(detail)} /><Button title="Back to my polls" secondary onPress={back} /></> : results ? <><Button title={next ? 'Next poll  →' : 'Back to feed'} onPress={() => next ? openPoll(next) : back()} />{next && <Button title="Back to feed" secondary onPress={back} />}</> : <Button title="Confirm vote" busy={voting} disabled={selected === null || detail.options.length === 0} onPress={() => void confirmVote()} />}
+      <View style={[s.footer, canVote && choices ? { display: 'none' } : undefined]}>
+        {creatorView ? <><Button title="Share poll" onPress={() => sharePoll(detail)} /><Button title="Back to my polls" secondary onPress={back} /></> : !canVote ? <><Button title={next ? 'Next poll  →' : 'Back to feed'} onPress={() => next ? openPoll(next) : back()} />{next && <Button title="Back to feed" secondary onPress={back} />}</> : <Button title="Confirm vote" busy={voting} disabled={selected === null || detail.options.length === 0} onPress={() => void confirmVote()} />}
       </View>
     </View>;
   }

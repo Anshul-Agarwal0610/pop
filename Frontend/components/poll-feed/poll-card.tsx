@@ -380,13 +380,15 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
           <div className="mb-3 flex flex-shrink-0 items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Users className="h-4 w-4" />
-              {poll.totalVotes.toLocaleString()} votes
+              {poll.canViewResults === false ? "Results hidden" : `${poll.totalVotes.toLocaleString()} votes`}
             </span>
           </div>
 
           {/* ── Action area — YES/NO buttons OR voted results ──────────────── */}
           <div className="flex-shrink-0">
-            {hasVoted ? (
+            {hasVoted && poll.canViewResults === false ? (
+              <p className="rounded-2xl bg-secondary/70 p-4 text-center text-sm text-muted-foreground">Vote counted. Results appear when the poll closes.</p>
+            ) : hasVoted ? (
               /* US-19: Voted state — show result bars */
               <motion.div
                 className="space-y-2.5"

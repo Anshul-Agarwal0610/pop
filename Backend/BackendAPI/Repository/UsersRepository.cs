@@ -296,7 +296,8 @@ namespace BackendAPI.Repository
                       p.Question,
                       p.Category,
                       o.Text         AS VotedOptionText,
-                      p.TotalVotes,
+                      CASE WHEN p.ResultVisibility='AfterClose' AND p.IsActive=1 AND p.ExpiresAt>SYSUTCDATETIME() THEN 0 ELSE p.TotalVotes END AS TotalVotes,
+                      CAST(CASE WHEN p.ResultVisibility='AfterClose' AND p.IsActive=1 AND p.ExpiresAt>SYSUTCDATETIME() THEN 0 ELSE 1 END AS bit) AS CanViewResults,
                       v.CreatedAt    AS VotedAt
                   FROM Votes v
                   JOIN Polls       p ON p.Id = v.PollId

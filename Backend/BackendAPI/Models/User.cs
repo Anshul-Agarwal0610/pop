@@ -44,6 +44,7 @@ namespace BackendAPI.Models
         public string Category         { get; set; } = string.Empty;
         public string VotedOptionText  { get; set; } = string.Empty;
         public int    TotalVotes       { get; set; }
+        public bool   CanViewResults   { get; set; }
         public DateTime VotedAt        { get; set; }
     }
 

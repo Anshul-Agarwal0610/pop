@@ -55,6 +55,8 @@ export interface ApiPoll {
   mediaType?: "image" | "video" | null
   creativeTemplate?: "classic" | "pulse" | "spotlight" | null
   reactionId?: "big_yes" | "thinking" | "no_way" | "wow" | null
+  resultVisibility?: "Immediate" | "AfterVote" | "AfterClose"
+  canViewResults?: boolean
   isAIGenerated: boolean
   options: ApiPollOption[]
   // US-16: per-user vote state (present when authenticated)
@@ -178,6 +180,7 @@ export interface CreatePollPayload {
   mediaType?: "image" | "video"
   creativeTemplate?: "classic" | "pulse" | "spotlight"
   reactionId?: "big_yes" | "thinking" | "no_way" | "wow"
+  resultVisibility?: "Immediate" | "AfterVote" | "AfterClose"
   isAIGenerated?: boolean
   isPrivate?: boolean
   isWellness?: boolean
@@ -751,6 +754,7 @@ export interface ApiVoteHistoryItem {
   category: string
   votedOptionText: string
   totalVotes: number
+  canViewResults?: boolean
   votedAt: string
 }
 

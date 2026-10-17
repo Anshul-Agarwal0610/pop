@@ -311,7 +311,7 @@ export default function HomePage() {
                       <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Users className="h-3.5 w-3.5" />
-                          {poll.totalVotes.toLocaleString()} votes
+                          {poll.canViewResults === false ? "Results hidden" : `${poll.totalVotes.toLocaleString()} votes`}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3.5 w-3.5" />

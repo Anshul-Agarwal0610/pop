@@ -257,7 +257,8 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
   const style = sourceStyle(poll.sourceType)
   const youtubeEmbed = poll.sourceType === "manual-youtube" ? youtubeEmbedUrl(poll.sourceUrl) : null
   const resultView = searchParams.get("view") === "results"
-  const showResults = poll.hasVoted || expired || resultView
+  const canViewResults = poll.canViewResults ?? (poll.hasVoted || expired)
+  const showResults = canViewResults && (poll.hasVoted || expired || resultView)
   const selectedOption = poll.options.find((option) => option.id === poll.userVotedOptionId)
   const leadingOption = [...poll.options].sort((a, b) => (b.votePercentage ?? 0) - (a.votePercentage ?? 0))[0]
   const resultOption = selectedOption ?? leadingOption
@@ -355,7 +356,7 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
             </span>
             <span className="flex items-center gap-1.5">
               <Users className="h-4 w-4" />
-              {poll.totalVotes.toLocaleString()} votes
+              {canViewResults ? `${poll.totalVotes.toLocaleString()} votes` : "Results hidden"}
             </span>
           </div>
 
@@ -433,6 +434,11 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
                 />
               </div>
             </div>
+          ) : poll.hasVoted || expired ? (
+            <div className="rounded-2xl border bg-secondary/40 p-5 text-center">
+              <p className="font-semibold">{poll.hasVoted ? "Your vote is in" : "This poll has closed"}</p>
+              <p className="text-sm text-muted-foreground">Results will appear when this poll closes.</p>
+            </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {votingOptions.map((option, index) => (
@@ -459,6 +465,12 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
                   This poll has invalid voting choices and cannot accept votes.
                 </p>
               )}
+            </div>
+          )}
+          {!poll.hasVoted && !expired && poll.resultVisibility === "Immediate" && canViewResults && (
+            <div className="rounded-2xl border bg-secondary/40 p-4">
+              <p className="mb-2 font-semibold">Live results</p>
+              {poll.options.map(option => <p key={option.id} className="text-sm text-muted-foreground">{option.text}: {Math.round(option.votePercentage)}%</p>)}
             </div>
           )}
 

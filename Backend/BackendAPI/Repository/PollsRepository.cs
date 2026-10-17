@@ -45,7 +45,8 @@ namespace BackendAPI.Repository
         /// <summary>Applies HasVoted / UserVotedOptionId to a list of polls in-memory.</summary>
         private static IEnumerable<Poll> ApplyVoteState(
             IEnumerable<Poll> polls,
-            Dictionary<long, long> userVotes)
+            Dictionary<long, long> userVotes,
+            long? userId = null)
         {
             foreach (var poll in polls)
             {
@@ -54,6 +55,7 @@ namespace BackendAPI.Repository
                     poll.HasVoted          = true;
                     poll.UserVotedOptionId = optionId;
                 }
+                PollResultVisibility.Apply(poll, userId, DateTime.UtcNow);
             }
             return polls;
         }
@@ -98,7 +100,7 @@ namespace BackendAPI.Repository
             );
 
             var userVotes = await GetUserVotesAsync(userId);
-            return ApplyVoteState(pollDict.Values, userVotes);
+            return ApplyVoteState(pollDict.Values, userVotes, userId);
         }
 
         // ── GetById ───────────────────────────────────────────────────────────
@@ -136,7 +138,7 @@ namespace BackendAPI.Repository
             );
 
             var userVotes = await GetUserVotesAsync(userId);
-            return ApplyVoteState(pollDict.Values, userVotes).FirstOrDefault();
+            return ApplyVoteState(pollDict.Values, userVotes, userId).FirstOrDefault();
         }
 
         public async Task<IEnumerable<Poll>> GetByCreatorAsync(long userId, int count = 100)
@@ -173,7 +175,7 @@ namespace BackendAPI.Repository
                 splitOn: "Id");
 
             var userVotes = await GetUserVotesAsync(userId);
-            return ApplyVoteState(pollDict.Values, userVotes);
+            return ApplyVoteState(pollDict.Values, userVotes, userId);
         }
 
         // ── GetTrending ───────────────────────────────────────────────────────
@@ -218,7 +220,7 @@ namespace BackendAPI.Repository
             );
 
             var userVotes = await GetUserVotesAsync(userId);
-            return ApplyVoteState(pollDict.Values, userVotes);
+            return ApplyVoteState(pollDict.Values, userVotes, userId);
         }
 
         // ── GetRecent ─────────────────────────────────────────────────────────
@@ -298,7 +300,7 @@ namespace BackendAPI.Repository
             );
 
             var userVotes = await GetUserVotesAsync(userId);
-            return ApplyVoteState(pollDict.Values, userVotes);
+            return ApplyVoteState(pollDict.Values, userVotes, userId);
         }
 
         public async Task<IEnumerable<Poll>> SearchAsync(string query, string? category = null, long? userId = null)
@@ -345,7 +347,7 @@ namespace BackendAPI.Repository
             );
 
             var userVotes = await GetUserVotesAsync(userId);
-            return ApplyVoteState(pollDict.Values, userVotes);
+            return ApplyVoteState(pollDict.Values, userVotes, userId);
         }
 
         public async Task<IEnumerable<Poll>> GetRecentAsync(int count = 10)
@@ -382,7 +384,7 @@ namespace BackendAPI.Repository
                 splitOn: "Id"
             );
 
-            return pollDict.Values;
+            return ApplyVoteState(pollDict.Values, new Dictionary<long, long>());
         }
 
         public async Task<IEnumerable<Poll>> GetRecentGeneratedAsync(int count = 100)
@@ -433,7 +435,7 @@ namespace BackendAPI.Repository
                 splitOn: "Id"
             );
 
-            return pollDict.Values;
+            return ApplyVoteState(pollDict.Values, new Dictionary<long, long>());
         }
 
         public async Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null)
@@ -458,6 +460,8 @@ namespace BackendAPI.Repository
                 throw new ArgumentException("Choose a valid poll template.");
             if (reactionId is not (null or "big_yes" or "thinking" or "no_way" or "wow"))
                 throw new ArgumentException("Choose a valid PoPmoji reaction.");
+            if (!PollResultVisibility.IsValid(request.ResultVisibility))
+                throw new ArgumentException("Choose a valid result reveal setting.");
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
             var audienceType = isPrivate && !isWellness ? request.AudienceType?.Trim() : PollAudienceTypes.Public;
@@ -483,14 +487,14 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, CreativeTemplate, ReactionId, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
+                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, CreativeTemplate, ReactionId, ResultVisibility, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
                          ReplacementForCleanupRecordId)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @CreativeTemplate, @ReactionId, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
+                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @CreativeTemplate, @ReactionId, @ResultVisibility, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
                          @ReplacementForCleanupRecordId);
@@ -507,6 +511,7 @@ namespace BackendAPI.Repository
                         request.MediaType,
                         CreativeTemplate = creativeTemplate,
                         ReactionId = reactionId,
+                        request.ResultVisibility,
                         request.IsAIGenerated,
                         GenerationMethod = generated ? request.GenerationMethod : GenerationMethods.ManualReview,
                         request.TrendingTopicId,

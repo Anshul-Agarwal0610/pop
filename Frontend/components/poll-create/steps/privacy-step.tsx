@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils"
 interface PrivacyStepProps {
   value: "public" | "private"
   onChange: (value: "public" | "private") => void
+  resultVisibility: "Immediate" | "AfterVote" | "AfterClose"
+  onResultVisibilityChange: (value: "Immediate" | "AfterVote" | "AfterClose") => void
 }
 
 const PRIVACY_OPTIONS = [
@@ -36,7 +38,7 @@ const PRIVACY_OPTIONS = [
   },
 ]
 
-export function PrivacyStep({ value, onChange }: PrivacyStepProps) {
+export function PrivacyStep({ value, onChange, resultVisibility, onResultVisibilityChange }: PrivacyStepProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -60,6 +62,21 @@ export function PrivacyStep({ value, onChange }: PrivacyStepProps) {
         <p className="mt-2 text-muted-foreground">
           Choose your poll&apos;s visibility
         </p>
+      </div>
+      <div className="rounded-2xl border bg-card p-5">
+        <h3 className="text-lg font-semibold">When do results appear?</h3>
+        <p className="mb-3 text-sm text-muted-foreground">You can always see your own poll performance.</p>
+        <div className="grid gap-2">
+          {([
+            ["Immediate", "Live results", "Visible while the poll is open."],
+            ["AfterVote", "After voting", "Revealed after someone casts their vote."],
+            ["AfterClose", "When poll closes", "Kept hidden until the closing time."],
+          ] as const).map(([id, title, description]) => (
+            <button type="button" key={id} aria-pressed={resultVisibility === id} onClick={() => onResultVisibilityChange(id)} className={cn("rounded-xl border p-3 text-left", resultVisibility === id ? "border-primary bg-primary/10" : "border-border")}>
+              <span className="block font-semibold">{title}</span><span className="text-sm text-muted-foreground">{description}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Privacy Options */}
