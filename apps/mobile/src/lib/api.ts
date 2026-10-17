@@ -6,11 +6,21 @@ import type {
   CategoryPreference,
   LoginPayload,
   RegisterPayload,
+  RegisterBusinessPayload,
 } from '../types/auth';
 import type { ApiPoll, CastVoteResponse } from '../types/poll';
 
 interface ApiErrorShape {
   message?: string;
+  title?: string;
+  errors?: Record<string, string[]>;
+}
+
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
 }
 
 async function readError(response: Response) {
@@ -19,28 +29,31 @@ async function readError(response: Response) {
 
   try {
     const data = JSON.parse(text) as ApiErrorShape;
-    return data.message ?? text;
+    return data.message ?? (data.errors ? Object.values(data.errors).flat().slice(0, 3).join(' ') : data.title) ?? `Request failed (${response.status}). Please try again.`;
   } catch {
-    return text;
+    return `Request failed (${response.status}). Please try again.`;
   }
 }
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getToken();
+  const multipart = typeof FormData !== 'undefined' && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...(!multipart ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
   });
 
   if (!response.ok) {
-    throw new Error(await readError(response));
+    throw new ApiRequestError(await readError(response), response.status);
   }
 
-  return response.json() as Promise<T>;
+  if (response.status === 204) return undefined as T;
+  const body = await response.text();
+  return body ? JSON.parse(body) as T : undefined as T;
 }
 
 export const authApi = {
@@ -55,9 +68,22 @@ export const authApi = {
       body: JSON.stringify(payload),
     }),
   me: () => apiRequest<AuthUser>('/api/auth/me'),
+  google: (idToken: string, acceptTerms: boolean) => apiRequest<AuthResponse>('/api/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ idToken, acceptTerms }),
+  }),
+  businessLogin: (payload: LoginPayload) => apiRequest<AuthResponse>('/api/auth/business/login', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+  businessRegister: (payload: RegisterBusinessPayload) => apiRequest<AuthResponse>('/api/auth/business/register', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
 };
 
 export const usersApi = {
+  deleteAccount: () => apiRequest<void>('/api/users/me', { method: 'DELETE' }),
+  updateProfile: (displayName: string, avatarUrl?: string | null) =>
+    apiRequest<AuthUser>('/api/users/me/profile', { method: 'PUT', body: JSON.stringify({ displayName, avatarUrl }) }),
   getAnalyticsPrivacy: () => apiRequest<{ consent: 'unknown' | 'granted' | 'denied'; updatedAt: string | null }>('/api/users/me/privacy'),
   updateAnalyticsPrivacy: (consent: 'unknown' | 'granted' | 'denied') => apiRequest('/api/users/me/privacy', { method: 'PUT', body: JSON.stringify({ consent }) }),
   getLeaderboard: (count = 20) => apiRequest<AuthUser[]>(`/api/users/leaderboard?count=${count}`),

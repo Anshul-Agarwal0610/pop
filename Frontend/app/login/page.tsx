@@ -105,10 +105,15 @@ function LoginContent() {
           <Button asChild variant="ghost" className="mt-3 w-full">
             <Link href="/">Back to Home</Link>
           </Button>
+          <div className="mt-4 border-t border-border pt-4 text-center text-sm text-muted-foreground">
+            Managing polls for an organisation?{" "}
+            <Link href="/business/login" className="font-semibold text-primary hover:underline">Open Pop Business</Link>
+          </div>
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          By continuing you agree to Pollify&apos;s Terms of Service.
+          Review Pop&apos;s <Link href="/terms" className="font-medium text-primary hover:underline">Terms of Use and Community Guidelines</Link> and our{" "}
+          <Link href="/privacy" className="font-medium text-primary hover:underline">Privacy Policy</Link>.
         </p>
       </motion.div>
     </div>

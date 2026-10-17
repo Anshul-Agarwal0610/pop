@@ -13,6 +13,8 @@ namespace BackendAPI.Interfaces
         Task<IEnumerable<Poll>> GetRecentAsync(int count = 10);
         Task<IEnumerable<Poll>> GetRecentGeneratedAsync(int count = 100);
         Task<IEnumerable<Poll>> GetModerationQueueAsync(string? status = null, int count = 50);
+        Task<IEnumerable<Poll>> GetByCreatorAsync(long userId, int count = 100) =>
+            Task.FromResult<IEnumerable<Poll>>(Array.Empty<Poll>());
         Task<long> CreateAsync(CreatePollRequest request, long? createdByUserId = null);
         Task<long> CompleteGeneratedPollAsync(long topicId, Guid leaseId, CreatePollRequest request) => CreateAsync(request);
         Task RecordRejectedQualityDecisionAsync(long trendingTopicId, GeneratedPollQualityDecision decision) => Task.CompletedTask;

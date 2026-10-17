@@ -51,27 +51,32 @@ namespace BackendAPI.Repository
 
             using var conn = _context.CreateConnection();
             var candidates = (await conn.QueryAsync<RankedCandidate>(
-                @"WITH Totals AS (
+                @"WITH EventTotals AS (
                       SELECT e.UserId, SUM(CONVERT(BIGINT, e.Amount)) AS PeriodXp
                       FROM XpEvents e
                       WHERE e.IsValid = 1 AND e.IsLeaderboardEligible = 1
                         AND (@StartUtc IS NULL OR e.OccurredAt >= @StartUtc)
                         AND (@EndUtc IS NULL OR e.OccurredAt < @EndUtc)
                       GROUP BY e.UserId
-                  ), Ranked AS (
+                  ), Totals AS (
                       SELECT u.Id, u.Username, u.DisplayName, u.AvatarUrl, u.Xp AS LifetimeXp,
+                             CASE WHEN @AllTime = 1 THEN CONVERT(BIGINT, u.Xp) ELSE COALESCE(t.PeriodXp, 0) END AS PeriodXp
+                      FROM Users u
+                      LEFT JOIN EventTotals t ON t.UserId = u.Id
+                      WHERE u.Username NOT LIKE 'deleted[_]%'
+                  ), Ranked AS (
+                      SELECT t.Id, t.Username, t.DisplayName, t.AvatarUrl, t.LifetimeXp,
                              t.PeriodXp,
                              RANK() OVER (ORDER BY t.PeriodXp DESC) AS Rank,
-                             ROW_NUMBER() OVER (ORDER BY t.PeriodXp DESC, LOWER(u.Username), u.Id) AS RowNumber,
+                             ROW_NUMBER() OVER (ORDER BY t.PeriodXp DESC, LOWER(t.Username), t.Id) AS RowNumber,
                              COUNT_BIG(*) OVER () AS TotalCount
-                      FROM Totals t JOIN Users u ON u.Id = t.UserId
-                      WHERE t.PeriodXp > 0
+                      FROM Totals t
                   )
                   SELECT * FROM Ranked
                   WHERE (RowNumber > @Offset AND RowNumber <= @Offset + @Limit + 1)
                      OR Id = @CurrentUserId
                   ORDER BY RowNumber",
-                new { window.StartUtc, window.EndUtc, Limit = limit, Offset = offset, CurrentUserId = currentUserId })).ToList();
+                new { window.StartUtc, window.EndUtc, AllTime = period == LeaderboardPeriod.AllTime, Limit = limit, Offset = offset, CurrentUserId = currentUserId })).ToList();
 
             var page = candidates.Where(x => x.RowNumber > offset && x.RowNumber <= offset + limit).Cast<LeaderboardRow>().ToList();
             var current = currentUserId == null ? null : candidates.FirstOrDefault(x => x.Id == currentUserId.Value);
@@ -121,6 +126,54 @@ namespace BackendAPI.Repository
                 "SELECT * FROM Users WHERE Username = @Username",
                 new { Username = username }
             );
+        }
+
+        public async Task<User?> UpdateProfileAsync(long userId, string displayName, string? avatarUrl)
+        {
+            var normalizedName = displayName.Trim();
+            if (normalizedName.Length < 2 || normalizedName.Length > 80)
+                throw new ArgumentException("Display name must be between 2 and 80 characters.");
+            var normalizedAvatar = string.IsNullOrWhiteSpace(avatarUrl) ? null : avatarUrl.Trim();
+            if (normalizedAvatar is not null && (!Uri.TryCreate(normalizedAvatar, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
+                throw new ArgumentException("Avatar must be a valid http or https URL.");
+
+            using var conn = _context.CreateConnection();
+            var changed = await conn.ExecuteAsync(
+                "UPDATE Users SET DisplayName=@DisplayName, AvatarUrl=@AvatarUrl WHERE Id=@UserId",
+                new { UserId = userId, DisplayName = normalizedName, AvatarUrl = normalizedAvatar });
+            return changed == 0 ? null : await GetByIdAsync(userId);
+        }
+
+        public async Task DeleteAccountAsync(long userId)
+        {
+            using var conn = _context.CreateConnection();
+            conn.Open();
+            using var transaction = conn.BeginTransaction();
+            try
+            {
+                // Remove private/profile data. Public polls and votes remain attached to an
+                // anonymized row so published aggregate counts and referential integrity survive.
+                foreach (var statement in new[]
+                {
+                    "DELETE FROM MobileDeviceTokens WHERE UserId=@UserId",
+                    "DELETE FROM NotificationPreferences WHERE UserId=@UserId",
+                    "DELETE FROM Notifications WHERE UserId=@UserId",
+                    "DELETE FROM WellnessResponses WHERE UserId=@UserId",
+                    "DELETE FROM UserCategoryPreferences WHERE UserId=@UserId",
+                    "DELETE FROM UserBlocks WHERE BlockerUserId=@UserId OR BlockedUserId=@UserId",
+                    "DELETE FROM GroupInvites WHERE InviterUserId=@UserId OR InviteeUserId=@UserId",
+                    "DELETE FROM GroupMemberships WHERE UserId=@UserId",
+                    "DELETE FROM UserRelationships WHERE RequesterUserId=@UserId OR AddresseeUserId=@UserId OR LastActorUserId=@UserId"
+                }) await conn.ExecuteAsync(statement, new { UserId = userId }, transaction);
+
+                var anonymous = $"deleted_{userId}_{Guid.NewGuid():N}";
+                await conn.ExecuteAsync(@"UPDATE Users SET Username=@Anonymous, DisplayName='Deleted user',
+                    Email=NULL, AvatarUrl=NULL, PasswordHash=NULL, AuthProvider='deleted',
+                    AnalyticsConsent='denied', AnalyticsConsentUpdatedAt=GETUTCDATE()
+                    WHERE Id=@UserId", new { UserId = userId, Anonymous = anonymous }, transaction);
+                transaction.Commit();
+            }
+            catch { transaction.Rollback(); throw; }
         }
 
         public async Task<long> CreateAsync(CreateUserRequest request)

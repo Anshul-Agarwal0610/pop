@@ -2,6 +2,7 @@ export interface ApiPollOption {
   id: number;
   pollId: number;
   text: string;
+  side?: string | null;
   voteCount: number;
   votePercentage: number;
 }
@@ -13,16 +14,25 @@ export interface ApiPoll {
   category: string;
   isTrending: boolean;
   isActive: boolean;
+  moderationStatus?: 'Draft' | 'PendingReview' | 'Published' | 'Rejected' | 'Flagged' | string;
+  moderationReason?: string | null;
   expiresAt: string;
   createdAt: string;
   totalVotes: number;
   createdByUserId: number | null;
   createdByUsername: string | null;
   createdByDisplayName: string | null;
+  isPrivate?: boolean;
+  audienceType?: 'Public' | 'Friend' | 'Group';
+  audienceFriendUserId?: number | null;
+  audienceGroupId?: number | null;
   sourceType: string | null;
   sourceUrl: string | null;
   thumbnailUrl: string | null;
+  mediaType?: 'image' | 'video' | string | null;
   isAIGenerated: boolean;
+  isSponsored?: boolean;
+  sponsorName?: string | null;
   options: ApiPollOption[];
   hasVoted: boolean;
   userVotedOptionId: number | null;

@@ -1,4 +1,4 @@
-import { Home, BarChart2, PlusCircle, Trophy, Bell, User, BriefcaseBusiness, HeartPulse, Gamepad2, Target, Users } from "lucide-react"
+import { Home, BarChart2, PlusCircle, Trophy, Bell, User, HeartPulse, Gamepad2, Target, Users, ListChecks } from "lucide-react"
 
 export const navigationItems = [
   {
@@ -22,6 +22,11 @@ export const navigationItems = [
     icon: PlusCircle,
   },
   {
+    label: "My Polls",
+    href: "/my-polls",
+    icon: ListChecks,
+  },
+  {
     label: "Leaderboard",
     href: "/leaderboard",
     icon: Trophy,
@@ -31,11 +36,6 @@ export const navigationItems = [
     label: "Notifications",
     href: "/notifications",
     icon: Bell,
-  },
-  {
-    label: "Business",
-    href: "/business",
-    icon: BriefcaseBusiness,
   },
   {
     label: "Wellness",

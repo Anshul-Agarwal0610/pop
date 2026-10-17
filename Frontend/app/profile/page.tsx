@@ -60,7 +60,7 @@ function ProfileSkeleton() {
 
 export default function ProfilePage() {
   const router              = useRouter()
-  const { user: authUser, logout } = useAuth()
+  const { user: authUser, isLoading: authLoading, logout } = useAuth()
   const [profile, setProfile]   = useState<ApiUser | null>(null)
   const [history, setHistory]   = useState<ApiVoteHistoryItem[]>([])
   const [loading, setLoading]   = useState(true)

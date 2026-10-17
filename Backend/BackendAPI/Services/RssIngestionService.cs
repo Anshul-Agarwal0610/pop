@@ -3,155 +3,86 @@ using BackendAPI.Models;
 using System.ServiceModel.Syndication;
 using System.Xml;
 
-namespace BackendAPI.Services
+namespace BackendAPI.Services;
+
+public sealed record RssFeedDefinition(string Name, string Url, string Category = "General", string Language = "en", string Region = "IN", bool Enabled = true);
+
+public class RssIngestionService(IHttpClientFactory http, ILogger<RssIngestionService> logger, IConfiguration config) : IRssIngestionService
 {
-    /// <summary>
-    /// US-03 — Fetches trending topics from RSS feeds.
-    ///
-    /// All feeds are fetched via HttpClient with a browser-like User-Agent so sites
-    /// that block default .NET XML requests don't return 403.
-    ///
-    /// Reuters was removed — they shut down all public RSS feeds in 2020.
-    /// Indian Express was removed — behind Cloudflare bot protection (JS challenge).
-    /// The Wire was removed — returns 200 OK but with an HTML bot-challenge page instead of RSS XML.
-    /// Scroll.in was removed — same issue, returns HTML page instead of RSS XML.
-    /// Replaced all three with Hindustan Times, Economic Times, and India Today.
-    /// </summary>
-    public class RssIngestionService : IRssIngestionService
+    public static readonly RssFeedDefinition[] DefaultFeeds = [
+        new("Google News India", "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en"),
+        new("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", Region:"World"),
+        new("The Hindu", "https://www.thehindu.com/news/national/?service=rss"),
+        new("Times of India", "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"),
+        new("NDTV", "https://feeds.feedburner.com/ndtvnews-top-stories"),
+        new("Hindustan Times", "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml"),
+        new("Economic Times", "https://economictimes.indiatimes.com/rssfeedstopstories.cms", "Work"),
+        new("India Today", "https://www.indiatoday.in/rss/home"),
+        new("ABP English States", "https://news.abplive.com/states/feed"),
+        new("ABP Hindi States", "https://www.abplive.com/states/feed", Language:"hi"),
+        new("ABP Bihar", "https://www.abplive.com/news/states/bihar/feed", Language:"hi", Region:"IN-BR"),
+        new("ABP Rajasthan", "https://www.abplive.com/news/states/rajasthan/feed", Language:"hi", Region:"IN-RJ"),
+    ];
+
+    public async Task<IEnumerable<TrendingTopic>> FetchAsync() => (await FetchWithResultAsync()).Topics;
+
+    public async Task<IngestionFetchResult> FetchWithResultAsync(CancellationToken token = default)
     {
-        private readonly IHttpClientFactory _http;
-        private readonly ILogger<RssIngestionService> _logger;
-
-        // Mimics a real browser so sites don't return 403
-        private const string UserAgent =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-            "AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/124.0.0.0 Safari/537.36";
-
-        // (Name, Feed URL, Category)
-        // NOTE: Sites behind Cloudflare JS-challenge (Indian Express) or with dead DNS
-        // (Reuters) have been removed — HttpClient cannot bypass JS bot challenges.
-        private static readonly (string Name, string Url, string Category)[] Feeds =
-        {
-            ("Google News India",    "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",           "General"),
-            ("The Hindu",            "https://www.thehindu.com/news/national/?service=rss",              "India"),
-            ("Times of India",       "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",       "India"),
-            ("NDTV Top Stories",     "https://feeds.feedburner.com/ndtvnews-top-stories",                "India"),
-            ("BBC World",            "https://feeds.bbci.co.uk/news/world/rss.xml",                     "World"),
-            ("Hindustan Times",      "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",  "India"),
-            ("Economic Times",       "https://economictimes.indiatimes.com/rssfeedstopstories.cms",      "Business"),
-            ("India Today",          "https://www.indiatoday.in/rss/home",                               "India"),
-        };
-
-        public RssIngestionService(IHttpClientFactory http, ILogger<RssIngestionService> logger)
-        {
-            _http   = http;
-            _logger = logger;
-        }
-
-        public async Task<IEnumerable<TrendingTopic>> FetchAsync()
-        {
-            var tasks = Feeds.Select(async feed =>
-            {
-                try
-                {
-                    var items = await FetchFeedAsync(feed.Name, feed.Url, feed.Category);
-                    _logger.LogInformation("RSS [{Source}]: fetched {Count} items", feed.Name, items.Count);
-                    return items;
+        if (config.GetValue("Ingestion:rss:Disabled",false)) return IngestionFetchResult.Disabled("rss");
+        var started=DateTime.UtcNow;
+        var feeds=(config.GetSection("Rss:Feeds").Get<RssFeedDefinition[]>() ?? DefaultFeeds).Where(f=>f.Enabled).Take(40).ToArray();
+        if (feeds.Length==0) return IngestionFetchResult.Disabled("rss");
+        using var concurrency=new SemaphoreSlim(4);
+        var results=await Task.WhenAll(feeds.Select(async feed=> {
+            await concurrency.WaitAsync(token);
+            try {
+                using var request=new HttpRequestMessage(HttpMethod.Get,feed.Url);
+                request.Headers.UserAgent.ParseAdd("PopTopicIngestion/1.0");
+                request.Headers.Accept.ParseAdd("application/rss+xml, application/atom+xml, application/xml");
+                using var timeout=CancellationTokenSource.CreateLinkedTokenSource(token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                using var response=await http.CreateClient("ingestion").SendAsync(request,timeout.Token);
+                if(!response.IsSuccessStatusCode) {
+                    logger.LogWarning("RSS {Source} returned HTTP {Status}",feed.Name,(int)response.StatusCode);
+                    return (Topics:new List<TrendingTopic>(),Success:0,Rate:(int)response.StatusCode==429?1:0);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "RSS [{Source}]: failed to fetch", feed.Name);
-                    return new List<TrendingTopic>();
-                }
-            });
+                var xml=await response.Content.ReadAsStringAsync(timeout.Token);
+                var topics=Parse(xml,feed,Math.Clamp(config.GetValue("Rss:ItemsPerFeed",5),1,20));
+                return (Topics:topics,Success:1,Rate:0);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception ex) when (ex is HttpRequestException or XmlException or FormatException or ArgumentException or OperationCanceledException) {
+                logger.LogWarning("RSS {Source} unavailable: {FailureType}",feed.Name,ex.GetType().Name);
+                return (Topics:new List<TrendingTopic>(),Success:0,Rate:0);
+            }
+            finally { concurrency.Release(); }
+        }));
+        var topics=results.SelectMany(r=>r.Topics.Select((topic,rank)=>new{topic,rank})).OrderBy(x=>x.rank).Select(x=>x.topic).ToList();
+        var success=results.Sum(r=>r.Success); var rate=results.Sum(r=>r.Rate);
+        return new("rss",success>0?IngestionSourceState.Enabled:rate>0?IngestionSourceState.CoolingDown:IngestionSourceState.Failed,
+            topics,feeds.Length,success,rate,DateTime.UtcNow-started,success==feeds.Length?null:success>0?"partial_feed_failure":"all_feeds_failed");
+    }
 
-            return (await Task.WhenAll(tasks)).SelectMany(items => items);
+    internal static List<TrendingTopic> Parse(string xml,RssFeedDefinition definition,int limit)
+    {
+        using var reader=XmlReader.Create(new StringReader(xml),new XmlReaderSettings { DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=2_000_000 });
+        var feed=SyndicationFeed.Load(reader) ?? throw new XmlException("Not a syndication feed");
+        var topics=new List<TrendingTopic>();
+        foreach(var item in feed.Items.Take(limit)) {
+            var title=TopicEnrichment.CleanText(item.Title?.Text);
+            var link=item.Links.FirstOrDefault(l=>l.RelationshipType=="alternate")?.Uri?.ToString() ?? item.Links.FirstOrDefault()?.Uri?.ToString() ?? item.Id;
+            if(string.IsNullOrWhiteSpace(title) || !Uri.TryCreate(link,UriKind.Absolute,out var uri) || uri.Scheme is not ("https" or "http")) continue;
+            var summary=TopicEnrichment.CleanText(item.Summary?.Text ?? (item.Content as TextSyndicationContent)?.Text ?? "");
+            var published=item.PublishDate!=DateTimeOffset.MinValue?item.PublishDate:item.LastUpdatedTime;
+            if(published!=DateTimeOffset.MinValue && (published.UtcDateTime<DateTime.UtcNow.AddHours(-72) || published.UtcDateTime>DateTime.UtcNow.AddMinutes(15))) continue;
+            var thumbnail=item.ElementExtensions.Where(e=>e.OuterName is "thumbnail" or "content")
+                .Select(e=>e.GetObject<System.Xml.Linq.XElement>().Attribute("url")?.Value).FirstOrDefault(u=>Uri.TryCreate(u,UriKind.Absolute,out var imageUri) && imageUri.Scheme=="https");
+            topics.Add(new TrendingTopic { Title=title.Length>200?title[..200]:title,Summary=summary.Length>1000?summary[..1000]:summary,
+                SourceType="rss",SourceUrl=link!,SourceItemId=item.Id is {Length:<=256}?item.Id:null,Publisher=definition.Name,
+                ThumbnailUrl=thumbnail,
+                PublishedAt=published==DateTimeOffset.MinValue?null:published.UtcDateTime,Language=definition.Language,Region=definition.Region,
+                Category=TopicEnrichment.Classify(title,summary,definition.Category) });
         }
-
-        private async Task<List<TrendingTopic>> FetchFeedAsync(
-            string sourceName, string url, string category)
-        {
-            // Download XML with a real browser User-Agent to avoid 403 responses
-            var client = _http.CreateClient();
-            client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
-            client.DefaultRequestHeaders.Add("Accept", "application/rss+xml, application/xml, text/xml, */*");
-            client.Timeout = TimeSpan.FromSeconds(15);
-
-            using var response = await client.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-
-            await using var stream = await response.Content.ReadAsStreamAsync();
-
-            return await Task.Run(() =>
-            {
-                var topics = new List<TrendingTopic>();
-
-                var xmlSettings = new XmlReaderSettings
-                {
-                    DtdProcessing             = DtdProcessing.Ignore,
-                    MaxCharactersFromEntities = 1024,
-                    Async                     = false
-                };
-
-                using var reader = XmlReader.Create(stream, xmlSettings);
-                var feed = SyndicationFeed.Load(reader);
-
-                foreach (var item in feed.Items.Take(10))
-                {
-                    // Prefer rel="alternate" link, fall back to any link, then item.Id
-                    // (Google News and some feeds store the article URL in Id, not Links)
-                    var link = item.Links.FirstOrDefault(l => l.RelationshipType == "alternate")?.Uri?.ToString()
-                            ?? item.Links.FirstOrDefault()?.Uri?.ToString()
-                            ?? (Uri.IsWellFormedUriString(item.Id, UriKind.Absolute) ? item.Id : "")
-                            ?? "";
-                    var summary = item.Summary?.Text
-                        ?? (item.Content as TextSyndicationContent)?.Text
-                        ?? "";
-
-                    // Strip HTML tags from summaries
-                    summary = System.Text.RegularExpressions.Regex
-                        .Replace(summary, "<[^>]+>", "")
-                        .Trim();
-                    if (summary.Length > 500) summary = summary[..500];
-
-                    var title = TopicEnrichment.CleanText(item.Title?.Text);
-                    if (string.IsNullOrWhiteSpace(title)) continue;
-
-                    // Try to extract thumbnail from media:thumbnail or media:content extensions
-                    string? thumbnail = null;
-                    foreach (var ext in item.ElementExtensions)
-                    {
-                        if (ext.OuterName.Equals("thumbnail", StringComparison.OrdinalIgnoreCase)
-                            || ext.OuterName.Equals("content",   StringComparison.OrdinalIgnoreCase))
-                        {
-                            try
-                            {
-                                var xElem = ext.GetObject<System.Xml.Linq.XElement>();
-                                thumbnail = xElem.Attribute("url")?.Value;
-                                if (thumbnail != null) break;
-                            }
-                            catch { /* ignore malformed extensions */ }
-                        }
-                    }
-
-                    topics.Add(new TrendingTopic
-                    {
-                        Title        = title,
-                        Summary      = summary,
-                        SourceType   = "rss",
-                        SourceUrl    = link,
-                        ThumbnailUrl = thumbnail,
-                        Publisher    = sourceName,
-                        PublishedAt  = item.PublishDate != DateTimeOffset.MinValue
-                            ? item.PublishDate.UtcDateTime
-                            : item.LastUpdatedTime != DateTimeOffset.MinValue ? item.LastUpdatedTime.UtcDateTime : null,
-                        Category     = TopicEnrichment.Classify(title, summary, category)
-                    });
-                }
-
-                return topics;
-            });
-        }
+        return topics;
     }
 }

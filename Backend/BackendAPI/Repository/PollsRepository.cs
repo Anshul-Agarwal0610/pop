@@ -74,12 +74,14 @@ namespace BackendAPI.Repository
                   LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
                   LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
-                  WHERE p.IsActive = 1
-                    AND p.ModerationStatus = 'Published'
-                    AND COALESCE(p.IsPrivate, 0) = 0
+                  WHERE p.ModerationStatus = 'Published'
+                    AND (COALESCE(p.IsPrivate, 0) = 0 OR p.CreatedByUserId = @UserId
+                      OR EXISTS(SELECT 1 FROM PollAudienceUsers pau WHERE pau.PollId=p.Id AND pau.UserId=@UserId)
+                      OR EXISTS(SELECT 1 FROM PollAudienceGroups pag JOIN GroupMemberships gm ON gm.GroupId=pag.GroupId AND gm.UserId=@UserId AND gm.State='Active' WHERE pag.PollId=p.Id))
                     AND COALESCE(p.IsWellness, 0) = 0
                     AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
-                  ORDER BY p.CreatedAt DESC",
+                  ORDER BY CASE WHEN p.IsActive=1 AND p.ExpiresAt>SYSUTCDATETIME() THEN 0 ELSE 1 END,
+                           p.CreatedAt DESC",
                 (poll, option) =>
                 {
                     if (!pollDict.TryGetValue(poll.Id, out var existing))
@@ -91,7 +93,7 @@ namespace BackendAPI.Repository
                     if (option != null) existing.Options.Add(option);
                     return existing;
                 },
-                new { Category = normalizedCategory },
+                new { UserId = userId, Category = normalizedCategory },
                 splitOn: "Id"
             );
 
@@ -115,7 +117,9 @@ namespace BackendAPI.Repository
                   LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.Id = @Id
-                    AND (COALESCE(p.IsPrivate, 0) = 0 OR p.CreatedByUserId = @UserId)",
+                    AND (COALESCE(p.IsPrivate, 0) = 0 OR p.CreatedByUserId = @UserId
+                      OR EXISTS(SELECT 1 FROM PollAudienceUsers pau WHERE pau.PollId=p.Id AND pau.UserId=@UserId)
+                      OR EXISTS(SELECT 1 FROM PollAudienceGroups pag JOIN GroupMemberships gm ON gm.GroupId=pag.GroupId AND gm.UserId=@UserId AND gm.State='Active' WHERE pag.PollId=p.Id))",
                 (poll, option) =>
                 {
                     if (!pollDict.TryGetValue(poll.Id, out var existing))
@@ -133,6 +137,43 @@ namespace BackendAPI.Repository
 
             var userVotes = await GetUserVotesAsync(userId);
             return ApplyVoteState(pollDict.Values, userVotes).FirstOrDefault();
+        }
+
+        public async Task<IEnumerable<Poll>> GetByCreatorAsync(long userId, int count = 100)
+        {
+            using var conn = _context.CreateConnection();
+            var pollDict = new Dictionary<long, Poll>();
+
+            await conn.QueryAsync<Poll, PollOption, Poll>(
+                @"WITH Mine AS (
+                    SELECT TOP (@Count) * FROM Polls
+                    WHERE CreatedByUserId = @UserId
+                    ORDER BY CreatedAt DESC
+                  )
+                  SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         b.Name AS SponsorName, c.Name AS CampaignName, o.*
+                  FROM Mine p
+                  LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
+                  LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
+                  LEFT JOIN PollOptions o ON o.PollId = p.Id
+                  ORDER BY p.CreatedAt DESC, o.Id",
+                (poll, option) =>
+                {
+                    if (!pollDict.TryGetValue(poll.Id, out var existing))
+                    {
+                        existing = poll;
+                        existing.Options = new List<PollOption>();
+                        pollDict[poll.Id] = existing;
+                    }
+                    if (option != null) existing.Options.Add(option);
+                    return existing;
+                },
+                new { UserId = userId, Count = count },
+                splitOn: "Id");
+
+            var userVotes = await GetUserVotesAsync(userId);
+            return ApplyVoteState(pollDict.Values, userVotes);
         }
 
         // ── GetTrending ───────────────────────────────────────────────────────
@@ -154,7 +195,10 @@ namespace BackendAPI.Repository
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND p.ModerationStatus = 'Published'
-                    AND COALESCE(p.IsPrivate, 0) = 0
+                     AND p.ExpiresAt > SYSUTCDATETIME()
+                    AND (COALESCE(p.IsPrivate, 0) = 0 OR p.CreatedByUserId = @UserId
+                      OR EXISTS(SELECT 1 FROM PollAudienceUsers pau WHERE pau.PollId=p.Id AND pau.UserId=@UserId)
+                      OR EXISTS(SELECT 1 FROM PollAudienceGroups pag JOIN GroupMemberships gm ON gm.GroupId=pag.GroupId AND gm.UserId=@UserId AND gm.State='Active' WHERE pag.PollId=p.Id))
                     AND COALESCE(p.IsWellness, 0) = 0
                     AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
                   ORDER BY p.TotalVotes DESC, p.CreatedAt DESC",
@@ -169,7 +213,7 @@ namespace BackendAPI.Repository
                     if (option != null) existing.Options.Add(option);
                     return existing;
                 },
-                new { Count = count, Category = normalizedCategory },
+                new { UserId = userId, Count = count, Category = normalizedCategory },
                 splitOn: "Id"
             );
 
@@ -213,7 +257,8 @@ namespace BackendAPI.Repository
                         + CASE WHEN p.IsTrending = 1 THEN 20 ELSE 0 END
                         + CASE WHEN p.CreatedAt >= DATEADD(day, -2, GETUTCDATE()) THEN 10 ELSE 0 END
                         AS int
-                      ) AS PersonalizationScore
+                      ) AS PersonalizationScore,
+                      CASE WHEN EXISTS(SELECT 1 FROM Votes uv WHERE uv.PollId=p.Id AND uv.UserId=@UserId) THEN 1 ELSE 0 END AS UserVoteRank
                     FROM Polls p
                     LEFT JOIN UserCategoryPreferences pref
                       ON pref.UserId = @UserId AND LOWER(pref.Category) = LOWER(p.Category)
@@ -221,10 +266,13 @@ namespace BackendAPI.Repository
                       ON LOWER(activity.Category) = LOWER(p.Category)
                     WHERE p.IsActive = 1
                       AND p.ModerationStatus = 'Published'
-                      AND COALESCE(p.IsPrivate, 0) = 0
+                      AND p.ExpiresAt > SYSUTCDATETIME()
+                      AND (COALESCE(p.IsPrivate, 0) = 0 OR p.CreatedByUserId = @UserId
+                        OR EXISTS(SELECT 1 FROM PollAudienceUsers pau WHERE pau.PollId=p.Id AND pau.UserId=@UserId)
+                        OR EXISTS(SELECT 1 FROM PollAudienceGroups pag JOIN GroupMemberships gm ON gm.GroupId=pag.GroupId AND gm.UserId=@UserId AND gm.State='Active' WHERE pag.PollId=p.Id))
                       AND COALESCE(p.IsWellness, 0) = 0
                       AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
-                    ORDER BY PersonalizationScore DESC, p.TotalVotes DESC, p.CreatedAt DESC
+                    ORDER BY UserVoteRank, PersonalizationScore DESC, p.TotalVotes DESC, p.CreatedAt DESC
                   )
                   SELECT rp.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
                          b.Name AS SponsorName, c.Name AS CampaignName, o.*
@@ -233,7 +281,7 @@ namespace BackendAPI.Repository
                   LEFT JOIN BusinessAccounts b ON b.Id = rp.BusinessId
                   LEFT JOIN BusinessCampaigns c ON c.Id = rp.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = rp.Id
-                  ORDER BY rp.PersonalizationScore DESC, rp.TotalVotes DESC, rp.CreatedAt DESC",
+                  ORDER BY rp.UserVoteRank, rp.PersonalizationScore DESC, rp.TotalVotes DESC, rp.CreatedAt DESC",
                 (poll, option) =>
                 {
                     if (!pollDict.TryGetValue(poll.Id, out var existing))
@@ -263,13 +311,15 @@ namespace BackendAPI.Repository
                 @"WITH SearchPolls AS (
                     SELECT TOP (50) p.*
                     FROM Polls p
-                    WHERE p.IsActive = 1
-                      AND p.ModerationStatus = 'Published'
-                      AND COALESCE(p.IsPrivate, 0) = 0
+                    WHERE p.ModerationStatus = 'Published'
+                      AND (COALESCE(p.IsPrivate, 0) = 0 OR p.CreatedByUserId = @UserId
+                        OR EXISTS(SELECT 1 FROM PollAudienceUsers pau WHERE pau.PollId=p.Id AND pau.UserId=@UserId)
+                        OR EXISTS(SELECT 1 FROM PollAudienceGroups pag JOIN GroupMemberships gm ON gm.GroupId=pag.GroupId AND gm.UserId=@UserId AND gm.State='Active' WHERE pag.PollId=p.Id))
                       AND COALESCE(p.IsWellness, 0) = 0
                       AND p.Question LIKE @Search
                       AND (@Category IS NULL OR LOWER(p.Category) = LOWER(@Category))
-                    ORDER BY p.TotalVotes DESC, p.CreatedAt DESC
+                    ORDER BY CASE WHEN p.IsActive=1 AND p.ExpiresAt>SYSUTCDATETIME() THEN 0 ELSE 1 END,
+                             p.TotalVotes DESC, p.CreatedAt DESC
                   )
                   SELECT sp.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
                          b.Name AS SponsorName, c.Name AS CampaignName, o.*
@@ -290,7 +340,7 @@ namespace BackendAPI.Repository
                     if (option != null) existing.Options.Add(option);
                     return existing;
                 },
-                new { Search = $"%{query.Trim()}%", Category = normalizedCategory },
+                new { UserId = userId, Search = $"%{query.Trim()}%", Category = normalizedCategory },
                 splitOn: "Id"
             );
 
@@ -313,6 +363,7 @@ namespace BackendAPI.Repository
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
                     AND p.ModerationStatus = 'Published'
+                     AND p.ExpiresAt > SYSUTCDATETIME()
                     AND COALESCE(p.IsPrivate, 0) = 0
                     AND COALESCE(p.IsWellness, 0) = 0
                   ORDER BY p.CreatedAt DESC",
@@ -403,8 +454,20 @@ namespace BackendAPI.Repository
             var normalizedCategory = CategoryCatalog.NormalizeName(request.Category);
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
+            var audienceType = isPrivate && !isWellness ? request.AudienceType?.Trim() : PollAudienceTypes.Public;
+            if (audienceType is not (PollAudienceTypes.Public or PollAudienceTypes.Friend or PollAudienceTypes.Group))
+                throw new ArgumentException("Choose a valid poll audience.");
+            if (audienceType == PollAudienceTypes.Friend && (!createdByUserId.HasValue || !request.AudienceFriendUserId.HasValue))
+                throw new ArgumentException("Choose a friend for this private poll.");
+            if (audienceType == PollAudienceTypes.Group && (!createdByUserId.HasValue || !request.AudienceGroupId.HasValue))
+                throw new ArgumentException("Choose a group for this private poll.");
             var pollMode = isWellness ? PollModes.Wellness : PollModes.Public;
-            var moderationStatus = isWellness || (request.IsAIGenerated && request.AutoPublish)
+            // Polls created by an authenticated consumer publish immediately. Automated
+            // generation still requires an accepted quality decision, while other internal
+            // manual-review paths remain pending.
+            var moderationStatus = isWellness
+                || (request.IsAIGenerated && request.AutoPublish)
+                || (!request.IsAIGenerated && createdByUserId != null)
                 ? PollModerationStatus.Published
                 : PollModerationStatus.PendingReview;
 
@@ -414,14 +477,14 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                         CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
+                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
                          ReplacementForCleanupRecordId)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                         GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
+                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
                          @ReplacementForCleanupRecordId);
@@ -435,6 +498,7 @@ namespace BackendAPI.Repository
                         request.SourceType,
                         request.SourceUrl,
                         request.ThumbnailUrl,
+                        request.MediaType,
                         request.IsAIGenerated,
                         GenerationMethod = generated ? request.GenerationMethod : GenerationMethods.ManualReview,
                         request.TrendingTopicId,
@@ -452,6 +516,24 @@ namespace BackendAPI.Repository
                     },
                     transaction
                 );
+
+                if (audienceType == PollAudienceTypes.Friend)
+                {
+                    var isFriend = await conn.ExecuteScalarAsync<int>(@"SELECT COUNT(1) FROM UserRelationships
+                      WHERE State='Accepted' AND ((RequesterUserId=@Creator AND AddresseeUserId=@Friend) OR (RequesterUserId=@Friend AND AddresseeUserId=@Creator))",
+                      new { Creator = createdByUserId, Friend = request.AudienceFriendUserId }, transaction);
+                    if (isFriend != 1) throw new ArgumentException("Private polls can only be shared with an accepted friend.");
+                    await conn.ExecuteAsync("INSERT PollAudienceUsers(PollId,UserId) VALUES(@PollId,@UserId)",
+                      new { PollId = pollId, UserId = request.AudienceFriendUserId }, transaction);
+                }
+                else if (audienceType == PollAudienceTypes.Group)
+                {
+                    var isMember = await conn.ExecuteScalarAsync<int>("SELECT COUNT(1) FROM GroupMemberships WHERE GroupId=@GroupId AND UserId=@Creator AND State='Active'",
+                      new { GroupId = request.AudienceGroupId, Creator = createdByUserId }, transaction);
+                    if (isMember != 1) throw new ArgumentException("Choose a group you currently belong to.");
+                    await conn.ExecuteAsync("INSERT PollAudienceGroups(PollId,GroupId) VALUES(@PollId,@GroupId)",
+                      new { PollId = pollId, GroupId = request.AudienceGroupId }, transaction);
+                }
 
                 foreach (var optionText in request.Options)
                 {

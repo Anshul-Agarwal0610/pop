@@ -7,6 +7,9 @@ namespace BackendAPI.Models
         public string Name { get; set; } = string.Empty;
         public string? WebsiteUrl { get; set; }
         public string Status { get; set; } = BusinessAccountStatus.Active;
+        public string SubscriptionPlan { get; set; } = "Starter";
+        public string SubscriptionStatus { get; set; } = "Trialing";
+        public DateTime? TrialEndsAt { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 
@@ -14,6 +17,14 @@ namespace BackendAPI.Models
     {
         public const string Active = "Active";
         public const string Disabled = "Disabled";
+    }
+
+    public static class BusinessSubscriptionStatus
+    {
+        public const string Trialing = "Trialing";
+        public const string Active = "Active";
+        public const string PastDue = "PastDue";
+        public const string Cancelled = "Cancelled";
     }
 
     public class BusinessCampaign

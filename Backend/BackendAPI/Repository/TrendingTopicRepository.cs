@@ -1,3 +1,4 @@
+using BackendAPI.Services;
 using BackendAPI.Data;
 using BackendAPI.Interfaces;
 using BackendAPI.Models;
@@ -15,51 +16,58 @@ namespace BackendAPI.Repository
         }
 
         /// <summary>
-        /// Insert topics that don't already exist (dedup by SourceUrl).
-        /// Empty or null SourceUrls are always inserted.
+        /// Persist source items and group canonical URLs or matching recent titles.
         /// </summary>
         public async Task SaveBatchAsync(IEnumerable<TrendingTopic> topics)
             => _ = await SaveBatchWithResultAsync(topics);
 
         public async Task<TopicSaveResult> SaveBatchWithResultAsync(IEnumerable<TrendingTopic> topics, string? correlationId = null)
         {
-            var batch = topics.ToList();
+            var batch = topics.Where(topic => TopicLanguagePolicy.IsSupported(topic.Language)).ToList();
             if (batch.Count == 0) return new(0, 0, 0);
 
             using var conn = _context.CreateConnection();
             var inserted = 0;
 
-            foreach (var topic in batch)
-            {
-                var normalizedCategory = CategoryCatalog.NormalizeName(topic.Category);
-
-                inserted += await conn.ExecuteAsync(@"
-                    IF NOT EXISTS (
-                        SELECT 1 FROM TrendingTopics
-                        WHERE (SourceUrl = @SourceUrl AND SourceUrl <> '')
-                           OR (LOWER(LTRIM(RTRIM(Title))) = LOWER(LTRIM(RTRIM(@Title)))
-                               AND FetchedAt >= DATEADD(HOUR, -48, GETUTCDATE()))
-                    )
-                    BEGIN
-                        INSERT INTO TrendingTopics
-                            (Title, Summary, SourceType, SourceUrl, ThumbnailUrl, Publisher, PublishedAt, Category, FetchedAt, IsProcessed, ConversionStatus, AttemptCount, CorrelationId)
-                        VALUES
-                            (@Title, @Summary, @SourceType, @SourceUrl, @ThumbnailUrl, @Publisher, @PublishedAt, @Category, GETUTCDATE(), 0, 'Pending', 0, @CorrelationId)
-                    END",
-                    new
-                    {
-                        topic.Title,
-                        topic.Summary,
-                        topic.SourceType,
-                        SourceUrl    = topic.SourceUrl ?? "",
-                        topic.ThumbnailUrl,
-                        topic.Publisher,
-                        topic.PublishedAt,
-                        Category = normalizedCategory,
-                        CorrelationId = topic.CorrelationId ?? correlationId
-                    });
-            }
+            conn.Open();
+            using var tx = conn.BeginTransaction();
+            try {
+                await conn.ExecuteAsync("DECLARE @r int; EXEC @r=sp_getapplock @Resource='topic-ingestion',@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=10000; IF @r<0 THROW 51000,'Ingestion lock unavailable',1;",transaction:tx);
+                var recent=(await conn.QueryAsync<TrendingTopic>("SELECT TOP(1000) * FROM TrendingTopics WHERE FetchedAt>=DATEADD(HOUR,-48,SYSUTCDATETIME()) ORDER BY FetchedAt DESC",transaction:tx)).ToList();
+                foreach (var topic in batch)
+                {
+                    topic.Title = TopicEnrichment.CleanText(topic.Title);
+                    topic.Summary = TopicEnrichment.CleanText(topic.Summary);
+                    if (string.IsNullOrWhiteSpace(topic.Title)) continue;
+                    var url=SourceIdentity.CanonicalUrl(topic.SourceUrl);
+                    var key=SourceIdentity.Key(topic.SourceType,url,topic.Title);
+                    var existing=await conn.QuerySingleOrDefaultAsync<long?>("SELECT TopicId FROM TopicSourceItems WHERE SourceKey=@Key",new {Key=key},tx);
+                    existing ??= recent.FirstOrDefault(t => (!string.IsNullOrEmpty(url) && SourceIdentity.CanonicalUrl(t.SourceUrl)==url) ||
+                        (topic.SourceType is not ("events" or "x" or "instagram") && t.SourceType is not ("events" or "x" or "instagram") && SameTopicTitle(t.Title,topic.Title)))?.Id;
+                    if(existing is null) {
+                        topic.Id=await conn.ExecuteScalarAsync<long>("""
+                            INSERT TrendingTopics(Title,Summary,SourceType,SourceUrl,ThumbnailUrl,Publisher,PublishedAt,Category,FetchedAt,IsProcessed,ConversionStatus,AttemptCount,CorrelationId,SourceItemId,SourceTopic,Language,Region,EventStartUtc)
+                            OUTPUT inserted.Id VALUES(@Title,@Summary,@SourceType,@SourceUrl,@ThumbnailUrl,@Publisher,@PublishedAt,@Category,SYSUTCDATETIME(),0,'Pending',0,@CorrelationId,@SourceItemId,@SourceTopic,@Language,@Region,@EventStartUtc)
+                            """,new {topic.Title,topic.Summary,topic.SourceType,SourceUrl=url,topic.ThumbnailUrl,topic.Publisher,topic.PublishedAt,Category=CategoryCatalog.NormalizeName(topic.Category),CorrelationId=topic.CorrelationId??correlationId,topic.SourceItemId,topic.SourceTopic,topic.Language,topic.Region,topic.EventStartUtc},tx);
+                        existing=topic.Id; recent.Add(topic); inserted++;
+                    }
+                    await conn.ExecuteAsync("""
+                        IF EXISTS(SELECT 1 FROM TopicSourceItems WHERE SourceKey=@Key)
+                            UPDATE TopicSourceItems SET LastSeenAtUtc=SYSUTCDATETIME() WHERE SourceKey=@Key;
+                        ELSE INSERT TopicSourceItems(SourceKey,TopicId,SourceType,SourceUrl,Title,Summary,Publisher,PublishedAt,FirstSeenAtUtc,LastSeenAtUtc,SourceItemId,SourceTopic,Language,Region,EventStartUtc)
+                            VALUES(@Key,@TopicId,@SourceType,@Url,@Title,@Summary,@Publisher,@PublishedAt,SYSUTCDATETIME(),SYSUTCDATETIME(),@SourceItemId,@SourceTopic,@Language,@Region,@EventStartUtc);
+                        """,new {Key=key,TopicId=existing,topic.SourceType,Url=url,topic.Title,topic.Summary,topic.Publisher,topic.PublishedAt,topic.SourceItemId,topic.SourceTopic,topic.Language,topic.Region,topic.EventStartUtc},tx);
+                }
+                tx.Commit();
+            } catch { tx.Rollback(); throw; }
             return new(batch.Count, inserted, batch.Count - inserted);
+        }
+
+        internal static bool SameTopicTitle(string a,string b)
+        {
+            // Conservative, non-AI grouping; preserve negation and numbers.
+            static string Normalize(string value) => string.Join(' ',new string(value.ToLowerInvariant().Select(c=>char.IsLetterOrDigit(c)?c:' ').ToArray()).Split(' ',StringSplitOptions.RemoveEmptyEntries));
+            return Normalize(a)==Normalize(b);
         }
 
         public async Task<IEnumerable<TrendingTopic>> GetUnprocessedAsync(int maxCount = 50)
@@ -181,7 +189,7 @@ namespace BackendAPI.Repository
                 WITH candidates AS (
                   SELECT TOP (@Count) * FROM TrendingTopics WITH (UPDLOCK,READPAST)
                   WHERE ConversionStatus IN ('RetryPending','NeedsReview') ORDER BY LastAttemptAt)
-                UPDATE candidates SET ConversionStatus='RetryPending',NextAttemptAt=GETUTCDATE(),IsProcessed=0,ProcessedAt=NULL",
+                UPDATE candidates SET ConversionStatus='RetryPending',GenerationStatus='RetryScheduled',NextAttemptAt=GETUTCDATE(),NextAttemptAtUtc=GETUTCDATE(),AttemptCount=0,LeaseId=NULL,LeaseExpiresAtUtc=NULL,IsProcessed=0,ProcessedAt=NULL",
                 new { Count = Math.Clamp(maxCount, 1, 100) });
         }
 

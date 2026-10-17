@@ -9,8 +9,11 @@ import {
   Megaphone,
   Plus,
   RefreshCw,
+  LogOut,
+  Palette,
+  CreditCard,
 } from "lucide-react"
-import { AppShell } from "@/components/app-shell"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
@@ -26,7 +29,8 @@ import {
 import { cn } from "@/lib/utils"
 
 export default function BusinessPage() {
-  const { isAuthenticated } = useAuth()
+  const router = useRouter()
+  const { isAuthenticated, isLoading: authLoading, user, logout } = useAuth()
   const [accounts, setAccounts] = useState<ApiBusinessAccount[]>([])
   const [campaigns, setCampaigns] = useState<ApiBusinessCampaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null)
@@ -36,8 +40,6 @@ export default function BusinessPage() {
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [accountName, setAccountName] = useState("")
-  const [websiteUrl, setWebsiteUrl] = useState("")
   const [campaignName, setCampaignName] = useState("")
   const [objective, setObjective] = useState("")
   const [pollQuestion, setPollQuestion] = useState("")
@@ -47,7 +49,7 @@ export default function BusinessPage() {
   const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? campaigns[0]
 
   const loadBusiness = useCallback(async () => {
-    if (!isAuthenticated) return
+    if (!isAuthenticated || user?.accountType !== "Business") return
 
     setLoading(true)
     setError(null)
@@ -68,7 +70,13 @@ export default function BusinessPage() {
     } finally {
       setLoading(false)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, user?.accountType])
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!isAuthenticated) router.replace("/business/login")
+    else if (user?.accountType !== "Business") router.replace("/")
+  }, [authLoading, isAuthenticated, router, user?.accountType])
 
   const loadAnalytics = useCallback(async (campaignId: number | null) => {
     if (!campaignId) {
@@ -89,8 +97,8 @@ export default function BusinessPage() {
   }, [])
 
   useEffect(() => {
-    if (isAuthenticated) loadBusiness()
-  }, [isAuthenticated, loadBusiness])
+    if (isAuthenticated && user?.accountType === "Business") loadBusiness()
+  }, [isAuthenticated, loadBusiness, user?.accountType])
 
   useEffect(() => {
     loadAnalytics(selectedCampaignId)
@@ -106,24 +114,6 @@ export default function BusinessPage() {
       { impressions: 0, votes: 0, completions: 0 }
     )
   }, [campaigns])
-
-  async function createAccount(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setSaving(true)
-    try {
-      await businessApi.createAccount({
-        name: accountName,
-        websiteUrl: websiteUrl || undefined,
-      })
-      setAccountName("")
-      setWebsiteUrl("")
-      await loadBusiness()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create business account")
-    } finally {
-      setSaving(false)
-    }
-  }
 
   async function createCampaign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -196,8 +186,16 @@ export default function BusinessPage() {
     }
   }
 
+  if (authLoading || !isAuthenticated || user?.accountType !== "Business") return <div className="flex min-h-screen items-center justify-center bg-background"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>
+
   return (
-    <AppShell>
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-20 border-b border-border bg-card/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
+          <div><p className="flex items-center gap-2 text-lg font-extrabold"><BriefcaseBusiness className="h-5 w-5 text-primary" />Pop Business</p><p className="text-xs text-muted-foreground">{accounts[0]?.name ?? user.displayName}</p></div>
+          <Button variant="outline" onClick={() => { logout(); router.replace("/business/login") }}><LogOut className="mr-2 h-4 w-4" />Sign out</Button>
+        </div>
+      </header>
       <main className="mx-auto w-full max-w-6xl px-4 py-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -233,26 +231,7 @@ export default function BusinessPage() {
             Loading business workspace...
           </div>
         ) : accounts.length === 0 ? (
-          <form className="mx-auto max-w-md rounded-lg border border-border/60 bg-card p-4" onSubmit={createAccount}>
-            <h2 className="mb-3 font-semibold text-foreground">Create business account</h2>
-            <div className="space-y-3">
-              <Input
-                onChange={(event) => setAccountName(event.target.value)}
-                placeholder="Business name"
-                required
-                value={accountName}
-              />
-              <Input
-                onChange={(event) => setWebsiteUrl(event.target.value)}
-                placeholder="Website URL"
-                value={websiteUrl}
-              />
-              <Button className="w-full gap-2" disabled={saving}>
-                <Plus className="h-4 w-4" />
-                Create account
-              </Button>
-            </div>
-          </form>
+          <div className="mx-auto max-w-md rounded-2xl border border-destructive/30 bg-card p-6 text-center"><h2 className="font-semibold">Business workspace unavailable</h2><p className="mt-2 text-sm text-muted-foreground">This business identity has no workspace attached. Contact support to restore it.</p></div>
         ) : (
           <div className="grid min-w-0 gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
             <aside className="min-w-0 space-y-4">
@@ -260,6 +239,18 @@ export default function BusinessPage() {
                 <p className="text-xs text-muted-foreground">Account</p>
                 <p className="mt-1 font-semibold text-foreground">{selectedAccount?.name}</p>
                 <p className="text-sm text-muted-foreground">{selectedAccount?.websiteUrl ?? "No website"}</p>
+              </div>
+
+              <div className="rounded-lg border border-border/60 bg-card p-4">
+                <p className="flex items-center gap-2 text-sm font-semibold"><CreditCard className="h-4 w-4 text-primary" />Subscription</p>
+                <p className="mt-2 text-lg font-bold">{selectedAccount.subscriptionPlan}</p>
+                <p className="text-sm text-muted-foreground">{selectedAccount.subscriptionStatus}{selectedAccount.trialEndsAt ? ` · trial ends ${new Date(selectedAccount.trialEndsAt).toLocaleDateString()}` : ""}</p>
+              </div>
+
+              <div className="rounded-lg border border-border/60 bg-card p-4">
+                <p className="flex items-center gap-2 text-sm font-semibold"><Palette className="h-4 w-4 text-primary" />Brand studio</p>
+                <p className="mt-2 text-sm text-muted-foreground">Logo, colours and sponsored disclosure controls will be added here next.</p>
+                <span className="mt-3 inline-flex rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">Coming next</span>
               </div>
 
               <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-3 xl:grid-cols-1">
@@ -388,7 +379,7 @@ export default function BusinessPage() {
           </div>
         )}
       </main>
-    </AppShell>
+    </div>
   )
 }
 

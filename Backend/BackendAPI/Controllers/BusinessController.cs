@@ -8,7 +8,7 @@ using System.Security.Claims;
 namespace BackendAPI.Controllers
 {
     [ApiController]
-    [Authorize]
+    [Authorize(Roles = "Business,Admin")]
     [Route("api/[controller]")]
     public class BusinessController : ControllerBase
     {

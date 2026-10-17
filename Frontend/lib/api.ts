@@ -38,6 +38,9 @@ export interface ApiPoll {
   sponsorName: string | null
   campaignName: string | null
   isPrivate: boolean
+  audienceType?: "Public" | "Friend" | "Group"
+  audienceFriendUserId?: number | null
+  audienceGroupId?: number | null
   isWellness: boolean
   pollMode: "Public" | "Wellness"
   moderationStatus: "Draft" | "PendingReview" | "Published" | "Rejected" | "Flagged"
@@ -49,6 +52,7 @@ export interface ApiPoll {
   sourceType: string | null
   sourceUrl: string | null
   thumbnailUrl: string | null
+  mediaType?: "image" | "video" | null
   isAIGenerated: boolean
   options: ApiPollOption[]
   // US-16: per-user vote state (present when authenticated)
@@ -60,6 +64,14 @@ export interface CastVoteRequest {
   pollId: number
   optionId: number
   useStreakRecovery?: boolean
+}
+
+export interface ApiVote {
+  id: number
+  pollId: number
+  optionId: number
+  userId: number | null
+  createdAt: string
 }
 
 export interface ApiProgression {
@@ -161,6 +173,7 @@ export interface CreatePollPayload {
   sourceType?: string
   sourceUrl?: string
   thumbnailUrl?: string
+  mediaType?: "image" | "video"
   isAIGenerated?: boolean
   isPrivate?: boolean
   isWellness?: boolean
@@ -195,6 +208,9 @@ export interface ApiBusinessAccount {
   name: string
   websiteUrl: string | null
   status: string
+  subscriptionPlan: string
+  subscriptionStatus: string
+  trialEndsAt: string | null
   createdAt: string
 }
 
@@ -264,6 +280,43 @@ export interface CreateSponsoredPollPayload extends CreatePollPayload {
   campaignId?: number
 }
 
+export interface ApiPlatformStats {
+  totalPolls: number
+  totalVotes: number
+  activePolls: number
+  totalUsers: number
+  businessAccounts: number
+  sponsoredPolls: number
+  pendingReview: number
+  flaggedPolls: number
+}
+
+export interface ApiPlatformDashboard {
+  trendingPolls: ApiPoll[]
+  recentPolls: ApiPoll[]
+  stats: ApiPlatformStats
+}
+
+export interface ApiProviderHealth {
+  provider: string
+  state: "Enabled" | "Disabled" | "Misconfigured" | "CoolingDown" | "Failed"
+  reason: string | null
+  lastAttempt: string | null
+  lastSuccess: string | null
+  lastRateLimit: string | null
+  cooldownUntil: string | null
+  lastItemCount: number
+}
+
+export interface ApiPipelineHealth {
+  ingestion: { providers: ApiProviderHealth[] }
+  generation: {
+    paused: boolean
+    backlog: { queued: number; retryPending: number }
+    providers: ApiProviderHealth[]
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function authHeaders(): Record<string, string> {
@@ -295,6 +348,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
+}
+
+async function uploadPollMedia(file: File): Promise<{ url: string; mediaType: "image" | "video" }> {
+  const form = new FormData()
+  form.append("file", file)
+  const res = await fetch(`${API_BASE_URL}/api/poll-media`, { method: "POST", headers: authHeaders(), body: form })
+  if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => ({ message: res.statusText }))).message ?? res.statusText)
+  return res.json()
 }
 
 export interface ApiGameMode {
@@ -389,6 +450,10 @@ export const pollsApi = {
     return request<ApiPoll[]>(`/api/polls${query ? `?${query}` : ""}`)
   },
 
+  /** Polls created by the current user, including moderation state and results. */
+  getMine: (count = 100) =>
+    request<ApiPoll[]>(`/api/polls/mine?count=${count}`),
+
   /** Fetch one poll. Includes hasVoted when authenticated. */
   getById: (id: number | string) => request<ApiPoll>(`/api/polls/${id}`),
 
@@ -405,6 +470,7 @@ export const pollsApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  uploadMedia: uploadPollMedia,
 
   report: (id: number | string, reason: string) =>
     request<{ message: string }>(`/api/polls/${id}/report`, {
@@ -468,6 +534,23 @@ export const businessApi = {
     }),
 }
 
+export const adminApi = {
+  dashboard: () => request<ApiPlatformDashboard>("/api/dashboard"),
+  pipelineHealth: () => request<ApiPipelineHealth>("/api/admin/pipeline/health"),
+  setGenerationPaused: (paused: boolean) =>
+    request<{ generationPaused: boolean }>(`/api/admin/pipeline/generation/${paused ? "pause" : "resume"}`, { method: "POST" }),
+  runIngestion: (source: string, maxTopics = 50) =>
+    request<{ jobId: string; correlationId: string }>("/api/admin/pipeline/ingestion/run", {
+      method: "POST",
+      body: JSON.stringify({ source, maxTopics }),
+    }),
+  retryGeneration: (maxTopics = 10) =>
+    request<{ jobId: string; correlationId: string; requeued: number }>("/api/admin/pipeline/generation/retry", {
+      method: "POST",
+      body: JSON.stringify({ maxTopics }),
+    }),
+}
+
 // ── Vote endpoints ────────────────────────────────────────────────────────────
 
 export const votesApi = {
@@ -477,6 +560,10 @@ export const votesApi = {
       method: "POST",
       body: JSON.stringify(req),
     }),
+
+  /** Raw votes for a poll, used by owner/admin analytics views. */
+  getByPoll: (pollId: number | string) =>
+    request<ApiVote[]>(`/api/votes/${pollId}`),
 }
 
 export const notificationsApi = {
@@ -517,6 +604,9 @@ export const notificationsApi = {
 
 export const wellnessApi = {
   getOverview: () => request<ApiWellnessOverview>("/api/wellness/overview"),
+
+  getHistory: (count = 30) =>
+    request<ApiWellnessResponse[]>(`/api/wellness/history?count=${count}`),
 
   createResponse: (pollId: number, optionId: number, note?: string) =>
     request<ApiWellnessResponse>("/api/wellness/responses", {
@@ -679,6 +769,7 @@ export interface ApiStreakStatus {
 }
 
 export const usersApi = {
+  deleteAccount: () => request<void>("/api/users/me", { method: "DELETE" }),
   getAnalyticsPrivacy: () => request<{ consent: "unknown" | "granted" | "denied"; updatedAt: string | null }>("/api/users/me/privacy"),
   updateAnalyticsPrivacy: (consent: "unknown" | "granted" | "denied") => request<{ consent: string; updatedAt: string | null }>("/api/users/me/privacy", { method: "PUT", body: JSON.stringify({ consent }) }),
   /** Leaderboard — top users by XP. */
@@ -717,6 +808,7 @@ export interface SocialUser { id: number; username: string; displayName: string;
 export interface Paged<T> { items: T[]; nextCursor?: string | null }
 export interface FriendConnection { id: number; user: SocialUser; state: "Pending" | "Accepted" | "Declined" | "Removed"; incoming: boolean; updatedAt: string }
 export interface SocialGroup { id: number; name: string; ownerUserId: number; moderationStatus: string; memberCount: number; role: "Owner" | "Member"; createdAt: string }
+export interface GroupInviteSummary { token: string; groupId: number; groupName: string; inviter: SocialUser; expiresAt: string }
 export interface WeeklyEntry { rank: number; user: SocialUser; xp: number; activityCount: number }
 export interface WeeklyLeaderboard { weekStartUtc: string; weekEndUtc: string; items: WeeklyEntry[]; nextCursor?: string | null }
 
@@ -737,8 +829,10 @@ export const socialApi = {
   unblock: (id: number) => request<void>(`/api/social/blocks/${id}`, { method: "DELETE" }),
   friendsLeaderboard: (cursor?: string) => request<WeeklyLeaderboard>(`/api/social/leaderboards/friends?${qs({ cursor })}`),
   groups: (cursor?: string) => request<Paged<SocialGroup>>(`/api/social/groups?${qs({ cursor })}`),
+  group: (id: number) => request<SocialGroup>(`/api/social/groups/${id}`),
   createGroup: (name: string) => request<SocialGroup>("/api/social/groups", { method: "POST", body: JSON.stringify({ name }) }),
   inviteToGroup: (groupId: number, targetUserId: number) => request<{ token: string }>(`/api/social/groups/${groupId}/invites`, { method: "POST", body: JSON.stringify({ targetUserId }) }),
+  getInvite: (token: string) => request<GroupInviteSummary>(`/api/social/group-invites/${encodeURIComponent(token)}`),
   acceptInvite: (token: string) => request<void>(`/api/social/group-invites/${encodeURIComponent(token)}/accept`, { method: "POST" }),
   declineInvite: (token: string) => request<void>(`/api/social/group-invites/${encodeURIComponent(token)}/decline`, { method: "POST" }),
   leaveGroup: (id: number) => request<void>(`/api/social/groups/${id}/membership`, { method: "DELETE" }),

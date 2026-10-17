@@ -32,7 +32,7 @@ namespace BackendAPI.Repository
                 var optionBelongsToPoll = await conn.ExecuteScalarAsync<int>(
                     @"SELECT COUNT(1) FROM PollOptions o WITH (UPDLOCK, ROWLOCK)
                       JOIN Polls p WITH (UPDLOCK, ROWLOCK) ON p.Id=o.PollId
-                      WHERE o.Id = @OptionId AND o.PollId = @PollId AND p.IsActive=1",
+                      WHERE o.Id = @OptionId AND o.PollId = @PollId AND p.IsActive=1 AND p.ModerationStatus='Published' AND p.ExpiresAt>SYSUTCDATETIME()",
                     new { request.OptionId, request.PollId }, transaction);
                 if (optionBelongsToPoll != 1)
                     throw new ArgumentException("The selected option does not belong to an active poll.", nameof(request));
@@ -53,10 +53,15 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Votes (PollId, OptionId, UserId, CreatedAt)
                       OUTPUT inserted.Id VALUES (@PollId, @OptionId, @UserId, @UtcNow)",
                     new { request.PollId, request.OptionId, UserId = userId, UtcNow = utcNow }, transaction);
-                await conn.ExecuteAsync(@"
-                    INSERT INTO XpEvents (UserId, Amount, SourceType, PollId, OccurredAt, IsValid, IsLeaderboardEligible)
-                    VALUES (@UserId, @XpAwarded, 'Vote', @PollId, @UtcNow, 1, 1)",
-                    new { UserId = userId, XpAwarded = xpAwarded, request.PollId, UtcNow = utcNow }, transaction);
+                // The controller now grants vote XP through RewardService after this
+                // transaction. Keep legacy callers working when they supply a positive
+                // amount, but never insert a zero-value event: the production schema
+                // requires every XpEvents.Amount to be positive.
+                if (xpAwarded > 0)
+                    await conn.ExecuteAsync(@"
+                        INSERT INTO XpEvents (UserId, Amount, SourceType, PollId, OccurredAt, IsValid, IsLeaderboardEligible)
+                        VALUES (@UserId, @XpAwarded, 'Vote', @PollId, @UtcNow, 1, 1)",
+                        new { UserId = userId, XpAwarded = xpAwarded, request.PollId, UtcNow = utcNow }, transaction);
                 var optionRows = await conn.ExecuteAsync(
                     "UPDATE PollOptions SET VoteCount = VoteCount + 1 WHERE Id = @OptionId AND PollId = @PollId",
                     new { request.OptionId, request.PollId }, transaction);
@@ -68,7 +73,7 @@ namespace BackendAPI.Repository
                 await conn.ExecuteAsync(@"
                     UPDATE o SET VotePercentage = CASE WHEN p.TotalVotes = 0 THEN 0
                         ELSE CAST(o.VoteCount AS FLOAT) / p.TotalVotes * 100 END
-                    FROM PollOptions o JOIN Polls p ON p.Id = o.PollId WHERE o.PollId = @PollId",
+                    FROM PollOptions o JOIN Polls p WITH(UPDLOCK,HOLDLOCK) ON p.Id = o.PollId WHERE o.PollId = @PollId",
                     new { request.PollId }, transaction);
 
                 if (streak.RecoveryUsed)

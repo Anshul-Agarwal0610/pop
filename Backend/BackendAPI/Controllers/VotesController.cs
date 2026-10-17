@@ -3,6 +3,7 @@ using BackendAPI.Models;
 using BackendAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using System.Security.Claims;
 
 namespace BackendAPI.Controllers
@@ -49,7 +50,7 @@ namespace BackendAPI.Controllers
             if (userIdClaim == null || !long.TryParse(userIdClaim.Value, out var userId))
                 return Unauthorized(new { message = "Invalid token." });
 
-            var poll = await _pollsRepo.GetByIdAsync(request.PollId);
+            var poll = await _pollsRepo.GetByIdAsync(request.PollId, userId);
             if (poll == null)
                 return NotFound(new { message = $"Poll {request.PollId} not found." });
 
@@ -59,7 +60,10 @@ namespace BackendAPI.Controllers
             if (!poll.ModerationStatus.Equals(PollModerationStatus.Published, StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { message = "This poll is not open for voting." });
 
-            if (poll.IsWellness || poll.IsPrivate || poll.Category.Equals("Health", StringComparison.OrdinalIgnoreCase))
+            // GetByIdAsync above already enforces the private poll audience for this user.
+            // Only wellness check-ins use the separate private-response flow; ordinary
+            // friend and group polls must continue through the standard vote endpoint.
+            if (poll.IsWellness || poll.Category.Equals("Health", StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { message = "Health and wellness check-ins use private wellness responses." });
 
             var validOption = poll.Options.Any(o => o.Id == request.OptionId);
@@ -75,13 +79,25 @@ namespace BackendAPI.Controllers
                 (voteId, reward) = await _votesRepo.CastVoteAsync(
                     request, userId, 0, DateTime.UtcNow);
             }
-            catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser") ||
-                                        ex.Message.Contains("duplicate key") ||
-                                        ex.Message.Contains("UNIQUE"))
+            catch (ArgumentException)
+            {
+                return BadRequest(new { message = "This poll or option is no longer open for voting." });
+            }
+            catch (SqlException ex) when (ex.Number is 2601 or 2627)
             {
                 isReplay = true;
                 reward = new VoteRewardResult();
             }
+            catch (Exception ex) when (ex.Message.Contains("UQ_Votes_PollUser", StringComparison.OrdinalIgnoreCase) ||
+                                        ex.Message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase) ||
+                                        ex.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase))
+            {
+                isReplay = true;
+                reward = new VoteRewardResult();
+            }
+
+            if (isReplay)
+                return Conflict(new { message = "You have already voted on this poll." });
 
             var granted = await _rewardService.GrantAsync(new RewardGrantRequest(
                 userId,
@@ -89,9 +105,6 @@ namespace BackendAPI.Controllers
                 "vote",
                 $"poll:{poll.Id}",
                 DateTime.UtcNow));
-
-            if (isReplay)
-                return Conflict(new { message = "You have already voted on this poll." });
 
             var challenges = (await _challengesRepo.AdvanceForVoteAsync(userId, voteId, poll, DateTime.UtcNow)).ToList();
 

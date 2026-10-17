@@ -14,31 +14,31 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Pollify - Public Opinion Polling",
+  title: "PoP - Public Opinion Polling",
   description:
     "Your voice matters. Create polls, vote, and see what the world thinks.",
   generator: "v0.app",
   manifest: "/manifest.json",
   keywords: ["polls", "voting", "opinions", "surveys", "social"],
-  authors: [{ name: "Pollify" }],
+  authors: [{ name: "PoP" }],
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Pollify",
+    title: "PoP",
   },
   formatDetection: {
     telephone: false,
   },
   openGraph: {
     type: "website",
-    siteName: "Pollify",
-    title: "Pollify - Public Opinion Polling",
+    siteName: "PoP",
+    title: "PoP - Public Opinion Polling",
     description:
       "Your voice matters. Create polls, vote, and see what the world thinks.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pollify - Public Opinion Polling",
+    title: "PoP - Public Opinion Polling",
     description:
       "Your voice matters. Create polls, vote, and see what the world thinks.",
   },

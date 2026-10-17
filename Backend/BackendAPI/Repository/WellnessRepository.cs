@@ -24,10 +24,16 @@ namespace BackendAPI.Repository
                   FROM Polls p
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
                   WHERE p.IsActive = 1
-                    AND p.IsWellness = 1
+                    AND p.ModerationStatus = 'Published'
+                    AND (p.IsWellness = 1 OR p.PollMode = 'Wellness')
                     AND p.IsPrivate = 1
-                    AND (p.CreatedByUserId IS NULL OR p.CreatedByUserId = @UserId)
                     AND p.ExpiresAt > GETUTCDATE()
+                    AND NOT EXISTS (
+                        SELECT 1 FROM WellnessResponses wr
+                        WHERE wr.UserId = @UserId AND wr.PollId = p.Id
+                          AND wr.CreatedAt >= CONVERT(date, GETUTCDATE())
+                          AND wr.CreatedAt < DATEADD(day, 1, CONVERT(date, GETUTCDATE()))
+                    )
                   ORDER BY p.CreatedAt DESC",
                 (poll, option) =>
                 {
@@ -77,10 +83,16 @@ namespace BackendAPI.Repository
                       WHERE p.Id = @PollId
                         AND o.Id = @OptionId
                         AND p.IsActive = 1
-                        AND p.IsWellness = 1
+                        AND p.ModerationStatus = 'Published'
+                        AND (p.IsWellness = 1 OR p.PollMode = 'Wellness')
                         AND p.IsPrivate = 1
                         AND p.ExpiresAt > GETUTCDATE()
-                        AND (p.CreatedByUserId IS NULL OR p.CreatedByUserId = @UserId)",
+                        AND NOT EXISTS (
+                            SELECT 1 FROM WellnessResponses wr
+                            WHERE wr.UserId = @UserId AND wr.PollId = p.Id
+                              AND wr.CreatedAt >= CONVERT(date, GETUTCDATE())
+                              AND wr.CreatedAt < DATEADD(day, 1, CONVERT(date, GETUTCDATE()))
+                        )",
                     new { request.PollId, request.OptionId, UserId = userId },
                     transaction);
 

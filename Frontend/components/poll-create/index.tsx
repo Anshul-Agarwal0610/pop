@@ -66,14 +66,17 @@ export function PollCreator() {
       // Expires 7 days from now by default
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
+      const media = draft.media ? await pollsApi.uploadMedia(draft.media.file) : null
       await pollsApi.create({
         question:    draft.question.trim(),
         description: draft.description.trim(),
         category:    DEFAULT_CATEGORY,
         expiresAt,
         options:     ["Yes", "No"],          // default binary options
-        sourceType:  "manual",
+        sourceType:  draft.externalLink ? `manual-${draft.externalLink.platform}` : "manual",
         sourceUrl:   draft.externalLink?.url ?? undefined,
+        thumbnailUrl: media?.url,
+        mediaType: media?.mediaType,
         isAIGenerated: false,
       })
 
@@ -81,7 +84,7 @@ export function PollCreator() {
       setTimeout(() => router.push("/"), 2000)
     } catch (err) {
       console.error("Publish failed:", err)
-      setErrors({ question: "Failed to publish poll. Please try again." })
+      setErrors({ question: err instanceof Error ? (err.message || `Publish failed (HTTP ${"status" in err ? err.status : "unknown"}). Please try again later.`) : "Failed to publish poll. Please try again." })
     } finally {
       setIsPublishing(false)
     }
@@ -267,6 +270,7 @@ export function PollCreator() {
             </p>
           </div>
 
+          {isLastStep && errors.question && <p role="alert" className="text-sm text-destructive">{errors.question}</p>}
           {/* Next/Publish Button */}
           {isLastStep ? (
             <Button

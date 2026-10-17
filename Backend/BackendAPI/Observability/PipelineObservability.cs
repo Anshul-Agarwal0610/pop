@@ -61,7 +61,7 @@ public sealed class PipelineMetrics : IDisposable
     public void Dispose() => _meter.Dispose();
 }
 
-public enum ProviderOperationalState { Enabled, Disabled, Misconfigured, CoolingDown }
+public enum ProviderOperationalState { Enabled, Disabled, Misconfigured, CoolingDown, Failed }
 public sealed record ProviderHealth(string Provider, ProviderOperationalState State, string? Reason, DateTimeOffset? LastAttempt, DateTimeOffset? LastSuccess, DateTimeOffset? LastRateLimit, DateTimeOffset? CooldownUntil, int LastItemCount = 0);
 
 public interface IPipelineRuntimeHealth

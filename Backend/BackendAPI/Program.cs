@@ -17,6 +17,7 @@ using BackendAPI.Observability;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using System.Text.Json;
+using Dapper;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,6 +78,7 @@ builder.Services.AddScoped<IRewardRepository,        RewardRepository>();
 builder.Services.AddScoped<IRewardService,           RewardService>();
 builder.Services.AddScoped<ISocialRepository,        SocialRepository>();
 builder.Services.AddScoped<IGameSessionsRepository,  GameSessionsRepository>();
+builder.Services.AddScoped<IPredictionsRepository,   PredictionsRepository>();
 builder.Services.AddScoped<IGeneratedPollCleanupRepository, GeneratedPollCleanupRepository>();
 builder.Services.AddScoped<IGeneratedPollCleanupClassifier, GeneratedPollCleanupClassifier>();
 builder.Services.AddScoped<IGeneratedPollCleanupService, GeneratedPollCleanupService>();
@@ -84,6 +86,7 @@ builder.Services.AddSingleton<ISystemClock,           SystemClock>();
 
 // ── Ingestion Services (US-03, US-04, US-05) ──────────────────────────────
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton<PollMediaService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IJitterSource, RandomJitterSource>();
 builder.Services.AddSingleton<IRetryDelayPolicy, RetryDelayPolicy>();
@@ -96,6 +99,13 @@ builder.Services.AddHttpClient<IPushNotificationService, ExpoPushNotificationSer
 builder.Services.AddScoped<IRssIngestionService,     RssIngestionService>();
 builder.Services.AddScoped<IYouTubeIngestionService, YouTubeIngestionService>();
 builder.Services.AddScoped<IGNewsIngestionService,   GNewsIngestionService>();
+builder.Services.AddScoped<IAdditionalIngestionSource, XIngestionService>();
+builder.Services.AddScoped<IAdditionalIngestionSource, InstagramIngestionService>();
+builder.Services.AddScoped<IAdditionalIngestionSource, EventsIngestionService>();
+builder.Services.AddHttpClient("ingestion", client => {
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.MaxResponseContentBufferSize = 2_000_000;
+}).RemoveAllLoggers(); // Some providers require API keys in query strings.
 
 // ── LLM Providers — all registered; active one chosen via PollGen:Provider config ─
 builder.Services.AddScoped<ILlmProvider, OpenAiLlmProvider>();
@@ -135,6 +145,9 @@ builder.Services.AddSingleton<IDeterministicPollConverter, DeterministicPollConv
 // ── Hangfire Jobs — must be registered in DI so Hangfire can resolve them ─
 builder.Services.AddScoped<IngestionJob>();
 builder.Services.AddScoped<PollGenerationJob>();
+builder.Services.AddScoped<PhaseOneGeneration>();
+builder.Services.AddScoped<BackendAPI.Repository.PhaseOnePipelineRepository>();
+builder.Services.AddScoped<TopicBatchGenerator>();
 builder.Services.AddScoped<RetentionNotificationJob>();
 builder.Services.AddScoped<GeneratedPollCleanupJob>();
 builder.Services.AddScoped<GeneratedPollRegenerationJob>();
@@ -216,20 +229,34 @@ app.MapHealthChecks("/health/llm", new HealthCheckOptions
 // Jobs are registered after the app is built so IRecurringJobManager is available.
 using (var scope = app.Services.CreateScope())
 {
+    // Compatibility migration for polls created before consumer polls began
+    // publishing immediately. It is intentionally idempotent.
+    var migrationContext = scope.ServiceProvider.GetRequiredService<DapperContext>();
+    using (var migrationConnection = migrationContext.CreateConnection())
+    {
+        var publishedUserPolls = await migrationConnection.ExecuteAsync(@"
+            UPDATE Polls
+            SET ModerationStatus = 'Published', ModerationReason = NULL
+            WHERE CreatedByUserId IS NOT NULL
+              AND COALESCE(IsAIGenerated, 0) = 0
+              AND COALESCE(IsWellness, 0) = 0
+              AND ModerationStatus = 'PendingReview'");
+        app.Logger.LogInformation("Published {PollCount} existing consumer polls under the immediate-publication policy.", publishedUserPolls);
+    }
+
     var recurringJobs = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
 
-    // US-06: Ingest trending topics every 30 minutes
+    // Check the persisted five-hour ingestion schedule.
     recurringJobs.AddOrUpdate<IngestionJob>(
         "ingest-trending-topics",
-        job => job.RunAsync(null, 100),
-        builder.Configuration["Ingestion:Cron"] ?? "*/30 * * * *");
+        job => job.RunScheduledAsync(),
+        "*/5 * * * *");
 
-    // US-08: Generate polls from unprocessed topics every 35 minutes
-    // (offset by 5 min so ingestion always runs first)
+    // Drain pending topics in bounded batches; ingestion runs independently.
     recurringJobs.AddOrUpdate<PollGenerationJob>(
         "generate-polls-from-topics",
         job => job.RunAsync(null),
-        builder.Configuration["PollGeneration:Cron"] ?? "5/35 * * * *");
+        builder.Configuration["PollGeneration:Cron"] ?? "*/5 * * * *");
 
     if (builder.Configuration.GetValue<bool>("PollGeneration:RunOnStartup"))
     {

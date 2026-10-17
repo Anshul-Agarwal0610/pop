@@ -90,6 +90,7 @@ namespace BackendAPI.Services
                     ThumbnailUrl = img,
                     Publisher    = publisher,
                     PublishedAt  = publishedAt,
+                    Language     = "en",
                     Category     = TopicEnrichment.Classify(title, desc)
                 });
             }
