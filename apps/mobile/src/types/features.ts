@@ -52,6 +52,7 @@ export interface CreatePollPayload {
   mediaType?: string
   creativeTemplate?: 'classic' | 'pulse' | 'spotlight'
   reactionId?: 'big_yes' | 'thinking' | 'no_way' | 'wow'
+  resultVisibility?: 'Immediate' | 'AfterVote' | 'AfterClose'
   isAIGenerated?: boolean
   isPrivate?: boolean
   audienceType?: 'Public' | 'Friend' | 'Group'
@@ -197,6 +198,7 @@ export interface ApiVoteHistoryItem {
   category: string
   votedOptionText: string
   totalVotes: number
+  canViewResults?: boolean
   votedAt: string
 }
 

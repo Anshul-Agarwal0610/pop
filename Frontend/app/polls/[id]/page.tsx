@@ -34,7 +34,7 @@ export async function generateMetadata({
     }
   }
 
-  const description = `${poll.totalVotes} votes - ${poll.category}`
+  const description = poll.canViewResults === false ? `${poll.category} poll - results pending` : `${poll.totalVotes} votes - ${poll.category}`
   const shareable = isPollPubliclyShareable(poll.category)
   const url = pollShareUrl(poll.id)
 

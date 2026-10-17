@@ -75,6 +75,7 @@ export function PollCreator() {
         options:     ["Support", "Against"],
         creativeTemplate: draft.creativeTemplate,
         reactionId: draft.reactionId ?? undefined,
+        resultVisibility: draft.resultVisibility,
         sourceType:  draft.externalLink ? `manual-${draft.externalLink.platform}` : "manual",
         sourceUrl:   draft.externalLink?.url ?? undefined,
         thumbnailUrl: media?.url,
@@ -240,6 +241,8 @@ export function PollCreator() {
                 key="privacy"
                 value={draft.privacy}
                 onChange={(v) => updateDraft("privacy", v)}
+                resultVisibility={draft.resultVisibility}
+                onResultVisibilityChange={(v) => updateDraft("resultVisibility", v)}
               />
             )}
             {currentStep === 6 && (

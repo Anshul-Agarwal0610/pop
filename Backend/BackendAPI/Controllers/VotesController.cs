@@ -59,6 +59,9 @@ namespace BackendAPI.Controllers
 
             if (!poll.ModerationStatus.Equals(PollModerationStatus.Published, StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { message = "This poll is not open for voting." });
+            var creatorPollBeforeVote = poll.CreatedByUserId.HasValue
+                ? await _pollsRepo.GetByIdAsync(request.PollId, poll.CreatedByUserId.Value)
+                : poll;
 
             // GetByIdAsync above already enforces the private poll audience for this user.
             // Only wellness check-ins use the separate private-response flow; ordinary
@@ -166,21 +169,19 @@ namespace BackendAPI.Controllers
             }
 
             // Return updated poll with hasVoted populated for this user
-            var updated = await _pollsRepo.GetByIdAsync(request.PollId);
-            if (updated != null)
+            var updated = await _pollsRepo.GetByIdAsync(request.PollId, userId);
+            var creatorView = poll.CreatedByUserId.HasValue
+                ? await _pollsRepo.GetByIdAsync(request.PollId, poll.CreatedByUserId.Value)
+                : updated;
+            if (creatorView != null)
             {
-                await CreateVoteMilestoneNotificationAsync(poll, updated.TotalVotes);
-                if (updated.IsSponsored)
+                await CreateVoteMilestoneNotificationAsync(creatorPollBeforeVote ?? poll, creatorView.TotalVotes);
+                if (creatorView.IsSponsored)
                 {
-                    await _businessRepo.RecordVoteAsync(updated.Id);
+                    await _businessRepo.RecordVoteAsync(creatorView.Id);
                 }
             }
 
-            if (updated != null)
-            {
-                updated.HasVoted          = true;
-                updated.UserVotedOptionId = request.OptionId;
-            }
             return Ok(new CastVoteResponse
             {
                 Poll = updated!,
@@ -212,8 +213,14 @@ namespace BackendAPI.Controllers
 
         // GET /api/votes/{pollId}
         [HttpGet("{pollId}")]
+        [Authorize]
         public async Task<IActionResult> GetVotesByPoll(long pollId)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+            if (userIdClaim == null || !long.TryParse(userIdClaim.Value, out var userId)) return Unauthorized();
+            var poll = await _pollsRepo.GetByIdAsync(pollId, userId);
+            if (poll == null) return NotFound();
+            if (poll.CreatedByUserId != userId) return Forbid();
             var votes = await _votesRepo.GetVotesByPollAsync(pollId);
             return Ok(votes);
         }

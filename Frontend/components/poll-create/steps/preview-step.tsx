@@ -212,6 +212,7 @@ export function PreviewStep({ draft }: PreviewStepProps) {
 
           {/* Question */}
           <CreativePollHero question={draft.question} description={draft.description} category="General" template={draft.creativeTemplate} reaction={draft.reactionId} compact className="mb-4" />
+          <p className="mb-3 text-sm text-muted-foreground">Results: {draft.resultVisibility === "Immediate" ? "live" : draft.resultVisibility === "AfterClose" ? "when the poll closes" : "after voting"}</p>
 
           {/* Stats */}
           <div className="mb-4 flex items-center gap-4 text-sm text-muted-foreground">

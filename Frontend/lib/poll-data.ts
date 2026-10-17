@@ -49,6 +49,8 @@ export interface Poll {
   isWellness?: boolean
   creativeTemplate?: ApiPoll["creativeTemplate"]
   reactionId?: ApiPoll["reactionId"]
+  resultVisibility?: ApiPoll["resultVisibility"]
+  canViewResults?: boolean
 
   // ── US-12: Full options list for voting (absent on mock polls) ─────────────
   options?: PollOption[]
@@ -107,6 +109,8 @@ export function mapBackendPoll(p: ApiPoll): Poll {
     isWellness:    p.isWellness,
     creativeTemplate: p.creativeTemplate,
     reactionId: p.reactionId,
+    resultVisibility: p.resultVisibility,
+    canViewResults: p.canViewResults,
     options:      p.options.map((o) => ({
       id:             o.id,
       text:           o.text,

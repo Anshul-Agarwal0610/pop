@@ -6,6 +6,7 @@ export interface PollDraft {
   privacy: "public" | "private"
   creativeTemplate: PollTemplate
   reactionId: PollReaction | null
+  resultVisibility: "Immediate" | "AfterVote" | "AfterClose"
 }
 
 export type PollTemplate = "classic" | "pulse" | "spotlight"
@@ -68,5 +69,6 @@ export function getInitialDraft(): PollDraft {
     privacy: "public",
     creativeTemplate: "classic",
     reactionId: null,
+    resultVisibility: "AfterVote",
   }
 }
