@@ -53,6 +53,8 @@ export interface ApiPoll {
   sourceUrl: string | null
   thumbnailUrl: string | null
   mediaType?: "image" | "video" | null
+  creativeTemplate?: "classic" | "pulse" | "spotlight" | null
+  reactionId?: "big_yes" | "thinking" | "no_way" | "wow" | null
   isAIGenerated: boolean
   options: ApiPollOption[]
   // US-16: per-user vote state (present when authenticated)
@@ -174,6 +176,8 @@ export interface CreatePollPayload {
   sourceUrl?: string
   thumbnailUrl?: string
   mediaType?: "image" | "video"
+  creativeTemplate?: "classic" | "pulse" | "spotlight"
+  reactionId?: "big_yes" | "thinking" | "no_way" | "wow"
   isAIGenerated?: boolean
   isPrivate?: boolean
   isWellness?: boolean

@@ -47,6 +47,8 @@ export interface Poll {
   campaignName?: string | null
   isPrivate?: boolean
   isWellness?: boolean
+  creativeTemplate?: ApiPoll["creativeTemplate"]
+  reactionId?: ApiPoll["reactionId"]
 
   // ── US-12: Full options list for voting (absent on mock polls) ─────────────
   options?: PollOption[]
@@ -103,6 +105,8 @@ export function mapBackendPoll(p: ApiPoll): Poll {
     campaignName:  p.campaignName,
     isPrivate:     p.isPrivate,
     isWellness:    p.isWellness,
+    creativeTemplate: p.creativeTemplate,
+    reactionId: p.reactionId,
     options:      p.options.map((o) => ({
       id:             o.id,
       text:           o.text,

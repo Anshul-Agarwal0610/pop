@@ -4,6 +4,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { Action, Field } from '../components/ScreenKit';
 import { CreatePollScreen, NotificationsScreen, ChallengesScreen, AchievementsScreen, HistoryScreen, MyPollsScreen, PreferencesScreen } from './ActivityScreens';
+import { CreativeStylePicker } from '../components/CreativePollHero';
 import { GamesScreen, RankingsScreen, WellnessScreen } from './PlayScreens';
 import { CommunityScreen } from './CommunityScreen';
 import { PollExperience } from './PollExperience';
@@ -103,10 +104,12 @@ describe('consumer mobile screens', () => {
     const rendered = await mount(React.createElement(CreatePollScreen, { back, openPoll }));
     expect(rendered.root.findAllByType(Action).find(button => button.props.title === 'Review poll')?.props.disabled).toBe(true);
     await act(async () => rendered.root.findAllByType(Field).find(field => field.props.label === 'Your question')!.props.onChangeText('Should work be flexible?'));
+    await act(async () => rendered.root.findByType(CreativeStylePicker).props.onTemplate('pulse'));
+    await act(async () => rendered.root.findByType(CreativeStylePicker).props.onReaction('thinking'));
     await act(async () => rendered.root.findAllByType(Action).find(button => button.props.title === 'Review poll')!.props.onPress());
     expect(api.create).not.toHaveBeenCalled();
     await act(async () => rendered.root.findAllByType(Action).find(button => button.props.title === 'Publish poll')!.props.onPress());
-    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ question: created.question, options: ['Support', 'Against'], category: 'General', isAIGenerated: false }));
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ question: created.question, options: ['Support', 'Against'], category: 'General', creativeTemplate: 'pulse', reactionId: 'thinking', isAIGenerated: false }));
     expect(JSON.stringify(rendered.toJSON())).toContain('Your poll is live and ready for votes');
   });
   test('my polls shows creator totals and opens performance details', async () => {

@@ -72,7 +72,9 @@ export function PollCreator() {
         description: draft.description.trim(),
         category:    DEFAULT_CATEGORY,
         expiresAt,
-        options:     ["Yes", "No"],          // default binary options
+        options:     ["Support", "Against"],
+        creativeTemplate: draft.creativeTemplate,
+        reactionId: draft.reactionId ?? undefined,
         sourceType:  draft.externalLink ? `manual-${draft.externalLink.platform}` : "manual",
         sourceUrl:   draft.externalLink?.url ?? undefined,
         thumbnailUrl: media?.url,
@@ -144,8 +146,8 @@ export function PollCreator() {
             }}
             animate={{
               opacity: 0,
-              x: (Math.random() - 0.5) * 300,
-              y: (Math.random() - 0.5) * 300,
+              x: ((i * 73) % 300) - 150,
+              y: ((i * 131) % 300) - 150,
               scale: [0, 1, 0.5],
             }}
             transition={{
@@ -203,6 +205,10 @@ export function PollCreator() {
                 value={draft.question}
                 onChange={(v) => updateDraft("question", v)}
                 error={errors.question}
+                creativeTemplate={draft.creativeTemplate}
+                reactionId={draft.reactionId}
+                onTemplateChange={(v) => updateDraft("creativeTemplate", v)}
+                onReactionChange={(v) => updateDraft("reactionId", v)}
               />
             )}
             {currentStep === 2 && (

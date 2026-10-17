@@ -4,7 +4,12 @@ export interface PollDraft {
   media: MediaAttachment | null
   externalLink: ExternalLink | null
   privacy: "public" | "private"
+  creativeTemplate: PollTemplate
+  reactionId: PollReaction | null
 }
+
+export type PollTemplate = "classic" | "pulse" | "spotlight"
+export type PollReaction = "big_yes" | "thinking" | "no_way" | "wow"
 
 export interface MediaAttachment {
   type: "image" | "video" | "audio" | "document"
@@ -61,5 +66,7 @@ export function getInitialDraft(): PollDraft {
     media: null,
     externalLink: null,
     privacy: "public",
+    creativeTemplate: "classic",
+    reactionId: null,
   }
 }

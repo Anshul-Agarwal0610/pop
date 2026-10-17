@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { PollDraft } from "@/lib/poll-creation"
+import { CreativePollHero } from "../creative-poll-hero"
 
 interface PreviewStepProps {
   draft: PollDraft
@@ -210,16 +211,7 @@ export function PreviewStep({ draft }: PreviewStepProps) {
           </div>
 
           {/* Question */}
-          <h2 className="mb-2 text-xl font-bold leading-tight text-foreground text-balance">
-            {draft.question || "Your question will appear here..."}
-          </h2>
-
-          {/* Description */}
-          {draft.description && (
-            <p className="mb-4 text-sm text-muted-foreground line-clamp-2">
-              {draft.description}
-            </p>
-          )}
+          <CreativePollHero question={draft.question} description={draft.description} category="General" template={draft.creativeTemplate} reaction={draft.reactionId} compact className="mb-4" />
 
           {/* Stats */}
           <div className="mb-4 flex items-center gap-4 text-sm text-muted-foreground">
@@ -232,10 +224,10 @@ export function PreviewStep({ draft }: PreviewStepProps) {
           {/* Action Buttons */}
           <div className="flex items-center gap-3">
             <div className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-500/10 py-3 font-bold text-red-500 ring-2 ring-red-500/20">
-              <span className="text-xl">NO</span>
+              <span className="text-xl">Against</span>
             </div>
             <div className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-500/10 py-3 font-bold text-emerald-500 ring-2 ring-emerald-500/20">
-              <span className="text-xl">YES</span>
+              <span className="text-xl">Support</span>
             </div>
           </div>
         </div>

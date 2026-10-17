@@ -452,6 +452,12 @@ namespace BackendAPI.Repository
             conn.Open();
             using var transaction = conn.BeginTransaction();
             var normalizedCategory = CategoryCatalog.NormalizeName(request.Category);
+            var creativeTemplate = request.CreativeTemplate?.Trim().ToLowerInvariant();
+            var reactionId = request.ReactionId?.Trim().ToLowerInvariant();
+            if (creativeTemplate is not (null or "classic" or "pulse" or "spotlight"))
+                throw new ArgumentException("Choose a valid poll template.");
+            if (reactionId is not (null or "big_yes" or "thinking" or "no_way" or "wow"))
+                throw new ArgumentException("Choose a valid PoPmoji reaction.");
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
             var isPrivate = request.IsPrivate || isWellness;
             var audienceType = isPrivate && !isWellness ? request.AudienceType?.Trim() : PollAudienceTypes.Public;
@@ -477,14 +483,14 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
+                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, CreativeTemplate, ReactionId, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
                          ReplacementForCleanupRecordId)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
+                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @CreativeTemplate, @ReactionId, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
                          @ReplacementForCleanupRecordId);
@@ -499,6 +505,8 @@ namespace BackendAPI.Repository
                         request.SourceUrl,
                         request.ThumbnailUrl,
                         request.MediaType,
+                        CreativeTemplate = creativeTemplate,
+                        ReactionId = reactionId,
                         request.IsAIGenerated,
                         GenerationMethod = generated ? request.GenerationMethod : GenerationMethods.ManualReview,
                         request.TrendingTopicId,
