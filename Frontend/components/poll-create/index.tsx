@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowLeft, ArrowRight, Rocket, Loader2, X, Sparkles } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { StepIndicator } from "./step-indicator"
 import { QuestionStep } from "./steps/question-step"
@@ -13,18 +13,39 @@ import { LinkStep } from "./steps/link-step"
 import { PrivacyStep } from "./steps/privacy-step"
 import { PreviewStep } from "./steps/preview-step"
 import { getInitialDraft, STEPS, type PollDraft } from "@/lib/poll-creation"
-import { pollsApi } from "@/lib/api"
+import { pollsApi, type ApiPoll } from "@/lib/api"
 import { DEFAULT_CATEGORY } from "@/lib/categories"
 import { cn } from "@/lib/utils"
 
 export function PollCreator() {
   const router = useRouter()
+  const remixParam = useSearchParams().get("remix")
+  const remixRequested = remixParam !== null
+  const remixId = remixParam && /^\d+$/.test(remixParam) ? Number(remixParam) : 0
+  const invalidRemixId = remixRequested && (!Number.isSafeInteger(remixId) || remixId <= 0)
   const [currentStep, setCurrentStep] = useState(1)
   const [draft, setDraft] = useState<PollDraft>(getInitialDraft())
+  const [loadedRemix, setLoadedRemix] = useState<{ id: number; poll: ApiPoll } | null>(null)
+  const [loadRemixError, setLoadRemixError] = useState<{ id: number; message: string } | null>(null)
+  const remixSource = loadedRemix?.id === remixId ? loadedRemix.poll : null
+  const remixError = invalidRemixId ? "This original poll link is invalid." : loadRemixError?.id === remixId ? loadRemixError.message : null
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isPublishing, setIsPublishing] = useState(false)
   const [isPublished, setIsPublished] = useState(false)
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
+
+  useEffect(() => {
+    if (!remixRequested || invalidRemixId) return
+    let active = true
+    pollsApi.getById(remixId).then((source) => {
+      if (source.isPrivate || source.isWellness || source.moderationStatus !== "Published")
+        throw new Error("This poll is not available to remix.")
+      if (active) setLoadedRemix({ id: remixId, poll: source })
+    }).catch((error) => {
+      if (active) setLoadRemixError({ id: remixId, message: error instanceof Error ? error.message : "Could not load the original poll." })
+    })
+    return () => { active = false }
+  }, [remixRequested, invalidRemixId, remixId])
 
   const updateDraft = useCallback(<K extends keyof PollDraft>(key: K, value: PollDraft[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }))
@@ -32,12 +53,12 @@ export function PollCreator() {
   }, [])
 
   const validateStep = useCallback((step: number): boolean => {
-    if (step === 1 && !draft.question.trim()) {
-      setErrors({ question: "Please enter a question" })
+    if (step === 1 && (!draft.question.trim() || remixSource && draft.question.trim().toLowerCase() === remixSource.question.trim().toLowerCase())) {
+      setErrors({ question: draft.question.trim() ? "Write a different question for your remix" : "Please enter a question" })
       return false
     }
     return true
-  }, [draft.question])
+  }, [draft.question, remixSource])
 
   const goToStep = useCallback((step: number) => {
     if (step < 1 || step > STEPS.length) return
@@ -59,6 +80,15 @@ export function PollCreator() {
   }
 
   const handlePublish = async () => {
+    if (remixRequested && !remixSource) {
+      setErrors({ question: remixError || "Waiting for the original poll to load." })
+      return
+    }
+    if (remixSource && draft.question.trim().toLowerCase() === remixSource.question.trim().toLowerCase()) {
+      setCurrentStep(1)
+      setErrors({ question: "Write a different question for your remix" })
+      return
+    }
     if (!validateStep(currentStep)) return
 
     setIsPublishing(true)
@@ -70,12 +100,13 @@ export function PollCreator() {
       await pollsApi.create({
         question:    draft.question.trim(),
         description: draft.description.trim(),
-        category:    DEFAULT_CATEGORY,
+        category:    remixSource?.category ?? DEFAULT_CATEGORY,
         expiresAt,
         options:     ["Support", "Against"],
         creativeTemplate: draft.creativeTemplate,
         reactionId: draft.reactionId ?? undefined,
         resultVisibility: draft.resultVisibility,
+        remixedFromPollId: remixSource?.id,
         sourceType:  draft.externalLink ? `manual-${draft.externalLink.platform}` : "manual",
         sourceUrl:   draft.externalLink?.url ?? undefined,
         thumbnailUrl: media?.url,
@@ -178,12 +209,15 @@ export function PollCreator() {
           
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-foreground">Create Poll</span>
+            <span className="font-semibold text-foreground">{remixRequested ? "Remix Poll" : "Create Poll"}</span>
           </div>
 
           <div className="w-10" /> {/* Spacer for centering */}
         </div>
       </header>
+      {remixRequested && <div className="border-b bg-secondary/40 px-4 py-3 text-center text-sm">
+        {remixError ? <span role="alert" className="text-destructive">{remixError}</span> : remixSource ? <><span className="font-semibold">Inspired by {remixSource.createdByDisplayName || remixSource.createdByUsername || "a PoP poll"}</span><span className="block text-muted-foreground">{remixSource.question}</span><span className="block text-muted-foreground">Write your own question. Media and votes are not copied.</span></> : "Loading original poll…"}
+      </div>}
 
       {/* Step Indicator */}
       <div className="border-b border-border/50 bg-card/50 px-4 py-4">
@@ -246,7 +280,7 @@ export function PollCreator() {
               />
             )}
             {currentStep === 6 && (
-              <PreviewStep key="preview" draft={draft} />
+              <PreviewStep key="preview" draft={draft} remixSource={remixSource} />
             )}
           </AnimatePresence>
         </div>
@@ -284,7 +318,7 @@ export function PollCreator() {
           {isLastStep ? (
             <Button
               onClick={handlePublish}
-              disabled={isPublishing || !draft.question.trim()}
+              disabled={isPublishing || !draft.question.trim() || (remixRequested && !remixSource)}
               className="rounded-xl bg-gradient-to-r from-primary to-primary/80 px-6 font-semibold shadow-lg shadow-primary/25"
             >
               {isPublishing ? (

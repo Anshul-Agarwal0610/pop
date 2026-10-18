@@ -48,7 +48,7 @@ export function EditProfileScreen({ back }: Back) {
   </Screen>;
 }
 
-export function CreatePollScreen({ back, openPoll }: Back & OpenPoll) {
+export function CreatePollScreen({ back, openPoll, remixSource }: Back & OpenPoll & { remixSource?: ApiPoll | null }) {
   const { colors: c } = useTheme(); const ui = useUI();
 
   const [question, setQuestion] = useState('');
@@ -56,7 +56,7 @@ export function CreatePollScreen({ back, openPoll }: Back & OpenPoll) {
   const [creativeTemplate, setCreativeTemplate] = useState<PollTemplate>('classic');
   const [reactionId, setReactionId] = useState<PollReaction | null>(null);
   const [resultVisibility, setResultVisibility] = useState<'Immediate' | 'AfterVote' | 'AfterClose'>('AfterVote');
-  const [category, setCategory] = useState('General');
+  const [category, setCategory] = useState(remixSource?.category ?? 'General');
   const options = ['Support', 'Against'];
   const [duration, setDuration] = useState('7 days');
   const [source, setSource] = useState('');
@@ -73,7 +73,7 @@ export function CreatePollScreen({ back, openPoll }: Back & OpenPoll) {
   const cleaned = options.map(option => option.trim());
   const sourceValid = !source.trim() || /^https?:\/\/[^\s]+$/i.test(source.trim());
   const validAudience = audience === 'Public' || (audience === 'Friend' ? friendId !== null : groupId !== null);
-  const valid = question.trim().length > 0 && cleaned.every(Boolean) && new Set(cleaned.map(option => option.toLowerCase())).size === cleaned.length && sourceValid && validAudience;
+  const valid = question.trim().length > 0 && (!remixSource || question.trim().toLowerCase() !== remixSource.question.trim().toLowerCase()) && cleaned.every(Boolean) && new Set(cleaned.map(option => option.toLowerCase())).size === cleaned.length && sourceValid && validAudience;
   const friends = audienceResource.data?.friends.items.filter(friend => friend.state === 'Accepted') ?? [];
   const groups = audienceResource.data?.groups.items ?? [];
   async function uploadResult(result: ImagePicker.ImagePickerResult) {
@@ -109,8 +109,9 @@ export function CreatePollScreen({ back, openPoll }: Back & OpenPoll) {
     finally { setMediaBusy(null); }
   }
   if (published) return <Screen title="You started a conversation" back={back}><Card><Glyph name="checkmark-circle" /><Text style={ui.title}>{published.question}</Text><Text style={ui.body}>{audience === 'Public' ? 'Your poll is live and ready for votes.' : `Your private poll is available to the selected ${audience.toLowerCase()}.`}</Text><Action title="Share poll" onPress={() => sharePoll(published)} /><Action title="Open my poll" secondary onPress={() => openPoll(published)} /><Action title="Back to Pop" secondary onPress={back} /></Card></Screen>;
-  return <Screen title={review ? 'Review your poll' : 'Start a conversation'} subtitle="A clear question. Room for every perspective." back={() => review && !action.busy && !mediaBusy ? setReview(false) : back()} busy={action.busy || !!mediaBusy} error={action.error || mediaError}>
+  return <Screen title={review ? 'Review your poll' : remixSource ? 'Remix this poll' : 'Start a conversation'} subtitle={remixSource ? 'A fresh angle on a conversation.' : 'A clear question. Room for every perspective.'} back={() => review && !action.busy && !mediaBusy ? setReview(false) : back()} busy={action.busy || !!mediaBusy} error={action.error || mediaError}>
     <Progress value={review ? 100 : 50} />
+    {remixSource && <Card><Text style={ui.tag}>Inspired by {remixSource.createdByDisplayName || remixSource.createdByUsername || 'a PoP poll'}</Text><Text style={ui.title}>{remixSource.question}</Text><Text style={ui.body}>Write a different question below. Your remix links back to this poll. Media and votes are not copied.</Text></Card>}
     {review ? <Card><Text style={ui.tag}>Voter preview · {duration}</Text><CreativePollHero question={question.trim()} description={description.trim()} category={category} template={creativeTemplate} reaction={reactionId} />{media?.mediaType === 'image' && <Image source={{ uri: media.uri }} resizeMode="cover" style={{ width: '100%', height: 190, borderRadius: 16 }} />}{media && <Text style={ui.meta}>{media.mediaType === 'image' ? 'Photo' : 'Video'} attached · {media.name}</Text>}{cleaned.map(option => <Text key={option} style={ui.label}>○  {option}</Text>)}{!!source && <Text style={ui.meta}>{source}</Text>}<Text style={ui.meta}>{audience === 'Public' ? 'Public poll' : `${audience}-only poll`} · Results {resultVisibility === 'Immediate' ? 'are live' : resultVisibility === 'AfterClose' ? 'appear when the poll closes' : 'appear after voting'}</Text></Card> : <>
       <Card><Field label="Your question" value={question} onChangeText={setQuestion} maxLength={280} multiline placeholder="What would you like people’s opinion on?" /><Text style={ui.meta}>{question.length}/280</Text><Field label="Context (optional)" value={description} onChangeText={setDescription} maxLength={500} multiline placeholder="Give both sides room to think." /></Card>
       <Card><View style={ui.spread}><Text style={ui.title}>Make it PoP</Text><Glyph name="sparkles-outline" /></View><Text style={ui.body}>Choose a look and a reaction. Your words and voting choices stay clear.</Text><CreativeStylePicker template={creativeTemplate} reaction={reactionId} onTemplate={setCreativeTemplate} onReaction={setReactionId} /><CreativePollHero question={question.trim()} description={description.trim()} category={category} template={creativeTemplate} reaction={reactionId} compact /></Card>
@@ -120,7 +121,7 @@ export function CreatePollScreen({ back, openPoll }: Back & OpenPoll) {
       <Card><Text style={ui.title}>When do results appear?</Text><Text style={ui.body}>Choose the reveal moment. You can always see your own poll performance.</Text><Chips items={['Live', 'After vote', 'When closed']} selected={resultVisibility === 'Immediate' ? 'Live' : resultVisibility === 'AfterClose' ? 'When closed' : 'After vote'} onSelect={value => setResultVisibility(value === 'Live' ? 'Immediate' : value === 'When closed' ? 'AfterClose' : 'AfterVote')} /></Card>
       <Card><Text style={ui.label}>Category</Text><Chips items={categories} selected={category} onSelect={setCategory} /><Text style={ui.label}>Open for</Text><Chips items={['1 day', '3 days', '7 days']} selected={duration} onSelect={setDuration} /><Field label="Source link (optional)" value={source} onChangeText={setSource} autoCapitalize="none" keyboardType="url" placeholder="https://…" />{!sourceValid && <ErrorText message="Use a complete http or https link." />}</Card>
     </>}
-    <Action title={review ? 'Publish poll' : 'Review poll'} busy={action.busy} disabled={!valid} onPress={() => review ? void action.run(async () => setPublished(await api.create({ question: question.trim(), description: description.trim(), category, options: cleaned, expiresAt: new Date(Date.now() + parseInt(duration) * 86_400_000).toISOString(), sourceType: 'manual', sourceUrl: source.trim() || undefined, thumbnailUrl: media?.url, mediaType: media?.mediaType, creativeTemplate, reactionId: reactionId ?? undefined, resultVisibility, isAIGenerated: false, isPrivate: audience !== 'Public', audienceType: audience, audienceFriendUserId: audience === 'Friend' ? friendId ?? undefined : undefined, audienceGroupId: audience === 'Group' ? groupId ?? undefined : undefined }))) : setReview(true)} />
+    <Action title={review ? 'Publish poll' : 'Review poll'} busy={action.busy} disabled={!valid} onPress={() => review ? void action.run(async () => setPublished(await api.create({ question: question.trim(), description: description.trim(), category, options: cleaned, expiresAt: new Date(Date.now() + parseInt(duration) * 86_400_000).toISOString(), sourceType: 'manual', sourceUrl: source.trim() || undefined, thumbnailUrl: media?.url, mediaType: media?.mediaType, creativeTemplate, reactionId: reactionId ?? undefined, resultVisibility, remixedFromPollId: remixSource?.id, isAIGenerated: false, isPrivate: audience !== 'Public', audienceType: audience, audienceFriendUserId: audience === 'Friend' ? friendId ?? undefined : undefined, audienceGroupId: audience === 'Group' ? groupId ?? undefined : undefined }))) : setReview(true)} />
   </Screen>;
 }
 

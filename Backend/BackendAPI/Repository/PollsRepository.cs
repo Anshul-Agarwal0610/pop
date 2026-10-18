@@ -70,9 +70,13 @@ namespace BackendAPI.Repository
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         source.Question AS RemixedFromQuestion,
+                         COALESCE(sourceUser.DisplayName, sourceUser.Username) AS RemixedFromCreatorName,
                          b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM Polls p
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN Polls source ON source.Id = p.RemixedFromPollId AND source.ModerationStatus='Published' AND COALESCE(source.IsPrivate,0)=0 AND COALESCE(source.IsWellness,0)=0
+                  LEFT JOIN Users sourceUser ON sourceUser.Id = source.CreatedByUserId
                   LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
                   LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
@@ -112,9 +116,13 @@ namespace BackendAPI.Repository
 
             await conn.QueryAsync<Poll, PollOption, Poll>(
                 @"SELECT p.*, u.Username AS CreatedByUsername, u.DisplayName AS CreatedByDisplayName,
+                         source.Question AS RemixedFromQuestion,
+                         COALESCE(sourceUser.DisplayName, sourceUser.Username) AS RemixedFromCreatorName,
                          b.Name AS SponsorName, c.Name AS CampaignName, o.*
                   FROM Polls p
                   LEFT JOIN Users u ON u.Id = p.CreatedByUserId
+                  LEFT JOIN Polls source ON source.Id = p.RemixedFromPollId AND source.ModerationStatus='Published' AND COALESCE(source.IsPrivate,0)=0 AND COALESCE(source.IsWellness,0)=0
+                  LEFT JOIN Users sourceUser ON sourceUser.Id = source.CreatedByUserId
                   LEFT JOIN BusinessAccounts b ON b.Id = p.BusinessId
                   LEFT JOIN BusinessCampaigns c ON c.Id = p.CampaignId
                   LEFT JOIN PollOptions o ON o.PollId = p.Id
@@ -483,18 +491,32 @@ namespace BackendAPI.Repository
 
             try
             {
+                if (request.RemixedFromPollId.HasValue)
+                {
+                    if (!createdByUserId.HasValue || request.IsAIGenerated)
+                        throw new ArgumentException("Only signed-in people can remix a poll.");
+                    var sourceQuestion = await conn.ExecuteScalarAsync<string?>(
+                        @"SELECT Question FROM Polls WITH (HOLDLOCK)
+                          WHERE Id=@SourceId AND ModerationStatus='Published'
+                            AND COALESCE(IsPrivate,0)=0 AND COALESCE(IsWellness,0)=0",
+                        new { SourceId = request.RemixedFromPollId.Value }, transaction);
+                    if (sourceQuestion == null)
+                        throw new ArgumentException("This poll is not available to remix.");
+                    if (!PollRemixRules.IsNewQuestion(sourceQuestion, request.Question))
+                        throw new ArgumentException("Write a new question for your remix.");
+                }
                 var pollId = await conn.ExecuteScalarAsync<long>(
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, CreativeTemplate, ReactionId, ResultVisibility, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
+                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, CreativeTemplate, ReactionId, ResultVisibility, RemixedFromPollId, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
                          ReplacementForCleanupRecordId)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @CreativeTemplate, @ReactionId, @ResultVisibility, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
+                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @CreativeTemplate, @ReactionId, @ResultVisibility, @RemixedFromPollId, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
                          @ReplacementForCleanupRecordId);
@@ -512,6 +534,7 @@ namespace BackendAPI.Repository
                         CreativeTemplate = creativeTemplate,
                         ReactionId = reactionId,
                         request.ResultVisibility,
+                        request.RemixedFromPollId,
                         request.IsAIGenerated,
                         GenerationMethod = generated ? request.GenerationMethod : GenerationMethods.ManualReview,
                         request.TrendingTopicId,

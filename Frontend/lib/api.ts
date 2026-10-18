@@ -57,6 +57,9 @@ export interface ApiPoll {
   reactionId?: "big_yes" | "thinking" | "no_way" | "wow" | null
   resultVisibility?: "Immediate" | "AfterVote" | "AfterClose"
   canViewResults?: boolean
+  remixedFromPollId?: number | null
+  remixedFromQuestion?: string | null
+  remixedFromCreatorName?: string | null
   isAIGenerated: boolean
   options: ApiPollOption[]
   // US-16: per-user vote state (present when authenticated)
@@ -181,6 +184,7 @@ export interface CreatePollPayload {
   creativeTemplate?: "classic" | "pulse" | "spotlight"
   reactionId?: "big_yes" | "thinking" | "no_way" | "wow"
   resultVisibility?: "Immediate" | "AfterVote" | "AfterClose"
+  remixedFromPollId?: number
   isAIGenerated?: boolean
   isPrivate?: boolean
   isWellness?: boolean
