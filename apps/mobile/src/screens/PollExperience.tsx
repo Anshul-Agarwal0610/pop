@@ -19,7 +19,7 @@ import { useTheme, radius, spacing, type ThemeColors } from '../theme';
 import { UserAvatar } from '../components/UserAvatar';
 import { categories as pollCategories, featureApi } from '../lib/featuresApi';
 import { CreatePollScreen, NotificationsScreen, ChallengesScreen, AchievementsScreen, HistoryScreen, MyPollsScreen, PreferencesScreen, ReportScreen, EditProfileScreen } from './ActivityScreens';
-import { sharePoll } from '../lib/sharePoll';
+import { usePollShare } from '../components/PollShareProvider';
 import { GamesScreen, WellnessScreen, RankingsScreen } from './PlayScreens';
 import { CommunityScreen } from './CommunityScreen';
 import { API_BASE_URL } from '../config/api';
@@ -139,6 +139,7 @@ function PollPreview({ poll, onOpen }: { poll: ApiPoll; onOpen: () => void }) {
 }
 
 export function PollExperience() {
+  const sharePoll = usePollShare();
   const { colors: c } = useTheme(); const s = useMemo(() => createStyles(c), [c]);
 
   const { user, signOut, applyVoteReward, refreshUser } = useAuth();

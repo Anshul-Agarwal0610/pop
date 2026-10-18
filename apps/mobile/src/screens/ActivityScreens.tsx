@@ -10,7 +10,7 @@ import { useTheme } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { UserAvatar } from '../components/UserAvatar';
 import { CreativePollHero, CreativeStylePicker, type PollReaction, type PollTemplate } from '../components/CreativePollHero';
-import { sharePoll } from '../lib/sharePoll';
+import { usePollShare } from '../components/PollShareProvider';
 import { resultPercent } from '../lib/pollPresentation';
 
 type Back = { back: () => void };
@@ -49,6 +49,7 @@ export function EditProfileScreen({ back }: Back) {
 }
 
 export function CreatePollScreen({ back, openPoll, remixSource }: Back & OpenPoll & { remixSource?: ApiPoll | null }) {
+  const sharePoll = usePollShare();
   const { colors: c } = useTheme(); const ui = useUI();
 
   const [question, setQuestion] = useState('');
@@ -167,13 +168,14 @@ export function AchievementsScreen({ back }: Back) {
 }
 
 export function HistoryScreen({ back, openPoll }: Back & OpenPoll) {
+  const sharePoll = usePollShare();
   const { colors: c } = useTheme(); const ui = useUI();
 
   const [limit, setLimit] = useState(30);
   const load = useCallback(() => api.history(limit), [limit]);
   const resource = useResource(load); const action = useAction();
   return <Screen title="Voted polls" subtitle="Revisit results, follow performance, or invite others to vote." back={back} refresh={resource.refresh} loading={resource.loading} error={resource.error || action.error}>
-    {resource.data?.map(item => <Card key={`${item.pollId}-${item.votedAt}`}><Text style={ui.tag}>{item.category} · Voted {date(item.votedAt)}</Text><Text style={ui.title}>{item.question}</Text><Text style={ui.body}>Your vote: {item.votedOptionText}</Text><Text style={ui.meta}>{item.canViewResults === false ? 'Results available when this poll closes' : `${item.totalVotes} votes received so far`}</Text><Action title="View performance" busy={action.busy} onPress={() => void action.run(async () => openPoll(await api.poll(item.pollId)))} /><Action title="Share poll" secondary disabled={action.busy} onPress={() => sharePoll({ id: item.pollId, question: item.question })} /></Card>)}
+    {resource.data?.map(item => <Card key={`${item.pollId}-${item.votedAt}`}><Text style={ui.tag}>{item.category} · Voted {date(item.votedAt)}</Text><Text style={ui.title}>{item.question}</Text><Text style={ui.body}>Your vote: {item.votedOptionText}</Text><Text style={ui.meta}>{item.canViewResults === false ? 'Results available when this poll closes' : `${item.totalVotes} votes received so far`}</Text><Action title="View performance" busy={action.busy} onPress={() => void action.run(async () => openPoll(await api.poll(item.pollId)))} /><Action title="Share poll" secondary disabled={action.busy} onPress={() => void action.run(async () => sharePoll(await api.poll(item.pollId)))} /></Card>)}
     {!resource.loading && resource.data?.length === 0 && <Card><Text style={ui.title}>Your story starts with a vote</Text><Text style={ui.body}>Polls you vote on will appear here. Polls you create stay in My polls.</Text></Card>}
     {resource.data?.length === limit && <Action title="Load more voted polls" secondary onPress={() => setLimit(value => value + 30)} />}
   </Screen>;

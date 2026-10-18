@@ -18,6 +18,7 @@ import {
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PollExperience } from './src/screens/PollExperience';
+import { PollShareProvider } from './src/components/PollShareProvider';
 import { BusinessExperience } from './src/screens/BusinessExperience';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { usersApi } from './src/lib/api';
@@ -47,9 +48,9 @@ const onboardingCategories = [
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider><AuthProvider>
+      <ThemeProvider><AuthProvider><PollShareProvider>
         <PollifyApp />
-      </AuthProvider></ThemeProvider>
+      </PollShareProvider></AuthProvider></ThemeProvider>
     </SafeAreaProvider>
   );
 }

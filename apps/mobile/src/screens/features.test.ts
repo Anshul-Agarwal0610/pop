@@ -21,6 +21,7 @@ jest.mock('expo', () => ({ isRunningInExpoGo: () => true }));
 jest.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined }));
 jest.mock('../lib/analytics/client', () => ({ track: jest.fn() }));
 jest.mock('@expo/vector-icons/Ionicons', () => 'Icon');
+jest.mock('../components/PollShareProvider', () => ({ usePollShare: () => jest.fn() }));
 jest.mock('../context/AuthContext', () => ({ useAuth: () => ({ user: { id: 1, displayName: 'Tester', username: 'tester', xp: 10, streak: 1, progression: { level: 1, progressPercent: 1, nextLevelXp: 1000 } }, refreshUser: async () => undefined }) }));
 jest.mock('../lib/analytics/privacy', () => ({ setAnalyticsConsent: jest.fn() }));
 jest.mock('../lib/api', () => ({
