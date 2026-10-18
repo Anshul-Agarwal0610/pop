@@ -51,6 +51,7 @@ export interface Poll {
   reactionId?: ApiPoll["reactionId"]
   resultVisibility?: ApiPoll["resultVisibility"]
   canViewResults?: boolean
+  remixedFromPollId?: number | null
 
   // ── US-12: Full options list for voting (absent on mock polls) ─────────────
   options?: PollOption[]
@@ -111,6 +112,7 @@ export function mapBackendPoll(p: ApiPoll): Poll {
     reactionId: p.reactionId,
     resultVisibility: p.resultVisibility,
     canViewResults: p.canViewResults,
+    remixedFromPollId: p.remixedFromPollId,
     options:      p.options.map((o) => ({
       id:             o.id,
       text:           o.text,

@@ -303,6 +303,7 @@ export function PollCard({ poll, onVote, isActive }: PollCardProps) {
                   </span>
                 </motion.div>
               )}
+              {poll.remixedFromPollId && <span className="rounded-full bg-background/85 px-3 py-1.5 text-xs font-semibold text-foreground shadow-lg">↗ Remixed conversation</span>}
             </div>
 
             <div className="flex flex-col items-end gap-2">

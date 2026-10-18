@@ -127,6 +127,7 @@ function PollPreview({ poll, onOpen }: { poll: ApiPoll; onOpen: () => void }) {
   const creative = !!(poll.creativeTemplate || poll.reactionId);
   return <View style={s.card}>
     <View style={s.between}><Category name={poll.category} /><Text style={s.meta}>{pollDeadline(poll)}</Text></View>
+    {poll.remixedFromPollId && <Text style={s.meta}>↗ Remixed conversation</Text>}
     {creative ? <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} compact /> : <Text style={s.cardTitle}>{poll.question}</Text>}
     <PollMedia poll={poll} />
     {!creative && <View style={s.previewBody}><Text numberOfLines={3} style={[s.body, s.flex]}>{poll.description || 'A fresh perspective starts with you. Where do you stand?'}</Text>{!poll.thumbnailUrl && !youtubeVideoId(poll.sourceUrl) && <PollArtwork />}</View>}
@@ -150,6 +151,7 @@ export function PollExperience() {
   const [query, setQuery] = useState('');
   const [collection, setCollection] = useState<'All' | 'Trending' | 'Latest' | 'Closed'>('All');
   const [detail, setDetail] = useState<ApiPoll | null>(null);
+  const [remixSource, setRemixSource] = useState<ApiPoll | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [reward, setReward] = useState<VoteReward | null>(null);
   const [voting, setVoting] = useState(false);
@@ -196,7 +198,7 @@ export function PollExperience() {
     if (voteLock.current) return true;
     if (feature === 'Report') { setFeature(null); return true; }
     if (detail) { setDetail(null); setReward(null); setVoteError(null); return true; }
-    if (feature) { setFeature(null); return true; }
+    if (feature) { setFeature(null); setRemixSource(null); return true; }
     if (tab !== 'Home') { setTab('Home'); return true; }
     return false;
   }, [detail, feature, tab]);
@@ -204,6 +206,9 @@ export function PollExperience() {
 
   function openPoll(poll: ApiPoll) {
     setDetail(poll); setSelected(null); setReward(null); setVoteError(null); setShakeChoiceId(null); shakePromptOpen.current = false;
+    if (poll.id !== samplePoll.id) void featureApi.poll(poll.id).then(fresh => {
+      if (!voteLock.current) setDetail(current => current?.id === poll.id ? fresh : current);
+    }).catch(() => undefined);
     roundId.current = `mobile-${Date.now()}-${poll.id}`;
     if (poll.id !== samplePoll.id && !poll.hasVoted && !isPollClosed(poll)) void track('game_round_started', { round_id: roundId.current, surface: 'feed', category: poll.category }, `feed:${poll.id}`);
   }
@@ -300,6 +305,8 @@ export function PollExperience() {
         {detail.id === samplePoll.id && <Text style={s.caption}>LOCAL DEMO · No real votes or XP · Refresh the feed to try again</Text>}
         {(!results || creatorView) && !detail.creativeTemplate && !detail.reactionId && <Text style={s.context}>{detail.description || 'Every perspective counts. Where do you stand?'}</Text>}
         {!!detail.sourceUrl && <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(detail.sourceUrl!)}><Text style={s.sourceLink}>Read the original source ↗</Text></Pressable>}
+        {detail.remixedFromPollId && detail.remixedFromQuestion && <Pressable accessibilityRole="link" onPress={() => void featureApi.poll(detail.remixedFromPollId!).then(openPoll).catch(() => Alert.alert('Original poll unavailable', 'This poll is no longer available to view.'))}><Text style={s.sourceLink}>Remixed from {detail.remixedFromCreatorName || 'a PoP poll'}: {detail.remixedFromQuestion} ↗</Text></Pressable>}
+        {detail.id !== samplePoll.id && !detail.isPrivate && !detail.isWellness && detail.moderationStatus === 'Published' && <Pressable accessibilityRole="button" accessibilityLabel="Remix this poll" onPress={() => { setRemixSource(detail); setDetail(null); setFeature('Create poll'); }}><Text style={s.sourceLink}>Remix this poll ↗</Text></Pressable>}
         {activeBallot && detail.id !== samplePoll.id && <Pressable accessibilityRole="button" disabled={voting} onPress={() => setFeature('Report')}><Text style={[s.meta, { textAlign: 'right' }]}>Report poll</Text></Pressable>}
         {results && choices && !creatorView && <View accessibilityLiveRegion="polite" style={{ alignItems: 'center', gap: 12, paddingVertical: 22 }}>
           <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' }}><Icon name={detail.hasVoted ? 'checkmark' : 'time-outline'} color={c.primaryForeground} size={40} /></View>
@@ -338,8 +345,8 @@ export function PollExperience() {
     </View>;
   }
 
-  const closeFeature = () => { setFeature(null); void refreshUser().catch(() => undefined); };
-  if (feature === 'Create poll') return <CreatePollScreen back={closeFeature} openPoll={openPoll} />;
+  const closeFeature = () => { setFeature(null); setRemixSource(null); void refreshUser().catch(() => undefined); };
+  if (feature === 'Create poll') return <CreatePollScreen back={closeFeature} openPoll={openPoll} remixSource={remixSource} />;
   if (feature === 'My polls') return <MyPollsScreen back={closeFeature} openPoll={openPoll} />;
   if (feature === 'Notifications') return <NotificationsScreen back={closeFeature} openPoll={openPoll} />;
   if (feature === 'Achievements') return <AchievementsScreen back={closeFeature} />;
@@ -353,7 +360,7 @@ export function PollExperience() {
   const bottomNavigation = <View accessibilityRole="tablist" style={s.nav}>{(Object.keys(tabIcons) as Tab[]).map(item => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: tab === item }} onPress={() => setTab(item)} style={s.navItem}><View style={[s.navIcon, tab === item && s.navIconActive]}><Icon name={tabIcons[item]} color={tab === item ? c.primary : c.mutedForeground} size={23} /></View><Text style={[s.navText, tab === item && s.navTextActive]}>{item}</Text></Pressable>)}</View>;
   if (tab === 'Ranks') return <View style={s.shell}><View style={s.flex}><RankingsScreen back={() => setTab('Home')} /></View>{bottomNavigation}</View>;
   return <View style={s.shell}>
-    <View style={s.header}><View style={s.row}><View style={s.logoTile}><Image source={require('../../assets/pop-mark.png')} resizeMode="contain" style={s.logoMark} /></View><Text style={s.logo}>PoP</Text></View><View style={s.row}><Pressable accessibilityRole="button" accessibilityLabel="Create a poll" onPress={() => setFeature("Create poll")} style={s.iconButton}><Icon name="add-circle-outline" color={c.primary} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => setFeature("Notifications")} style={s.iconButton}><Icon name="notifications-outline" color={c.foreground} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Open profile" onPress={() => setTab('Profile')} style={s.avatar}><UserAvatar user={user} /></Pressable></View></View>
+    <View style={s.header}><View style={s.row}><View style={s.logoTile}><Image source={require('../../assets/pop-mark.png')} resizeMode="contain" style={s.logoMark} /></View><Text style={s.logo}>PoP</Text></View><View style={s.row}><Pressable accessibilityRole="button" accessibilityLabel="Create a poll" onPress={() => { setRemixSource(null); setFeature("Create poll"); }} style={s.iconButton}><Icon name="add-circle-outline" color={c.primary} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => setFeature("Notifications")} style={s.iconButton}><Icon name="notifications-outline" color={c.foreground} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Open profile" onPress={() => setTab('Profile')} style={s.avatar}><UserAvatar user={user} /></Pressable></View></View>
     {(tab === 'Home' || tab === 'Explore') && <FlatList data={loading ? [] : visible} keyExtractor={poll => String(poll.id)} contentContainerStyle={s.feed} showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadPolls(true)} tintColor={c.primary} colors={[c.primary]} />}
       ListHeaderComponent={<View style={s.feedIntro}>

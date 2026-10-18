@@ -23,6 +23,7 @@ export interface ApiPoll {
   createdByUsername: string | null;
   createdByDisplayName: string | null;
   isPrivate?: boolean;
+  isWellness?: boolean;
   audienceType?: 'Public' | 'Friend' | 'Group';
   audienceFriendUserId?: number | null;
   audienceGroupId?: number | null;
@@ -34,6 +35,9 @@ export interface ApiPoll {
   reactionId?: 'big_yes' | 'thinking' | 'no_way' | 'wow' | string | null;
   resultVisibility?: 'Immediate' | 'AfterVote' | 'AfterClose';
   canViewResults?: boolean;
+  remixedFromPollId?: number | null;
+  remixedFromQuestion?: string | null;
+  remixedFromCreatorName?: string | null;
   isAIGenerated: boolean;
   isSponsored?: boolean;
   sponsorName?: string | null;

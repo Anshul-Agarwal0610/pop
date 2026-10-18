@@ -53,6 +53,7 @@ export interface CreatePollPayload {
   creativeTemplate?: 'classic' | 'pulse' | 'spotlight'
   reactionId?: 'big_yes' | 'thinking' | 'no_way' | 'wow'
   resultVisibility?: 'Immediate' | 'AfterVote' | 'AfterClose'
+  remixedFromPollId?: number
   isAIGenerated?: boolean
   isPrivate?: boolean
   audienceType?: 'Public' | 'Friend' | 'Group'

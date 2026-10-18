@@ -383,6 +383,11 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
                 Source attribution
               </a>
             )}
+            {poll.remixedFromPollId && poll.remixedFromQuestion && (
+              <button className="block text-left text-sm font-medium text-primary hover:underline" onClick={() => router.push(`/polls/${poll.remixedFromPollId}`)} type="button">
+                Remixed from {poll.remixedFromCreatorName || "a PoP poll"}: {poll.remixedFromQuestion} ↗
+              </button>
+            )}
           </div>
 
           {xpAwarded != null && (
@@ -474,7 +479,10 @@ export function PollDetailCard({ pollId }: PollDetailCardProps) {
             </div>
           )}
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {!poll.isPrivate && !poll.isWellness && poll.moderationStatus === "Published" && (
+              <Button onClick={() => router.push(`/create?remix=${poll.id}`)} type="button" variant="outline">Remix this poll</Button>
+            )}
             <Button
               className="gap-2 text-muted-foreground"
               disabled={isReporting}

@@ -23,6 +23,7 @@ import { CreativePollHero } from "../creative-poll-hero"
 
 interface PreviewStepProps {
   draft: PollDraft
+  remixSource?: { question: string; category: string } | null
 }
 
 // X/Twitter icon
@@ -50,7 +51,7 @@ const PLATFORM_STYLES = {
   other: "bg-muted text-foreground",
 }
 
-export function PreviewStep({ draft }: PreviewStepProps) {
+export function PreviewStep({ draft, remixSource }: PreviewStepProps) {
   const hasMedia = draft.media !== null
   const hasLink = draft.externalLink !== null
   const SourceIcon = draft.externalLink ? PLATFORM_ICONS[draft.externalLink.platform] : null
@@ -211,7 +212,8 @@ export function PreviewStep({ draft }: PreviewStepProps) {
           </div>
 
           {/* Question */}
-          <CreativePollHero question={draft.question} description={draft.description} category="General" template={draft.creativeTemplate} reaction={draft.reactionId} compact className="mb-4" />
+          <CreativePollHero question={draft.question} description={draft.description} category={remixSource?.category ?? "General"} template={draft.creativeTemplate} reaction={draft.reactionId} compact className="mb-4" />
+          {remixSource && <p className="mb-3 text-sm text-muted-foreground">Remixed from: {remixSource.question}</p>}
           <p className="mb-3 text-sm text-muted-foreground">Results: {draft.resultVisibility === "Immediate" ? "live" : draft.resultVisibility === "AfterClose" ? "when the poll closes" : "after voting"}</p>
 
           {/* Stats */}
