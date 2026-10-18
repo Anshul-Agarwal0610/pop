@@ -33,6 +33,9 @@ export interface ApiPoll {
   mediaType?: 'image' | 'video' | string | null;
   creativeTemplate?: 'classic' | 'pulse' | 'spotlight' | string | null;
   reactionId?: 'big_yes' | 'thinking' | 'no_way' | 'wow' | string | null;
+  reactionX?: number | null;
+  reactionY?: number | null;
+  reactionScale?: number | null;
   resultVisibility?: 'Immediate' | 'AfterVote' | 'AfterClose';
   canViewResults?: boolean;
   remixedFromPollId?: number | null;

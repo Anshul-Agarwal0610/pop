@@ -42,6 +42,9 @@ namespace BackendAPI.Models
         public string? MediaType { get; set; }
         public string? CreativeTemplate { get; set; }
         public string? ReactionId { get; set; }
+        public decimal? ReactionX { get; set; }
+        public decimal? ReactionY { get; set; }
+        public decimal? ReactionScale { get; set; }
         public string ResultVisibility { get; set; } = PollResultVisibility.AfterVote;
         public bool CanViewResults { get; set; }
         public long? RemixedFromPollId { get; set; }
@@ -88,6 +91,9 @@ namespace BackendAPI.Models
         public string? MediaType { get; set; }
         public string? CreativeTemplate { get; set; }
         public string? ReactionId { get; set; }
+        public decimal? ReactionX { get; set; }
+        public decimal? ReactionY { get; set; }
+        public decimal? ReactionScale { get; set; }
         public string ResultVisibility { get; set; } = PollResultVisibility.AfterVote;
         public long? RemixedFromPollId { get; set; }
         public bool IsAIGenerated { get; set; }

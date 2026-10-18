@@ -1,9 +1,12 @@
-import { Platform, Pressable, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { PanResponder, Platform, Pressable, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme } from '../theme';
+import { PoPmojiArt, reactions, type PollReaction } from './PoPmojiArt';
+import { movePoPmoji, normalizePoPmojiPlacement, type PoPmojiPlacement } from '../lib/popmojiPlacement';
 
 export type PollTemplate = 'classic' | 'pulse' | 'spotlight';
-export type PollReaction = 'big_yes' | 'thinking' | 'no_way' | 'wow';
+export type { PollReaction } from './PoPmojiArt';
 
 export const templates: Array<{ id: PollTemplate; label: string; hint: string }> = [
   { id: 'pulse', label: 'PoP Split', hint: 'A bold two-sided debate' },
@@ -11,26 +14,41 @@ export const templates: Array<{ id: PollTemplate; label: string; hint: string }>
   { id: 'spotlight', label: 'Night', hint: 'High-contrast focus' },
 ];
 
-export const reactions: Array<{ id: PollReaction; label: string; word: string; mark: string; color: string; ink: string }> = [
-  { id: 'big_yes', label: 'Big yes', word: 'YES!', mark: '✳', color: '#DFFF69', ink: '#232334' },
-  { id: 'thinking', label: 'Wait…', word: 'WAIT', mark: '?', color: '#D9C7FA', ink: '#27213D' },
-  { id: 'no_way', label: 'No way', word: 'NOPE', mark: '×', color: '#B9EAF0', ink: '#172C3A' },
-  { id: 'wow', label: 'Wow', word: 'WOW', mark: '✦', color: '#FFCE78', ink: '#392317' },
-];
-
 export function PoPmoji({ id, size = 46 }: { id: PollReaction; size?: number }) {
-  const reaction = reactions.find(item => item.id === id)!;
-  return <View accessibilityLabel={`PoP sticker: ${reaction.label}`} style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: id === 'thinking' ? '9deg' : '-9deg' }] }}>
-    <View style={{ width: size * .88, height: size * .88, borderRadius: id === 'wow' ? size * .44 : size * .16, backgroundColor: reaction.color, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: reaction.ink, shadowColor: '#000000', shadowOpacity: .18, shadowRadius: 3, shadowOffset: { width: 2, height: 3 }, elevation: 3 }}>
-      <Text style={{ position: 'absolute', top: size * .04, right: size * .09, color: reaction.ink, fontSize: size * .22, fontWeight: '900', lineHeight: size * .23 }}>{reaction.mark}</Text>
-      <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: reaction.ink, fontSize: size * .23, fontWeight: '900', letterSpacing: -.7, marginTop: size * .10 }}>{reaction.word}</Text>
+  return <View style={{ width: size, height: size, shadowColor: '#000000', shadowOpacity: .18, shadowRadius: 4, shadowOffset: { width: 2, height: 4 }, elevation: 3 }}><PoPmojiArt id={id} size={size} /></View>;
+}
+
+export function PositionedPoPmoji({ id, placement, compact = false, editable = false, onChange }: {
+  id: PollReaction; placement?: Partial<PoPmojiPlacement> | null; compact?: boolean;
+  editable?: boolean; onChange?: (value: PoPmojiPlacement) => void;
+}) {
+  const [bounds, setBounds] = useState({ width: 0, height: 0 });
+  const normalized = normalizePoPmojiPlacement(placement);
+  const current = useRef(normalized); current.current = normalized;
+  const start = useRef(normalized);
+  const boundsRef = useRef(bounds); boundsRef.current = bounds;
+  const onChangeRef = useRef(onChange); onChangeRef.current = onChange;
+  const sizeRef = useRef(0);
+  const responder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => editable,
+    onMoveShouldSetPanResponder: () => editable,
+    onPanResponderGrant: () => { start.current = current.current; },
+    onPanResponderMove: (_, gesture) => onChangeRef.current?.(movePoPmoji(start.current, gesture.dx, gesture.dy, boundsRef.current.width, boundsRef.current.height, sizeRef.current)),
+    onPanResponderTerminationRequest: () => false,
+  })).current;
+  const size = (compact ? 56 : 76) * normalized.scale;
+  sizeRef.current = size;
+  return <View pointerEvents="box-none" onLayout={event => setBounds(event.nativeEvent.layout)} style={{ position: 'absolute', zIndex: 3, top: 0, bottom: 0, left: 0, right: 0 }}>
+    <View {...(editable ? responder.panHandlers : {})} accessibilityLabel={`${reactions.find(item => item.id === id)?.label} sticker${editable ? ', drag to move' : ''}`} style={{ position: 'absolute', left: normalized.x * Math.max(0, bounds.width - size), top: normalized.y * Math.max(0, bounds.height - size), width: size, height: size }}>
+      <PoPmoji id={id} size={size} />
     </View>
   </View>;
 }
 
-export function CreativePollHero({ question, description, category, template, reaction, compact = false, showChoices = true }: {
+export function CreativePollHero({ question, description, category, template, reaction, reactionPlacement, onReactionPlacementChange, compact = false, showChoices = true }: {
   question: string; description?: string | null; category?: string | null;
-  template?: PollTemplate | string | null; reaction?: PollReaction | string | null; compact?: boolean; showChoices?: boolean;
+  template?: PollTemplate | string | null; reaction?: PollReaction | string | null; reactionPlacement?: Partial<PoPmojiPlacement> | null;
+  onReactionPlacementChange?: (value: PoPmojiPlacement) => void; compact?: boolean; showChoices?: boolean;
 }) {
   const { colors: c } = useTheme();
   const selected = template === 'pulse' || template === 'spotlight' ? template : 'classic';
@@ -49,7 +67,7 @@ export function CreativePollHero({ question, description, category, template, re
         <Text style={{ color: accent, fontSize: 10, fontWeight: '900', letterSpacing: 1.5, textTransform: 'uppercase', flexShrink: 1 }} numberOfLines={1}>{category || 'Your perspective'}</Text>
         <Text style={{ color: subdued, fontSize: 9, fontWeight: '800', letterSpacing: 1.2 }}>{split ? 'THE PUBLIC QUESTION' : 'PoP / YOUR VOICE'}</Text>
       </View>
-      {activeReaction && <View pointerEvents="none" style={{ position: 'absolute', zIndex: 2, right: compact ? 9 : 12, top: compact ? 10 : 13 }}><PoPmoji id={activeReaction.id} size={compact ? 49 : 66} /></View>}
+      {activeReaction && <PositionedPoPmoji id={activeReaction.id} placement={reactionPlacement} compact={compact} editable={!!onReactionPlacementChange} onChange={onReactionPlacementChange} />}
       <Text accessibilityRole="header" numberOfLines={compact ? 3 : 4} style={{ color: ink, fontFamily: serif, fontSize: compact ? 25 : 33, lineHeight: compact ? 29 : 38, fontWeight: '700', letterSpacing: -1.2, marginTop: compact ? 17 : 24, paddingRight: activeReaction ? (compact ? 23 : 34) : 0 }}>
         {question || 'Your question appears here'}
       </Text>
@@ -75,6 +93,9 @@ export function CreativeStylePicker({ template, reaction, onTemplate, onReaction
       {item.id === 'pulse' && <View style={{ flexDirection: 'row', height: 9 }}><View style={{ flex: 1, backgroundColor: '#DCCFFA' }} /><View style={{ flex: 1, backgroundColor: '#FF9F90' }} /></View>}
       <Text style={{ color: item.id === 'spotlight' ? '#FFF' : item.id === 'pulse' ? '#27202C' : c.foreground, fontWeight: '800', fontSize: 11, padding: 7 }}>{item.label}</Text>
     </Pressable>)}</View><Text style={{ color: c.mutedForeground, fontSize: 12 }}>{templates.find(item => item.id === template)?.hint}</Text></View>
-    <View style={{ gap: 9 }}><Text style={{ color: c.foreground, fontSize: 15, fontWeight: '800' }}>Add a reaction sticker</Text><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Pressable accessibilityRole="button" accessibilityState={{ selected: reaction === null }} onPress={() => onReaction(null)} style={{ minWidth: 58, minHeight: 72, alignItems: 'center', justifyContent: 'center', padding: 7, borderRadius: 12, borderWidth: reaction === null ? 2 : 1, borderColor: reaction === null ? c.primary : c.border }}><Ionicons name="close-outline" size={24} color={c.mutedForeground} /><Text style={{ color: c.mutedForeground, fontSize: 11 }}>None</Text></Pressable>{reactions.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ selected: reaction === item.id }} onPress={() => onReaction(item.id)} style={{ alignItems: 'center', gap: 1, minWidth: 58, minHeight: 72, padding: 5, borderRadius: 12, borderWidth: reaction === item.id ? 2 : 1, borderColor: reaction === item.id ? c.primary : c.border }}><PoPmoji id={item.id} size={44} /><Text style={{ color: c.foreground, fontSize: 11, fontWeight: '700' }}>{item.label}</Text></Pressable>)}</View></View>
+    <View style={{ gap: 9 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: c.foreground, fontSize: 15, fontWeight: '800' }}>Choose a PoPmoji</Text><Pressable accessibilityRole="button" accessibilityState={{ selected: reaction === null }} onPress={() => onReaction(null)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, padding: 5 }}><Ionicons name="close-outline" size={17} color={c.mutedForeground} /><Text style={{ color: c.mutedForeground, fontSize: 12 }}>No sticker</Text></Pressable></View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{reactions.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ selected: reaction === item.id }} onPress={() => onReaction(item.id)} style={{ width: '48%', minHeight: 105, padding: 10, borderRadius: 15, borderWidth: reaction === item.id ? 2 : 1, borderColor: reaction === item.id ? c.primary : c.border, backgroundColor: c.card, flexDirection: 'row', alignItems: 'center', gap: 5 }}><PoPmoji id={item.id} size={58} /><View style={{ flex: 1 }}><Text style={{ color: c.foreground, fontSize: 13, fontWeight: '800' }}>{item.label}</Text><Text style={{ color: c.mutedForeground, fontSize: 11, marginTop: 3 }}>{item.caption}</Text></View></Pressable>)}</View>
+    </View>
   </View>;
 }
