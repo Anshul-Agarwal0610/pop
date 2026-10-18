@@ -1,5 +1,6 @@
 import { BallotVote } from '../components/BallotVote';
 import { CreativePollHero } from '../components/CreativePollHero';
+import { SplitResultReveal } from '../components/SplitResultReveal';
 import { ballotChoices } from '../lib/ballot';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { isRunningInExpoGo } from 'expo';
@@ -36,6 +37,7 @@ const samplePoll: ApiPoll = {
   category: 'General', isTrending: false, isActive: true, expiresAt: '2099-01-01T00:00:00Z', createdAt: '2026-09-26T00:00:00Z',
   totalVotes: 0, createdByUserId: null, createdByUsername: null, createdByDisplayName: null,
   sourceType: 'sample', sourceUrl: null, thumbnailUrl: null, isAIGenerated: false, hasVoted: false, userVotedOptionId: null,
+  creativeTemplate: 'pulse', reactionId: 'big_yes', resultVisibility: 'AfterVote',
   options: [{ id: -1002, pollId: -1001, text: 'Use drag-and-drop ballots', side: 'Support', voteCount: 0, votePercentage: 0 }, { id: -1003, pollId: -1001, text: 'Keep standard voting controls', side: 'Against', voteCount: 0, votePercentage: 0 }],
 };
 
@@ -128,7 +130,7 @@ function PollPreview({ poll, onOpen }: { poll: ApiPoll; onOpen: () => void }) {
   return <View style={s.card}>
     <View style={s.between}><Category name={poll.category} /><Text style={s.meta}>{pollDeadline(poll)}</Text></View>
     {poll.remixedFromPollId && <Text style={s.meta}>↗ Remixed conversation</Text>}
-    {creative ? <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} compact /> : <Text style={s.cardTitle}>{poll.question}</Text>}
+    {creative ? <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} compact showChoices={!!ballotChoices(poll.options)} /> : <Text style={s.cardTitle}>{poll.question}</Text>}
     <PollMedia poll={poll} />
     {!creative && <View style={s.previewBody}><Text numberOfLines={3} style={[s.body, s.flex]}>{poll.description || 'A fresh perspective starts with you. Where do you stand?'}</Text>{!poll.thumbnailUrl && !youtubeVideoId(poll.sourceUrl) && <PollArtwork />}</View>}
     <View style={s.row}><Icon name="people-outline" size={17} /><Text style={s.meta}>{poll.canViewResults === false ? 'Results hidden' : `${count(poll.totalVotes)} votes`}</Text>{poll.hasVoted && <Text style={s.votedTag}>Voted ✓</Text>}</View>
@@ -300,7 +302,7 @@ export function PollExperience() {
       <ScrollView scrollEnabled={!ballotDragging && !voting} contentContainerStyle={[s.detailContent, activeBallot && s.ballotDetailContent]} showsVerticalScrollIndicator={false}>
         {results && !choices && !creatorView && <View style={s.success}><Icon name="checkmark-circle" color={c.accent} /><Text style={s.successText}>{detail.hasVoted ? 'Your vote is in' : 'This poll has closed'}</Text></View>}
         <View style={s.between}><Category name={detail.category} /><Text style={s.meta}>{pollDeadline(detail)}</Text></View>
-        {detail.creativeTemplate || detail.reactionId ? <CreativePollHero question={detail.question} description={detail.description} category={detail.category} template={detail.creativeTemplate} reaction={detail.reactionId} /> : <Text accessibilityRole="header" style={[s.question, choices && { fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", fontWeight: "400" }]}>{detail.question}</Text>}
+        {detail.creativeTemplate || detail.reactionId ? <CreativePollHero question={detail.question} description={detail.description} category={detail.category} template={detail.creativeTemplate} reaction={detail.reactionId} showChoices={false} /> : <Text accessibilityRole="header" style={[s.question, choices && { fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", fontWeight: "400" }]}>{detail.question}</Text>}
         <PollMedia poll={detail} detail />
         {detail.id === samplePoll.id && <Text style={s.caption}>LOCAL DEMO · No real votes or XP · Refresh the feed to try again</Text>}
         {(!results || creatorView) && !detail.creativeTemplate && !detail.reactionId && <Text style={s.context}>{detail.description || 'Every perspective counts. Where do you stand?'}</Text>}
@@ -314,7 +316,7 @@ export function PollExperience() {
           {detail.hasVoted && <Text style={s.context}>You chose <Text style={{ color: c.primary }}>{choices.find(option => option.id === detail.userVotedOptionId)?.label}</Text></Text>}
         </View>}
         {creatorView && <View style={s.success}><Icon name="stats-chart" color={c.primary} /><Text style={s.successText}>{count(detail.totalVotes)} votes received · {detail.moderationStatus && detail.moderationStatus !== 'Published' ? detail.moderationStatus.replace(/([a-z])([A-Z])/g, '$1 $2') : isPollClosed(detail) ? 'Closed' : pollDeadline(detail)}</Text></View>}
-        {results ? <View style={s.card}>
+        {results && choices ? <SplitResultReveal choices={choices} totalVotes={detail.totalVotes} userVotedOptionId={detail.userVotedOptionId} creatorView={creatorView} deadline={pollDeadline(detail)} /> : results ? <View style={s.card}>
           {detail.options.map((option, index) => {
             const percent = resultPercent(option.voteCount, detail.totalVotes);
             const mine = option.id === detail.userVotedOptionId;
