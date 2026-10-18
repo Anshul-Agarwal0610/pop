@@ -13,6 +13,7 @@ import { featureApi as api } from '../lib/featuresApi';
 jest.mock('react-native', () => ({
   Image: 'Image', View: 'View', Text: 'Text', TextInput: 'TextInput', Pressable: 'Pressable', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator', RefreshControl: 'RefreshControl', Switch: 'Switch', KeyboardAvoidingView: 'KeyboardAvoidingView',
   Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 },
+  PanResponder: { create: () => ({ panHandlers: {} }) },
   Alert: { alert: jest.fn() }, AppState: { addEventListener: () => ({ remove: jest.fn() }) },
   BackHandler: { addEventListener: () => ({ remove: jest.fn() }) },
   FlatList: 'FlatList', Share: { share: jest.fn() },
@@ -110,7 +111,7 @@ describe('consumer mobile screens', () => {
     await act(async () => rendered.root.findAllByType(Action).find(button => button.props.title === 'Review poll')!.props.onPress());
     expect(api.create).not.toHaveBeenCalled();
     await act(async () => rendered.root.findAllByType(Action).find(button => button.props.title === 'Publish poll')!.props.onPress());
-    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ question: created.question, options: ['Support', 'Against'], category: 'General', creativeTemplate: 'pulse', reactionId: 'thinking', isAIGenerated: false }));
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ question: created.question, options: ['Support', 'Against'], category: 'General', creativeTemplate: 'pulse', reactionId: 'thinking', reactionX: .82, reactionY: .05, reactionScale: 1, isAIGenerated: false }));
     expect(JSON.stringify(rendered.toJSON())).toContain('Your poll is live and ready for votes');
   });
   test('my polls shows creator totals and opens performance details', async () => {

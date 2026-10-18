@@ -52,6 +52,9 @@ export interface CreatePollPayload {
   mediaType?: string
   creativeTemplate?: 'classic' | 'pulse' | 'spotlight'
   reactionId?: 'big_yes' | 'thinking' | 'no_way' | 'wow'
+  reactionX?: number
+  reactionY?: number
+  reactionScale?: number
   resultVisibility?: 'Immediate' | 'AfterVote' | 'AfterClose'
   remixedFromPollId?: number
   isAIGenerated?: boolean

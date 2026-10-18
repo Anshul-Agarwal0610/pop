@@ -4,7 +4,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import QRCode from 'qrcode';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import { PoPmoji, type PollReaction } from './CreativePollHero';
+import { PositionedPoPmoji, type PollReaction } from './CreativePollHero';
 import { pollShareUrl, sharePollLink, sharePollQr } from '../lib/sharePoll';
 import type { ApiPoll } from '../types/poll';
 
@@ -47,10 +47,12 @@ function PollCard({ poll, width }: { poll: ShareablePoll; width: number }) {
       <Text style={{ color: night ? '#D6B7FF' : '#DB4B66', fontSize: 10, fontWeight: '900', letterSpacing: 2 }}>PICK A SIDE</Text>
     </View>
     <View style={{ height: 1, backgroundColor: night ? '#665B74' : '#D9CBD2', marginTop: 14 }} />
-    <Text style={{ color: night ? '#D6B7FF' : '#BD405E', marginTop: 20, fontSize: 11, fontWeight: '900', letterSpacing: 1.3, textTransform: 'uppercase' }}>{poll.category || 'The public question'}{poll.isPrivate ? '  ·  PRIVATE' : ''}</Text>
-    <Text style={{ color: ink, fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 31, lineHeight: 36, fontWeight: '700', letterSpacing: -1.2, marginTop: 12 }}>{poll.question}</Text>
-    {!!poll.description && <Text numberOfLines={3} style={{ color: muted, fontSize: 13, lineHeight: 19, marginTop: 12 }}>{poll.description}</Text>}
-    {reaction && ['big_yes', 'thinking', 'no_way', 'wow'].includes(reaction) && <View style={{ alignSelf: 'flex-end', marginTop: 4 }}><PoPmoji id={reaction} size={65} /></View>}
+    <View style={{ minHeight: reaction ? 238 : 0 }}>
+      <Text style={{ color: night ? '#D6B7FF' : '#BD405E', marginTop: 20, fontSize: 11, fontWeight: '900', letterSpacing: 1.3, textTransform: 'uppercase' }}>{poll.category || 'The public question'}{poll.isPrivate ? '  ·  PRIVATE' : ''}</Text>
+      <Text style={{ color: ink, fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 31, lineHeight: 36, fontWeight: '700', letterSpacing: -1.2, marginTop: 12, paddingRight: reaction ? 30 : 0 }}>{poll.question}</Text>
+      {!!poll.description && <Text numberOfLines={3} style={{ color: muted, fontSize: 13, lineHeight: 19, marginTop: 12 }}>{poll.description}</Text>}
+      {reaction && ['big_yes', 'thinking', 'no_way', 'wow'].includes(reaction) && <PositionedPoPmoji id={reaction} placement={{ x: poll.reactionX ?? undefined, y: poll.reactionY ?? undefined, scale: poll.reactionScale ?? undefined }} />}
+    </View>
     <View style={{ flexDirection: 'row', height: 112, marginTop: 22, borderWidth: 2, borderColor: night ? '#DDD4E9' : '#24202C', borderRadius: 15, overflow: 'hidden' }}>
       <View style={{ flex: 1, backgroundColor: night ? '#71628D' : '#DCCFFA', padding: 15, justifyContent: 'space-between' }}><Text style={{ color: '#372B4E', fontWeight: '900', fontSize: 12 }}>01  ↙</Text><Text style={{ color: '#27213D', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 24, fontWeight: '700' }}>Against</Text></View>
       <View style={{ width: 3, backgroundColor: '#FFFFFF' }} />

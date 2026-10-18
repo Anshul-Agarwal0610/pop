@@ -468,6 +468,11 @@ namespace BackendAPI.Repository
                 throw new ArgumentException("Choose a valid poll template.");
             if (reactionId is not (null or "big_yes" or "thinking" or "no_way" or "wow"))
                 throw new ArgumentException("Choose a valid PoPmoji reaction.");
+            if (request.ReactionX is < 0 or > 1 || request.ReactionY is < 0 or > 1 ||
+                request.ReactionScale is < 0.7m or > 1.5m)
+                throw new ArgumentException("Choose a valid PoPmoji placement and size.");
+            if (reactionId == null && (request.ReactionX.HasValue || request.ReactionY.HasValue || request.ReactionScale.HasValue))
+                throw new ArgumentException("Choose a PoPmoji before setting its placement.");
             if (!PollResultVisibility.IsValid(request.ResultVisibility))
                 throw new ArgumentException("Choose a valid result reveal setting.");
             var isWellness = request.IsWellness || normalizedCategory.Equals("Health", StringComparison.OrdinalIgnoreCase);
@@ -509,14 +514,14 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, CreativeTemplate, ReactionId, ResultVisibility, RemixedFromPollId, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
+                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, CreativeTemplate, ReactionId, ReactionX, ReactionY, ReactionScale, ResultVisibility, RemixedFromPollId, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
                          ReplacementForCleanupRecordId)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @CreativeTemplate, @ReactionId, @ResultVisibility, @RemixedFromPollId, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
+                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @CreativeTemplate, @ReactionId, @ReactionX, @ReactionY, @ReactionScale, @ResultVisibility, @RemixedFromPollId, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
                          @ReplacementForCleanupRecordId);
@@ -533,6 +538,9 @@ namespace BackendAPI.Repository
                         request.MediaType,
                         CreativeTemplate = creativeTemplate,
                         ReactionId = reactionId,
+                        ReactionX = reactionId == null ? null : request.ReactionX,
+                        ReactionY = reactionId == null ? null : request.ReactionY,
+                        ReactionScale = reactionId == null ? null : request.ReactionScale,
                         request.ResultVisibility,
                         request.RemixedFromPollId,
                         request.IsAIGenerated,
