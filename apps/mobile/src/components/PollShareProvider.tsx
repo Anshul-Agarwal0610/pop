@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import QRCode from 'qrcode';
 import { captureRef } from 'react-native-view-shot';
@@ -7,6 +7,7 @@ import * as Sharing from 'expo-sharing';
 import { PositionedPoPmoji, type PollReaction } from './CreativePollHero';
 import { pollShareUrl, sharePollLink, sharePollQr } from '../lib/sharePoll';
 import type { ApiPoll } from '../types/poll';
+import { pollCover } from '../lib/pollCover';
 
 type ShareablePoll = Pick<ApiPoll, 'id' | 'question'> & Partial<ApiPoll>;
 type ShareContextValue = (poll: ShareablePoll) => void;
@@ -33,13 +34,14 @@ function PollQr({ url }: { url: string }) {
   </Svg>;
 }
 
-function PollCard({ poll, width }: { poll: ShareablePoll; width: number }) {
+function PollCard({ poll, width, onMediaReady }: { poll: ShareablePoll; width: number; onMediaReady: () => void }) {
   const template = poll.creativeTemplate === 'spotlight' ? 'spotlight' : poll.creativeTemplate === 'classic' ? 'classic' : 'pulse';
   const night = template === 'spotlight';
   const background = night ? '#242037' : template === 'classic' ? '#FFFDF9' : '#F8F0E9';
   const ink = night ? '#FFFFFF' : '#24202C';
   const muted = night ? '#DDD4E9' : '#5B515C';
   const reaction = poll.reactionId as PollReaction | undefined;
+  const cover = pollCover(poll);
   const url = pollShareUrl(poll.id);
   return <View style={{ width, backgroundColor: background, padding: 22, overflow: 'hidden' }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -47,11 +49,16 @@ function PollCard({ poll, width }: { poll: ShareablePoll; width: number }) {
       <Text style={{ color: night ? '#D6B7FF' : '#DB4B66', fontSize: 10, fontWeight: '900', letterSpacing: 2 }}>PICK A SIDE</Text>
     </View>
     <View style={{ height: 1, backgroundColor: night ? '#665B74' : '#D9CBD2', marginTop: 14 }} />
-    <View style={{ minHeight: reaction ? 238 : 0 }}>
+    <View style={{ minHeight: reaction && !cover ? 238 : 0 }}>
       <Text style={{ color: night ? '#D6B7FF' : '#BD405E', marginTop: 20, fontSize: 11, fontWeight: '900', letterSpacing: 1.3, textTransform: 'uppercase' }}>{poll.category || 'The public question'}{poll.isPrivate ? '  ·  PRIVATE' : ''}</Text>
+      {cover && <View style={{ height: 190, borderRadius: 13, overflow: 'hidden', marginTop: 12, backgroundColor: night ? '#403650' : '#DDD2DC' }}>
+        <Image accessibilityLabel="Poll cover" source={{ uri: cover.uri }} resizeMode="cover" onLoadEnd={onMediaReady} style={{ width: '100%', height: '100%' }} />
+        {cover.isVideo && <View style={{ position: 'absolute', bottom: 10, left: 10, borderRadius: 18, backgroundColor: '#211B27DD', paddingHorizontal: 10, paddingVertical: 5 }}><Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '900' }}>▶  VIDEO</Text></View>}
+        {reaction && ['big_yes', 'thinking', 'no_way', 'wow'].includes(reaction) && <PositionedPoPmoji id={reaction} placement={{ x: poll.reactionX ?? undefined, y: poll.reactionY ?? undefined, scale: poll.reactionScale ?? undefined }} compact />}
+      </View>}
       <Text style={{ color: ink, fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 31, lineHeight: 36, fontWeight: '700', letterSpacing: -1.2, marginTop: 12, paddingRight: reaction ? 30 : 0 }}>{poll.question}</Text>
       {!!poll.description && <Text numberOfLines={3} style={{ color: muted, fontSize: 13, lineHeight: 19, marginTop: 12 }}>{poll.description}</Text>}
-      {reaction && ['big_yes', 'thinking', 'no_way', 'wow'].includes(reaction) && <PositionedPoPmoji id={reaction} placement={{ x: poll.reactionX ?? undefined, y: poll.reactionY ?? undefined, scale: poll.reactionScale ?? undefined }} />}
+      {!cover && reaction && ['big_yes', 'thinking', 'no_way', 'wow'].includes(reaction) && <PositionedPoPmoji id={reaction} placement={{ x: poll.reactionX ?? undefined, y: poll.reactionY ?? undefined, scale: poll.reactionScale ?? undefined }} />}
     </View>
     <View style={{ flexDirection: 'row', height: 112, marginTop: 22, borderWidth: 2, borderColor: night ? '#DDD4E9' : '#24202C', borderRadius: 15, overflow: 'hidden' }}>
       <View style={{ flex: 1, backgroundColor: night ? '#71628D' : '#DCCFFA', padding: 15, justifyContent: 'space-between' }}><Text style={{ color: '#372B4E', fontWeight: '900', fontSize: 12 }}>01  ↙</Text><Text style={{ color: '#27213D', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 24, fontWeight: '700' }}>Against</Text></View>
@@ -70,9 +77,11 @@ export function PollShareProvider({ children }: { children: ReactNode }) {
   const { width } = useWindowDimensions();
   const [poll, setPoll] = useState<ShareablePoll | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mediaReady, setMediaReady] = useState(false);
   const cardRef = useRef<View>(null);
   const open = (next: ShareablePoll) => {
     if (next.id <= 0) return Alert.alert('Sample poll', 'This demo poll has no public link to share.');
+    setMediaReady(!pollCover(next));
     setPoll(next);
   };
   const perform = async (action: () => Promise<unknown>) => {
@@ -84,6 +93,7 @@ export function PollShareProvider({ children }: { children: ReactNode }) {
   };
   const shareImage = () => perform(async () => {
     if (!cardRef.current) throw new Error('The poll card is still loading. Please try again.');
+    if (!mediaReady) throw new Error('The poll cover is still loading. Please try again.');
     if (!await Sharing.isAvailableAsync()) throw new Error('File sharing is unavailable on this device.');
     const uri = await captureRef(cardRef, { format: 'png', quality: 1, result: 'tmpfile' });
     await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Share PoP poll card' });
@@ -92,9 +102,9 @@ export function PollShareProvider({ children }: { children: ReactNode }) {
     <View style={{ flex: 1, backgroundColor: '#000000CC', justifyContent: 'flex-end' }}>
       <View style={{ maxHeight: '95%', backgroundColor: '#171420', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, paddingBottom: 30 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 14 }}><Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800' }}>Share this poll</Text><Pressable accessibilityRole="button" accessibilityLabel="Close share preview" onPress={() => setPoll(null)} disabled={busy}><Text style={{ color: '#FFFFFF', fontSize: 25 }}>×</Text></Pressable></View>
-        <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 12 }}><View ref={cardRef} collapsable={false}>{poll && <PollCard poll={poll} width={Math.min(340, width - 32)} />}</View></ScrollView>
+        <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 12 }}><View ref={cardRef} collapsable={false}>{poll && <PollCard poll={poll} width={Math.min(340, width - 32)} onMediaReady={() => setMediaReady(true)} />}</View></ScrollView>
         <View style={{ paddingHorizontal: 20, gap: 9 }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Share poll card image" disabled={busy} onPress={() => void shareImage()} style={{ backgroundColor: '#F76271', borderRadius: 13, padding: 14, alignItems: 'center' }}>{busy ? <ActivityIndicator color="#241923" /> : <Text style={{ color: '#241923', fontWeight: '900' }}>Share card image</Text>}</Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Share poll card image" disabled={busy || !mediaReady} onPress={() => void shareImage()} style={{ backgroundColor: '#F76271', borderRadius: 13, padding: 14, alignItems: 'center', opacity: mediaReady ? 1 : .55 }}>{busy ? <ActivityIndicator color="#241923" /> : <Text style={{ color: '#241923', fontWeight: '900' }}>{mediaReady ? 'Share card image' : 'Loading cover…'}</Text>}</Pressable>
           <View style={{ flexDirection: 'row', gap: 9 }}><Pressable accessibilityRole="button" disabled={busy} onPress={() => poll && void perform(() => sharePollLink(poll))} style={{ flex: 1, borderColor: '#665B74', borderWidth: 1, borderRadius: 13, padding: 12, alignItems: 'center' }}><Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Share link</Text></Pressable><Pressable accessibilityRole="button" disabled={busy} onPress={() => poll && void perform(() => sharePollQr(poll))} style={{ flex: 1, borderColor: '#665B74', borderWidth: 1, borderRadius: 13, padding: 12, alignItems: 'center' }}><Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Share QR</Text></Pressable></View>
         </View>
       </View>

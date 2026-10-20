@@ -30,6 +30,7 @@ export interface ApiPoll {
   sourceType: string | null;
   sourceUrl: string | null;
   thumbnailUrl: string | null;
+  mediaPosterUrl?: string | null;
   mediaType?: 'image' | 'video' | string | null;
   creativeTemplate?: 'classic' | 'pulse' | 'spotlight' | string | null;
   reactionId?: 'big_yes' | 'thinking' | 'no_way' | 'wow' | string | null;

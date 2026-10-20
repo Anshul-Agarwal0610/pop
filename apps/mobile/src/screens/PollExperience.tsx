@@ -24,6 +24,7 @@ import { GamesScreen, WellnessScreen, RankingsScreen } from './PlayScreens';
 import { CommunityScreen } from './CommunityScreen';
 import { API_BASE_URL } from '../config/api';
 import { youtubeVideoId } from '../lib/youtube';
+import { pollCover } from '../lib/pollCover';
 import { useDirectionalShake } from '../lib/directionalShake';
 
 type Tab = 'Home' | 'Explore' | 'Ranks' | 'Profile' | 'More';
@@ -127,11 +128,12 @@ function YouTubeMedia({ videoId, thumbnail }: { videoId: string; thumbnail: stri
 function PollPreview({ poll, onOpen }: { poll: ApiPoll; onOpen: () => void }) {
   const { colors: c } = useTheme(); const s = useMemo(() => createStyles(c), [c]);
   const creative = !!(poll.creativeTemplate || poll.reactionId);
+  const cover = pollCover(poll);
   return <View style={s.card}>
     <View style={s.between}><Category name={poll.category} /><Text style={s.meta}>{pollDeadline(poll)}</Text></View>
     {poll.remixedFromPollId && <Text style={s.meta}>↗ Remixed conversation</Text>}
-    {creative ? <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} reactionPlacement={{ x: poll.reactionX ?? undefined, y: poll.reactionY ?? undefined, scale: poll.reactionScale ?? undefined }} compact showChoices={!!ballotChoices(poll.options)} /> : <Text style={s.cardTitle}>{poll.question}</Text>}
-    <PollMedia poll={poll} />
+    {creative ? <CreativePollHero question={poll.question} description={poll.description} category={poll.category} template={poll.creativeTemplate} reaction={poll.reactionId} reactionPlacement={{ x: poll.reactionX ?? undefined, y: poll.reactionY ?? undefined, scale: poll.reactionScale ?? undefined }} mediaUri={cover?.uri} mediaType={cover?.isVideo ? 'video' : 'image'} compact showChoices={!!ballotChoices(poll.options)} /> : <Text style={s.cardTitle}>{poll.question}</Text>}
+    {(!creative || (poll.mediaType?.toLowerCase() === 'video' && !cover)) && <PollMedia poll={poll} />}
     {!creative && <View style={s.previewBody}><Text numberOfLines={3} style={[s.body, s.flex]}>{poll.description || 'A fresh perspective starts with you. Where do you stand?'}</Text>{!poll.thumbnailUrl && !youtubeVideoId(poll.sourceUrl) && <PollArtwork />}</View>}
     <View style={s.row}><Icon name="people-outline" size={17} /><Text style={s.meta}>{poll.canViewResults === false ? 'Results hidden' : `${count(poll.totalVotes)} votes`}</Text>{poll.hasVoted && <Text style={s.votedTag}>Voted ✓</Text>}</View>
     <Button title={poll.hasVoted || isPollClosed(poll) ? poll.canViewResults === false ? 'View vote' : 'View results' : 'Vote now  →'} onPress={onOpen} />
@@ -294,6 +296,8 @@ export function PollExperience() {
     const next = nextUnvotedPoll(polls, detail.id);
     const choices = ballotChoices(detail.options);
     const activeBallot = canVote && Boolean(choices);
+    const cover = pollCover(detail);
+    const creative = !!(detail.creativeTemplate || detail.reactionId);
     return <View style={s.shell}>
       <View style={s.detailHeader}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to feed" disabled={voting} onPress={back} style={s.iconButton}><Icon name="arrow-back" color={c.foreground} /></Pressable>
@@ -303,8 +307,8 @@ export function PollExperience() {
       <ScrollView scrollEnabled={!ballotDragging && !voting} contentContainerStyle={[s.detailContent, activeBallot && s.ballotDetailContent]} showsVerticalScrollIndicator={false}>
         {results && !choices && !creatorView && <View style={s.success}><Icon name="checkmark-circle" color={c.accent} /><Text style={s.successText}>{detail.hasVoted ? 'Your vote is in' : 'This poll has closed'}</Text></View>}
         <View style={s.between}><Category name={detail.category} /><Text style={s.meta}>{pollDeadline(detail)}</Text></View>
-        {detail.creativeTemplate || detail.reactionId ? <CreativePollHero question={detail.question} description={detail.description} category={detail.category} template={detail.creativeTemplate} reaction={detail.reactionId} reactionPlacement={{ x: detail.reactionX ?? undefined, y: detail.reactionY ?? undefined, scale: detail.reactionScale ?? undefined }} showChoices={false} /> : <Text accessibilityRole="header" style={[s.question, choices && { fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", fontWeight: "400" }]}>{detail.question}</Text>}
-        <PollMedia poll={detail} detail />
+        {creative ? <CreativePollHero question={detail.question} description={detail.description} category={detail.category} template={detail.creativeTemplate} reaction={detail.reactionId} reactionPlacement={{ x: detail.reactionX ?? undefined, y: detail.reactionY ?? undefined, scale: detail.reactionScale ?? undefined }} mediaUri={cover?.uri} mediaType={cover?.isVideo ? 'video' : 'image'} showChoices={false} /> : <Text accessibilityRole="header" style={[s.question, choices && { fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", fontWeight: "400" }]}>{detail.question}</Text>}
+        {(!creative || detail.mediaType?.toLowerCase() === 'video' || youtubeVideoId(detail.sourceUrl)) && <PollMedia poll={detail} detail />}
         {detail.id === samplePoll.id && <Text style={s.caption}>LOCAL DEMO · No real votes or XP · Refresh the feed to try again</Text>}
         {(!results || creatorView) && !detail.creativeTemplate && !detail.reactionId && <Text style={s.context}>{detail.description || 'Every perspective counts. Where do you stand?'}</Text>}
         {!!detail.sourceUrl && <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(detail.sourceUrl!)}><Text style={s.sourceLink}>Read the original source ↗</Text></Pressable>}
