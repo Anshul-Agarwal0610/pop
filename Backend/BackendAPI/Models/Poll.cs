@@ -40,6 +40,7 @@ namespace BackendAPI.Models
         /// <summary>Thumbnail image URL for the poll card.</summary>
         public string? ThumbnailUrl { get; set; }
         public string? MediaType { get; set; }
+        public string? MediaPosterUrl { get; set; }
         public string? CreativeTemplate { get; set; }
         public string? ReactionId { get; set; }
         public decimal? ReactionX { get; set; }
@@ -89,6 +90,7 @@ namespace BackendAPI.Models
         public string? SourceUrl { get; set; }
         public string? ThumbnailUrl { get; set; }
         public string? MediaType { get; set; }
+        public string? MediaPosterUrl { get; set; }
         public string? CreativeTemplate { get; set; }
         public string? ReactionId { get; set; }
         public decimal? ReactionX { get; set; }

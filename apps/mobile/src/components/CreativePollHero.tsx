@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { PanResponder, Platform, Pressable, Text, View } from 'react-native';
+import { Image, PanResponder, Platform, Pressable, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme } from '../theme';
 import { PoPmojiArt, reactions, type PollReaction } from './PoPmojiArt';
@@ -45,10 +45,11 @@ export function PositionedPoPmoji({ id, placement, compact = false, editable = f
   </View>;
 }
 
-export function CreativePollHero({ question, description, category, template, reaction, reactionPlacement, onReactionPlacementChange, compact = false, showChoices = true }: {
+export function CreativePollHero({ question, description, category, template, reaction, reactionPlacement, onReactionPlacementChange, mediaUri, mediaType, onMediaLoad, compact = false, showChoices = true }: {
   question: string; description?: string | null; category?: string | null;
   template?: PollTemplate | string | null; reaction?: PollReaction | string | null; reactionPlacement?: Partial<PoPmojiPlacement> | null;
-  onReactionPlacementChange?: (value: PoPmojiPlacement) => void; compact?: boolean; showChoices?: boolean;
+  onReactionPlacementChange?: (value: PoPmojiPlacement) => void; mediaUri?: string | null; mediaType?: string | null;
+  onMediaLoad?: () => void; compact?: boolean; showChoices?: boolean;
 }) {
   const { colors: c } = useTheme();
   const selected = template === 'pulse' || template === 'spotlight' ? template : 'classic';
@@ -63,12 +64,17 @@ export function CreativePollHero({ question, description, category, template, re
 
   return <View style={{ backgroundColor: background, borderRadius: split ? 18 : 22, overflow: 'hidden', borderWidth: split ? 0 : 1, borderColor: night ? '#9F82D060' : c.border, minHeight: split ? (showChoices ? compact ? 242 : 298 : 196) : compact ? 155 : 190 }}>
     <View style={{ paddingHorizontal: compact ? 17 : 21, paddingTop: compact ? 16 : 19, paddingBottom: showChoices && split ? 14 : 20, flex: 1 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingRight: activeReaction ? (compact ? 45 : 61) : 0 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingRight: activeReaction && !mediaUri ? (compact ? 45 : 61) : 0 }}>
         <Text style={{ color: accent, fontSize: 10, fontWeight: '900', letterSpacing: 1.5, textTransform: 'uppercase', flexShrink: 1 }} numberOfLines={1}>{category || 'Your perspective'}</Text>
         <Text style={{ color: subdued, fontSize: 9, fontWeight: '800', letterSpacing: 1.2 }}>{split ? 'THE PUBLIC QUESTION' : 'PoP / YOUR VOICE'}</Text>
       </View>
-      {activeReaction && <PositionedPoPmoji id={activeReaction.id} placement={reactionPlacement} compact={compact} editable={!!onReactionPlacementChange} onChange={onReactionPlacementChange} />}
-      <Text accessibilityRole="header" numberOfLines={compact ? 3 : 4} style={{ color: ink, fontFamily: serif, fontSize: compact ? 25 : 33, lineHeight: compact ? 29 : 38, fontWeight: '700', letterSpacing: -1.2, marginTop: compact ? 17 : 24, paddingRight: activeReaction ? (compact ? 23 : 34) : 0 }}>
+      {mediaUri && <View style={{ height: compact ? 175 : 215, marginTop: 13, borderRadius: 14, overflow: 'hidden', backgroundColor: night ? '#403650' : '#DDD2DC' }}>
+        <Image accessibilityLabel="Poll cover" source={{ uri: mediaUri }} resizeMode="cover" onLoad={onMediaLoad} style={{ width: '100%', height: '100%' }} />
+        {mediaType === 'video' && <View pointerEvents="none" style={{ position: 'absolute', bottom: 12, left: 12, borderRadius: 20, backgroundColor: '#211B27DD', paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="play" size={13} color="#FFFFFF" /><Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 11 }}>VIDEO</Text></View>}
+        {activeReaction && <PositionedPoPmoji id={activeReaction.id} placement={reactionPlacement} compact={compact} editable={!!onReactionPlacementChange} onChange={onReactionPlacementChange} />}
+      </View>}
+      {activeReaction && !mediaUri && <PositionedPoPmoji id={activeReaction.id} placement={reactionPlacement} compact={compact} editable={!!onReactionPlacementChange} onChange={onReactionPlacementChange} />}
+      <Text accessibilityRole="header" numberOfLines={compact ? 3 : 4} style={{ color: ink, fontFamily: serif, fontSize: compact ? 25 : 33, lineHeight: compact ? 29 : 38, fontWeight: '700', letterSpacing: -1.2, marginTop: compact ? 17 : 24, paddingRight: activeReaction && !mediaUri ? (compact ? 23 : 34) : 0 }}>
         {question || 'Your question appears here'}
       </Text>
       {!!description && <Text numberOfLines={compact ? 2 : 3} style={{ color: subdued, fontSize: compact ? 12 : 14, lineHeight: compact ? 17 : 20, marginTop: 8 }}>{description}</Text>}

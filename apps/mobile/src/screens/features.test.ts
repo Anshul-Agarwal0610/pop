@@ -19,6 +19,7 @@ jest.mock('react-native', () => ({
   FlatList: 'FlatList', Share: { share: jest.fn() },
 }));
 jest.mock('expo', () => ({ isRunningInExpoGo: () => true }));
+jest.mock('../lib/videoPoster', () => ({ createVideoPoster: jest.fn() }));
 jest.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined }));
 jest.mock('../lib/analytics/client', () => ({ track: jest.fn() }));
 jest.mock('@expo/vector-icons/Ionicons', () => 'Icon');

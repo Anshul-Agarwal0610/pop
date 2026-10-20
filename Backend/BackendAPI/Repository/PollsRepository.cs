@@ -514,14 +514,14 @@ namespace BackendAPI.Repository
                     @"INSERT INTO Polls
                         (Question, Description, Category, ExpiresAt, IsActive, IsTrending,
                          CreatedByUserId,
-                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, CreativeTemplate, ReactionId, ReactionX, ReactionY, ReactionScale, ResultVisibility, RemixedFromPollId, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
+                          CreatedAt, TotalVotes, SourceType, SourceUrl, ThumbnailUrl, MediaType, MediaPosterUrl, CreativeTemplate, ReactionId, ReactionX, ReactionY, ReactionScale, ResultVisibility, RemixedFromPollId, IsAIGenerated, GenerationMethod, TrendingTopicId, GenerationProvider, GenerationModel,
                          IsPrivate, IsWellness, PollMode,
                          ModerationStatus, ModerationReason, ModeratedByUserId, ModeratedAt, ReportCount, LastReportedAt,
                          ReplacementForCleanupRecordId)
                       VALUES
                         (@Question, @Description, @Category, @ExpiresAt, 1, 0,
                          @CreatedByUserId,
-                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @CreativeTemplate, @ReactionId, @ReactionX, @ReactionY, @ReactionScale, @ResultVisibility, @RemixedFromPollId, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
+                          GETUTCDATE(), 0, @SourceType, @SourceUrl, @ThumbnailUrl, @MediaType, @MediaPosterUrl, @CreativeTemplate, @ReactionId, @ReactionX, @ReactionY, @ReactionScale, @ResultVisibility, @RemixedFromPollId, @IsAIGenerated, @GenerationMethod, @TrendingTopicId, @GenerationProvider, @GenerationModel,
                          @IsPrivate, @IsWellness, @PollMode,
                          @ModerationStatus, @ModerationReason, NULL, NULL, 0, NULL,
                          @ReplacementForCleanupRecordId);
@@ -536,6 +536,7 @@ namespace BackendAPI.Repository
                         request.SourceUrl,
                         request.ThumbnailUrl,
                         request.MediaType,
+                        request.MediaPosterUrl,
                         CreativeTemplate = creativeTemplate,
                         ReactionId = reactionId,
                         ReactionX = reactionId == null ? null : request.ReactionX,
